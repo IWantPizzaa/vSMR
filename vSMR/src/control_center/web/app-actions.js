@@ -13,7 +13,7 @@
   }
 
   function createRule() {
-    rules().push({ source: "vacdm", token: "tsat", condition: "valid", criteria: [{ source: "vacdm", token: "tsat", condition: "valid" }], tag_type: "departure", status: "any", statuses: RULE_STATUSES.slice(), detail: "normal", text_color: hexToColor("#ffffff") });
+    rules().push({ source: "cdm", token: "tsat", condition: "set", criteria: [{ source: "cdm", token: "tsat", condition: "set" }], tag_type: "departure", status: "any", statuses: RULE_STATUSES.slice(), detail: "normal", text_color: hexToColor("#ffffff") });
     state.ui.selectedRuleIndex = rules().length - 1;
     drafts.rule = null;
     clearUnappliedEditorSection($("#ruleName"));
@@ -45,7 +45,7 @@
     captureRuleDraft();
     if (!drafts.rule) return;
     drafts.rule.data.criteria.splice(index, 1);
-    if (!drafts.rule.data.criteria.length) drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" });
+    if (!drafts.rule.data.criteria.length) drafts.rule.data.criteria.push({ source: "cdm", token: "", condition: "" });
     renderRuleEditor();
     applyRule({ render: false });
   }
@@ -196,6 +196,8 @@
     state.ui.tagSelectionAnchorId = state.ui.selectedTagId;
     const colors = collectProfileColors(preferred.data);
     state.ui.selectedColorPath = colors[0]?.id || "";
+    state.ui.selectedColorPaths = state.ui.selectedColorPath ? [state.ui.selectedColorPath] : [];
+    state.ui.colorSelectionAnchorPath = state.ui.selectedColorPath;
     state.settings.resolutionPreset = preferred.data.targets?.small_icon_boost_resolution_preset || state.settings.resolutionPreset || "1080p";
     Object.keys(drafts).forEach(key => drafts[key] = null);
     clearAllUnappliedEditorSections();

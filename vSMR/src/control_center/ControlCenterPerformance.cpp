@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 #include "control_center/ControlCenterPerformance.hpp"
 
 #include "crash/CrashReportSupport.hpp"
@@ -185,7 +186,7 @@ namespace
 		rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
 		writer.SetIndent('\t', 1);
 		value.Accept(writer);
-		return std::string(buffer.GetString(), buffer.Size());
+		return std::string(buffer.GetString(), buffer.GetSize());
 	}
 
 	static std::uint64_t MonotonicToUtc(
@@ -888,7 +889,7 @@ namespace VsmrControlCenterPerformance
 		report.clear();
 		error.clear();
 		rapidjson::Document document;
-		document.Parse<0>(nativeReport.c_str());
+		VsmrJson::ParseDocument(document, nativeReport);
 		if (document.HasParseError() || !document.IsObject())
 		{
 			error = "The native performance report could not be serialized.";

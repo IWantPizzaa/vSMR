@@ -3,7 +3,7 @@
 #include "aircraft/GroundState.hpp"
 #include "scene/TargetRoleLogic.hpp"
 #include "tags/TagColorRules.hpp"
-#include "tags/VacdmTagHelpers.hpp"
+#include "tags/CdmTagHelpers.hpp"
 #include "crash/CrashRuntime.hpp"
 
 namespace TagColorRules = VsmrTagColorRules;
@@ -69,7 +69,7 @@ bool CSMRRadar::IsWithinAirborneDisplayLimits(
 		reportedGs <= settings.maximumAirborneSpeedKt;
 }
 
-bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorrelated, int reportedGs, int pressureAltitudeFt, bool targetOnRunway, const DisplayModeSettings& settings, const VacdmPilotData* capturedVacdmData) const
+bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorrelated, int reportedGs, int pressureAltitudeFt, bool targetOnRunway, const DisplayModeSettings& settings, const CdmPilotData* capturedCdmData) const
 {
 	// Applying filters which do not depend on the airport role
 	if (!IsWithinAirborneDisplayLimits(reportedGs, pressureAltitudeFt, settings))
@@ -77,22 +77,27 @@ bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorre
 
 	if (settings.requireClearance && (!fp.IsValid() || !fp.GetClearenceFlag()))
 		return false;
+	if (settings.requireReady &&
+		(capturedCdmData == nullptr || !capturedCdmData->hasAsrt))
+	{
+		return false;
+	}
 
 	if (settings.requireValidTsat || settings.requireActiveTobt)
 	{
-		if (capturedVacdmData == nullptr)
+		if (capturedCdmData == nullptr)
 			return false;
 
 		if (settings.requireValidTsat)
 		{
-			const std::string tsatState = TagColorRules::ResolveVacdmRuleStateName("tsat", capturedVacdmData);
+			const std::string tsatState = TagColorRules::ResolveCdmRuleStateName("tsat", capturedCdmData);
 			if (tsatState != "valid" && tsatState != "valid_ctot")
 				return false;
 		}
 
 		if (settings.requireActiveTobt)
 		{
-			const std::string tobtState = TagColorRules::ResolveVacdmRuleStateName("tobt", capturedVacdmData);
+			const std::string tobtState = TagColorRules::ResolveCdmRuleStateName("tobt", capturedCdmData);
 			if (tobtState != "confirmed" &&
 				tobtState != "unconfirmed" &&
 				tobtState != "confirmed_delay" &&
@@ -179,7 +184,7 @@ int CSMRRadar::getZoomLevelFromCrossDistance(double crossDistance)
 	return SMRGeometry::ZoomLevelFromCrossDistance(crossDistance);
 }
 
-int CSMRRadar::getIntFromCategory(string category)
+int CSMRRadar::getIntFromCategory(std::string category)
 {
 	return SMRGeometry::SectorElementCategoryFromName(category);
 }
@@ -194,16 +199,14 @@ void CSMRRadar::OnAsrContentToBeClosed(void)
 	CloseVsmrControlCenterWindow();
 	DestroyVsmrControlCenterWindow();
 
-	const std::string fallbackProfile = (CurrentConfig != nullptr) ? CurrentConfig->getActiveProfileName() : "Default";
-	const std::string profileToPersist = GetSessionActiveProfile(fallbackProfile);
-	SaveDataToAsr("ActiveProfile", "vSMR active profile", profileToPersist.c_str());
+	// EuroScope has already completed its save decision. The SDK forbids ASR
+	// writes in this callback; ActiveProfile is stored in OnAsrContentToBeSaved.
 
 	if (CurrentConfig != nullptr)
 	{
 		// Reload before writing shutdown state so stale radar instances do not overwrite
 		// edits already saved by another screen during the session.
 		CurrentConfig->reload();
-		WriteLastActiveProfileToConfig(profileToPersist);
 		if (RimcasInstance != nullptr)
 			CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
 		CurrentConfig->saveConfig();

@@ -4,7 +4,6 @@
     const preview = $("#iconSymbolPreview");
     if (!preview) return;
     const style = String($("#targetIconStyle")?.value || activeProfile().targets?.icon_style || "realistic").toLowerCase();
-    const symbolScale = clamp($("#targetSymbolScale")?.value ?? activeProfile().targets?.symbol_scale ?? 1, 0.5, 1.5);
     const trailEnabled = $("#targetTrailEnabled")?.checked ?? activeProfile().targets?.trail_enabled !== false;
 
     let symbol = "";
@@ -13,7 +12,7 @@
     if (style === "nova") {
       const shape = "M0-38-8-35-10-18-38 6-36 17-11 8-7 32 0 39 7 32 11 8 36 17 38 6 10-18 8-35Z";
       const afterglow = trailEnabled
-        ? `<path class="nova-afterglow oldest" transform="translate(-15 8)" d="${shape}"/><path class="nova-afterglow middle" transform="translate(-10 5)" d="${shape}"/><path class="nova-afterglow newest" transform="translate(-5 2)" d="${shape}"/>`
+        ? `<path class="nova-afterglow oldest" transform="translate(0 15)" d="${shape}"/><path class="nova-afterglow middle" transform="translate(0 10)" d="${shape}"/><path class="nova-afterglow newest" transform="translate(0 5)" d="${shape}"/>`
         : "";
       symbol = `<svg class="icon-preview-vector nova" viewBox="-62 -52 124 108" aria-hidden="true">${afterglow}<path class="nova-primary-return" d="${shape}"/><path class="nova-secondary-return" d="M0-7 7 0 0 7-7 0Z"/></svg>`;
       caption = "NOVA";
@@ -35,7 +34,7 @@
     const trail = trailEnabled
       ? `<span class="icon-preview-trail ${trailClass}" aria-hidden="true"><i></i><i></i><i></i><i></i></span>`
       : "";
-    preview.innerHTML = `<div class="icon-preview-stage"><span class="icon-preview-symbol" style="--icon-preview-scale:${symbolScale}">${symbol}</span>${trail}</div><span>${escapeHtml(caption)}</span>`;
+    preview.innerHTML = `<div class="icon-preview-stage"><span class="icon-preview-flight">${trail}<span class="icon-preview-symbol">${symbol}</span></span></div><span>${escapeHtml(caption)}</span>`;
 
     if (usesAircraftImage) {
       const aircraftImage = preview.querySelector("[data-aircraft-icon]");
@@ -56,7 +55,7 @@
     const profile = activeProfile();
     const targets = profile.targets ||= {};
     ensureSelectValue($("#targetIconStyle"), targets.icon_style || "realistic");
-    const symbolScale = clamp(targets.symbol_scale ?? 1, 0.5, 1.5);
+    const symbolScale = clamp(targets.symbol_scale ?? 1, 0.25, 5);
     $("#targetSymbolScale").value = symbolScale;
     $("#targetSymbolScaleOutput").value = `${symbolScale.toFixed(2)}×`;
     targets.small_icon_boost_resolution_preset ||= state.settings.resolutionPreset || "1080p";
@@ -78,7 +77,7 @@
   function applyIcons({ render = true } = {}) {
     const targets = activeProfile().targets ||= {};
     targets.icon_style = $("#targetIconStyle").value;
-    targets.symbol_scale = clamp($("#targetSymbolScale").value, 0.5, 1.5);
+    targets.symbol_scale = clamp($("#targetSymbolScale").value, 0.25, 5);
     targets.small_icon_boost_resolution_preset = state.settings.resolutionPreset || targets.small_icon_boost_resolution_preset || "1080p";
     targets.trail_enabled = $("#targetTrailEnabled").checked;
     targets.trail_ground_points = Math.round(clamp($("#targetTrailGroundPoints").value, 0, 16));
@@ -239,6 +238,7 @@
 
     const labels = activeProfile().labels ||= {};
     $("#tagRoundedCorners").checked = Boolean(labels.rounded_corners);
+    $("#tagFitBackgroundToText").checked = Boolean(labels.fit_background_to_text);
     $("#tagAutoDeconfliction").checked = Boolean(labels.auto_deconfliction);
     const labelSize = Math.round(clamp(activeProfile().font?.label_font_size ?? 1, 1, 5));
     $("#tagLabelFontSize").value = labelSize;
@@ -283,6 +283,7 @@
 
     const labels = activeProfile().labels ||= {};
     labels.rounded_corners = $("#tagRoundedCorners").checked;
+    labels.fit_background_to_text = $("#tagFitBackgroundToText").checked;
     labels.auto_deconfliction = $("#tagAutoDeconfliction").checked;
     activeProfile().font ||= {};
     activeProfile().font.label_font_size = Math.round(clamp($("#tagLabelFontSize").value, 1, 5));
@@ -370,23 +371,25 @@
   }
   function normalizeRuleSourceUi(source) {
     const normalized = String(source || "").trim().toLowerCase();
+    // Keep older profiles editable while saving new rules under the CDM source.
+    if (normalized === "cdm" || normalized === "vacdm") return "cdm";
+    if (normalized === "vsid" || normalized === "v_sid") return "vsid";
     if (normalized === "runway" || normalized === "rwy") return "runway";
     if (["custom", "sid", "list", "sidlist"].includes(normalized)) return "custom";
-    return "vacdm";
+    return "cdm";
   }
   function ruleTokensForSource(source) {
-    return RULE_SOURCE_TOKENS[normalizeRuleSourceUi(source)] || RULE_SOURCE_TOKENS.vacdm;
+    return RULE_SOURCE_TOKENS[normalizeRuleSourceUi(source)] || RULE_SOURCE_TOKENS.cdm;
   }
   function ruleConditionsFor(source, token, selected = "") {
     const normalizedSource = normalizeRuleSourceUi(source);
     const normalizedToken = String(token || "").trim().toLowerCase();
     let values;
-    if (normalizedSource === "runway" || normalizedSource === "custom")
+    const cdmTime = normalizedSource === "cdm" && ["tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat"].includes(normalizedToken);
+    if (normalizedSource === "cdm" && cdmTime)
+      values = ["any", "set", "missing", "future", "past"];
+    else if (["runway", "custom", "vsid", "cdm"].includes(normalizedSource))
       values = ["any", "set", "missing", "in", "not_in"];
-    else if (normalizedToken === "tobt")
-      values = ["any", "set", "missing", "inactive", "unconfirmed", "confirmed", "unconfirmed_delay", "confirmed_delay", "expired"];
-    else if (normalizedToken === "tsat")
-      values = ["any", "set", "missing", "inactive", "future", "valid", "expired", "future_ctot", "valid_ctot", "expired_ctot"];
     else
       values = ["any", "set", "missing", "future", "past"];
 
@@ -396,9 +399,8 @@
   function parseRuleCondition(source, condition) {
     const normalizedSource = normalizeRuleSourceUi(source);
     const raw = String(condition || "").trim();
-    if (normalizedSource === "vacdm") return { operator: raw || "any", values: "" };
     const simple = raw.toLowerCase();
-    if (["any", "set", "missing"].includes(simple)) return { operator: simple, values: "" };
+    if (["any", "set", "missing", "future", "past"].includes(simple)) return { operator: simple, values: "" };
     const list = raw.match(/^(not_in|notin|not|in|list|sid)\s*:\s*(.*)$/i);
     if (list) {
       const operator = ["not_in", "notin", "not"].includes(list[1].toLowerCase()) ? "not_in" : "in";
@@ -407,22 +409,24 @@
     return { operator: "in", values: raw };
   }
   function composeRuleCondition(source, operator, values) {
-    if (normalizeRuleSourceUi(source) === "vacdm") return String(operator || "any").trim();
     const normalizedOperator = String(operator || "any").trim().toLowerCase();
     if (!["in", "not_in"].includes(normalizedOperator)) return normalizedOperator || "any";
     const list = String(values || "").trim();
     return list ? `${normalizedOperator}: ${list}` : normalizedOperator;
   }
   function updateRuleConditionValueControl(row) {
-    const source = $("[data-field='source']", row)?.value || "vacdm";
+    const source = $("[data-field='source']", row)?.value || "cdm";
     const operator = $("[data-field='condition']", row)?.value || "any";
     const input = $("[data-field='condition-values']", row);
     if (!input) return;
-    const acceptsValues = normalizeRuleSourceUi(source) !== "vacdm" && ["in", "not_in"].includes(operator);
+    const acceptsValues = ["in", "not_in"].includes(operator);
     input.disabled = !acceptsValues;
-    input.placeholder = acceptsValues
-      ? (normalizeRuleSourceUi(source) === "runway" ? "09L, 27R" : "SID1X, SID2A")
-      : "";
+    const normalizedSource = normalizeRuleSourceUi(source);
+    const token = $("[data-field='token']", row)?.value || "";
+    let placeholder = "SID1X, SID2A";
+    if (normalizedSource === "runway" || token === "vsid_rwy") placeholder = "09L, 27R";
+    else if (token === "vsid_cfl") placeholder = "A50, 100";
+    input.placeholder = acceptsValues ? placeholder : "";
   }
   function ruleSelectOptions(values, selected, labels = null) {
     const desired = String(selected || "").toLowerCase();
@@ -502,9 +506,14 @@
     state.ui.selectedRuleIndex = items.length ? Math.min(items.length - 1, Math.max(0, state.ui.selectedRuleIndex)) : 0;
     const rows = items.map((rule, index) => {
       const selected = index === state.ui.selectedRuleIndex;
-      return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("manager", selected)}" data-rule-index="${index}"><span class="ui-list__label">${escapeHtml(ruleLabel(rule, index))}</span></button>`;
+      const criteriaCount = Array.isArray(rule.criteria) && rule.criteria.length ? rule.criteria.length : 1;
+      return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("status", selected)}" data-rule-index="${index}" title="${escapeHtml(ruleLabel(rule, index))}"><span class="ui-list__label">${escapeHtml(ruleLabel(rule, index))}</span><span class="ui-list__trailing rule-criteria-count" aria-label="${criteriaCount} ${criteriaCount === 1 ? "condition" : "conditions"}">${criteriaCount}</span></button>`;
     }).join("");
     $("#ruleList").innerHTML = rows ? `<div class="ui-list__items" role="presentation">${rows}</div>` : `<div class="ui-list__empty">No rules</div>`;
+    const hasSelection = items.length > 0;
+    $('[data-action="duplicate-rule"]').disabled = !hasSelection;
+    $('[data-action="delete-rule"]').disabled = !hasSelection;
+	$('[data-action="copy-rule"]').disabled = !hasSelection;
     syncUiListFocus($("#ruleList"));
     renderRuleEditor();
   }
@@ -512,16 +521,22 @@
     const item = rules()[state.ui.selectedRuleIndex];
     const disabled = !item;
     $("#ruleFormCaption").textContent = item ? ruleLabel(item, state.ui.selectedRuleIndex) : "Rule";
+    $("#ruleEditorEmpty").hidden = !disabled;
+    $("#ruleEditorForm").hidden = disabled;
     if (!item) {
+      drafts.rule = null;
       $("#ruleName").value = "";
       $("#criteriaList").innerHTML = "";
       renderRuleStatusSelector({ status: "any" }, true);
+      $$("#ruleEditorForm input, #ruleEditorForm select, #ruleEditorForm button").forEach(control => { control.disabled = true; });
+      clearUnappliedEditorSection($("#ruleName"));
       return;
     }
+    $$("#ruleEditorForm input, #ruleEditorForm select, #ruleEditorForm button").forEach(control => { control.disabled = false; });
     if (!drafts.rule || drafts.rule.index !== state.ui.selectedRuleIndex) drafts.rule = { index: state.ui.selectedRuleIndex, data: clone(item) };
     const rule = drafts.rule.data;
     $("#ruleName").value = rule.name || "";
-    const criteria = Array.isArray(rule.criteria) && rule.criteria.length ? rule.criteria : [{ source: rule.source || "vacdm", token: rule.token || "", condition: rule.condition || "" }];
+    const criteria = Array.isArray(rule.criteria) && rule.criteria.length ? rule.criteria : [{ source: rule.source || "cdm", token: rule.token || "", condition: rule.condition || "" }];
     $("#criteriaList").innerHTML = criteria.map((criterion, index) => {
       const parsedCondition = parseRuleCondition(criterion.source, criterion.condition);
       return `
@@ -530,7 +545,7 @@
         <select aria-label="Rule token" data-field="token">${ruleSelectOptions(ruleTokensForSource(criterion.source), criterion.token)}</select>
         <select aria-label="Rule condition" data-field="condition">${ruleSelectOptions(ruleConditionsFor(criterion.source, criterion.token, parsedCondition.operator), parsedCondition.operator, { not_in: "not in" })}</select>
         <input aria-label="Rule match values" data-field="condition-values" spellcheck="false" type="text" value="${escapeHtml(parsedCondition.values)}"/>
-        <button type="button" aria-label="Delete condition" class="ui-button ui-button--compact ui-button--icon ui-button--destructive" data-action="delete-condition" data-index="${index}" title="Delete condition">×</button>
+        <button type="button" aria-label="Delete condition" class="ui-button ui-button--compact ui-button--icon ui-button--destructive criterion-delete" data-action="delete-condition" data-index="${index}" title="Delete condition"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
       </div>`;
     }).join("");
     $$("#criteriaList .criterion-row").forEach(updateRuleConditionValueControl);
@@ -571,7 +586,7 @@
         )
       };
     }).filter(criterion => criterion.source || criterion.token || criterion.condition);
-    rule.criteria = criteria.length ? criteria : [{ source: "vacdm", token: "", condition: "" }];
+    rule.criteria = criteria.length ? criteria : [{ source: "cdm", token: "", condition: "" }];
     const first = rule.criteria[0];
     rule.source = first.source;
     rule.token = first.token;
@@ -592,12 +607,96 @@
   }
   function applyRule({ render = true } = {}) {
     const item = rules()[state.ui.selectedRuleIndex];
-    if (!item || !drafts.rule) return;
+    if (!item || !drafts.rule) {
+      clearUnappliedEditorSection($("#ruleName"));
+      return true;
+    }
     const rule = captureRuleDraft();
     rules()[state.ui.selectedRuleIndex] = clone(rule);
     clearUnappliedEditorSection($("#ruleName"));
     markDirty("Rule updated", ["profiles"]);
     if (render) renderRules();
+    return true;
+  }
+
+  function normalizeClipboardRule(value) {
+    const sourceRule = value?.rule ?? value;
+    if (!sourceRule || typeof sourceRule !== "object" || Array.isArray(sourceRule)) return null;
+    const rawCriteria = Array.isArray(sourceRule.criteria) && sourceRule.criteria.length
+      ? sourceRule.criteria
+      : [{ source: sourceRule.source, token: sourceRule.token, condition: sourceRule.condition }];
+    const criteria = rawCriteria.filter(item => item && typeof item === "object").map(item => {
+      const source = normalizeRuleSourceUi(item.source);
+      const tokens = ruleTokensForSource(source);
+      const requestedToken = String(item.token || "").trim().toLowerCase();
+      const token = tokens.includes(requestedToken) ? requestedToken : tokens[0];
+      const parsed = parseRuleCondition(source, item.condition);
+      const operators = ruleConditionsFor(source, token);
+      const operator = operators.includes(parsed.operator) ? parsed.operator : "any";
+      return { source, token, condition: composeRuleCondition(source, operator, parsed.values) };
+    });
+    if (!criteria.length) return null;
+
+    const tagTypes = ["any", "departure", "arrival", "airborne", "uncorrelated"];
+    const details = ["any", "normal", "detailed"];
+    const normalized = {
+      criteria,
+      source: criteria[0].source,
+      token: criteria[0].token,
+      condition: criteria[0].condition,
+      tag_type: tagTypes.includes(sourceRule.tag_type) ? sourceRule.tag_type : "any",
+      detail: details.includes(sourceRule.detail) ? sourceRule.detail : "any"
+    };
+    const name = String(sourceRule.name || "").trim();
+    if (name) normalized.name = name;
+    normalized.statuses = selectedRuleStatuses(sourceRule);
+    normalized.status = normalized.statuses.length === 1 ? normalized.statuses[0] : "any";
+    ["target_color", "tag_color", "text_color"].forEach(key => {
+      if (!isColorObject(sourceRule[key])) return;
+      normalized[key] = {
+        r: Math.round(clamp(sourceRule[key].r, 0, 255)),
+        g: Math.round(clamp(sourceRule[key].g, 0, 255)),
+        b: Math.round(clamp(sourceRule[key].b, 0, 255)),
+        a: Math.round(clamp(sourceRule[key].a ?? 255, 0, 255))
+      };
+    });
+    return normalized;
+  }
+
+  async function copyRule() {
+    const item = rules()[state.ui.selectedRuleIndex];
+    if (!item) return;
+    captureRuleDraft();
+    const rule = drafts.rule?.data || item;
+    await writeEditorClipboard(JSON.stringify({ vsmr: "rule", version: 1, rule }, null, 2), "rule");
+    showToast("Rule copied", "success");
+  }
+
+  async function pasteRule() {
+    const raw = String(await readEditorClipboard("rule", "Paste a vSMR rule") || "").trim();
+    if (!raw) return;
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch (error) {
+      showToast("Clipboard does not contain a vSMR rule", "error");
+      return;
+    }
+    const rule = normalizeClipboardRule(parsed);
+    if (!rule) {
+      showToast("Clipboard does not contain a valid vSMR rule", "error");
+      return;
+    }
+    const items = rules();
+    if (items.length) items[state.ui.selectedRuleIndex] = rule;
+    else {
+      items.push(rule);
+      state.ui.selectedRuleIndex = 0;
+    }
+    drafts.rule = null;
+    clearUnappliedEditorSection($("#ruleName"));
+    markDirty("Rule pasted", ["profiles"]);
+    renderRules();
+    showToast("Rule pasted", "success");
   }
 
   function modes() {
@@ -634,8 +733,9 @@
     $("#reqSquawk").checked = Boolean(data.require_assigned_squawk);
     $("#modeAcceptPilotSquawk").checked = data.accept_pilot_squawk !== false;
     $("#reqClearance").checked = Boolean(data.require_clearance);
-    $("#reqTsat").checked = Boolean(data.require_valid_tsat);
-    $("#reqTobt").checked = Boolean(data.require_active_tobt);
+	$("#reqTsat").checked = Boolean(data.require_valid_tsat);
+	$("#reqTobt").checked = Boolean(data.require_active_tobt);
+	$("#reqReady").checked = Boolean(data.require_ready);
     $("#modeTowerFilter").checked = Boolean(data.tower_filter ?? data.tower_mode);
     $("#modeStructuredRules").checked = data.structured_rules !== false && data.structured_rules_enabled !== false;
     $("#modeMaxAirborneAltitude").value = String(Math.round(clamp(data.max_airborne_altitude_ft ?? 5500, 0, 60000)));
@@ -656,8 +756,9 @@
     mode.require_assigned_squawk = $("#reqSquawk").checked;
     mode.accept_pilot_squawk = $("#modeAcceptPilotSquawk").checked;
     mode.require_clearance = $("#reqClearance").checked;
-    mode.require_valid_tsat = $("#reqTsat").checked;
-    mode.require_active_tobt = $("#reqTobt").checked;
+	mode.require_valid_tsat = $("#reqTsat").checked;
+	mode.require_active_tobt = $("#reqTobt").checked;
+	mode.require_ready = $("#reqReady").checked;
     mode.tower_filter = $("#modeTowerFilter").checked;
     mode.structured_rules = $("#modeStructuredRules").checked;
     mode.max_airborne_altitude_ft = Math.round(clamp(Number($("#modeMaxAirborneAltitude").value), 0, 60000));

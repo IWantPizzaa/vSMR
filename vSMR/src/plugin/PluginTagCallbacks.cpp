@@ -36,7 +36,7 @@ void CSMRPlugin::OnGetTagItem(
 	(void)TagData;
 	(void)pFontSize;
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 	{
 		strcpy_s(sItemString, 16, "");

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -166,6 +166,7 @@
     <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp" />
     <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp" />
     <ClCompile Include="src\config\RuntimeConfig.cpp" />
+    <ClCompile Include="src\config\ProfileNormalization.cpp" />
     <ClCompile Include="src\config\RuntimeConfig.Support.cpp" />
     <ClCompile Include="src\control_center\ControlCenterBridge.cpp" />
     <ClCompile Include="src\control_center\ControlCenterBridge.Commands.cpp" />
@@ -192,6 +193,11 @@
     <ClCompile Include="src\datalink\DatalinkProtocolSupport.cpp" />
     <ClCompile Include="src\datalink\DataLinkDialog.cpp" />
     <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp" />
+    <ClCompile Include="src\integrations\CdmBridgeClient.cpp" />
+    <ClCompile Include="src\integrations\PluginBridgeClient.cpp" />
+    <ClCompile Include="src\integrations\PluginBridgeReads.cpp" />
+    <ClCompile Include="src\integrations\RampAgentBridgeClient.cpp" />
+    <ClCompile Include="src\integrations\VsidBridgeClient.cpp" />
     <ClCompile Include="src\insets\InsetWindow.cpp" />
     <ClCompile Include="src\insets\InsetWindow.Aviso.cpp" />
     <ClCompile Include="src\insets\InsetWindow.Chrome.cpp" />
@@ -199,6 +205,7 @@
     <ClCompile Include="src\insets\InsetWindow.SecondaryRadar.cpp" />
     <ClCompile Include="src\insets\InsetWindow.Timer.cpp" />
     <ClCompile Include="src\insets\InsetWindow.Weather.cpp" />
+	<ClCompile Include="src\platform\windows\EuroScopeCommandLine.cpp" />
     <ClCompile Include="src\platform\windows\network\HttpHelper.cpp" />
     <ClCompile Include="src\platform\windows\PrecompiledHeader.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
@@ -247,11 +254,16 @@
     <ClCompile Include="src\tags\RadarScreen.TagRendering.cpp" />
     <ClCompile Include="src\tags\TagColorRuleParser.cpp" />
     <ClCompile Include="src\tags\TagColorRules.cpp" />
+    <ClCompile Include="src\tags\CompiledTagDefinition.cpp" />
+    <ClCompile Include="src\tags\TagDataFormatting.cpp" />
     <ClCompile Include="src\weather\WeatherStore.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\config\ProfileNormalization.hpp" />
+    <ClInclude Include="src\rendering\TargetProjection.hpp" />
+    <ClInclude Include="src\safety\RunwayTraffic.hpp" />
+    <ClInclude Include="src\tags\TagDataFormatting.hpp" />
     <ClInclude Include="..\lib\include\rapidjson\document.h" />
-    <ClInclude Include="..\lib\include\rapidjson\filestream.h" />
     <ClInclude Include="..\lib\include\rapidjson\prettywriter.h" />
     <ClInclude Include="..\lib\include\rapidjson\rapidjson.h" />
     <ClInclude Include="..\lib\include\rapidjson\reader.h" />
@@ -267,6 +279,8 @@
     <ClInclude Include="src\aviso\AvisoFeatureMetadata.hpp" />
     <ClInclude Include="src\aviso\AvisoRasterBlitter.hpp" />
     <ClInclude Include="src\aviso\AvisoRasterPipeline.hpp" />
+    <ClInclude Include="src\aviso\AvisoRasterSizing.hpp" />
+    <ClInclude Include="src\radar\RecentAirports.hpp" />
     <ClInclude Include="src\config\RuntimeConfig.hpp" />
     <ClInclude Include="src\config\RuntimeConfig.Internal.hpp" />
     <ClInclude Include="src\control_center\ControlCenterBridge.hpp" />
@@ -283,12 +297,21 @@
     <ClInclude Include="src\crash\CrashReportSupport.hpp" />
     <ClInclude Include="src\crash\CrashRuntime.hpp" />
     <ClInclude Include="src\datalink\CPDLCSettingsDialog.hpp" />
-	<ClInclude Include="src\datalink\CdmReminderSafety.hpp" />
     <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp" />
     <ClInclude Include="src\datalink\DataLinkDialog.hpp" />
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp" />
+    <ClInclude Include="src\integrations\CdmBridgeClient.hpp" />
+    <ClInclude Include="src\integrations\CdmBridgeData.hpp" />
+    <ClInclude Include="src\integrations\PluginBridgeClient.hpp" />
+    <ClInclude Include="src\integrations\PluginBridgeReads.hpp" />
+    <ClInclude Include="src\integrations\RampAgentBridgeClient.hpp" />
+    <ClInclude Include="src\integrations\RampAgentBridgeData.hpp" />
+    <ClInclude Include="src\integrations\VsidBridgeClient.hpp" />
+    <ClInclude Include="src\integrations\VsidBridgeData.hpp" />
+    <ClInclude Include="src\integrations\ParisRunwayRules.hpp" />
     <ClInclude Include="src\insets\InsetWindow.hpp" />
     <ClInclude Include="src\insets\InsetWindow.Internal.hpp" />
+	<ClInclude Include="src\platform\windows\EuroScopeCommandLine.hpp" />
     <ClInclude Include="src\platform\windows\GdiColorUtils.hpp" />
     <ClInclude Include="src\platform\windows\network\HttpHelper.hpp" />
     <ClInclude Include="src\platform\windows\PrecompiledHeader.hpp" />
@@ -302,6 +325,7 @@
     <ClInclude Include="src\plugin\Plugin.RuntimeState.hpp" />
     <ClInclude Include="src\plugin\PluginRuntimeAudio.hpp" />
     <ClInclude Include="src\rendering\TagRenderer.hpp" />
+    <ClInclude Include="src\rendering\DisplayScale.hpp" />
     <ClInclude Include="src\rendering\TargetSymbolRenderer.hpp" />
     <ClInclude Include="src\radar\RadarGeometry.hpp" />
     <ClInclude Include="src\radar\RadarScreen.hpp" />
@@ -322,11 +346,19 @@
     <ClInclude Include="src\shared\RapidJsonUtils.hpp" />
     <ClInclude Include="src\shared\TextUtils.hpp" />
     <ClInclude Include="src\shared\WindowsPathEncoding.hpp" />
+    <ClInclude Include="src\platform\windows\network\WinHttpSupport.hpp" />
+    <ClInclude Include="src\rendering\BrushCache.hpp" />
+    <ClInclude Include="src\shared\FunctionRef.hpp" />
+    <ClInclude Include="src\shared\JsonDocument.hpp" />
+    <ClInclude Include="src\shared\Random.hpp" />
+    <ClInclude Include="src\shared\RefreshLog.hpp" />
+    <ClInclude Include="src\tags\CompiledTagDefinition.hpp" />
+    <ClInclude Include="src\tags\TagTokenValues.hpp" />
     <ClInclude Include="src\tags\TagColorRules.hpp" />
     <ClInclude Include="src\tags\TagColorRules.Internal.hpp" />
     <ClInclude Include="src\tags\TagDataTypes.hpp" />
     <ClInclude Include="src\tags\TagDefinitionUtils.hpp" />
-    <ClInclude Include="src\tags\VacdmTagHelpers.hpp" />
+    <ClInclude Include="src\tags\CdmTagHelpers.hpp" />
     <ClInclude Include="src\weather\WeatherStore.hpp" />
   </ItemGroup>
   <ItemGroup>
@@ -431,8 +463,8 @@
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\app-bundle.js" />
       <_VsmrDefaultProfile Include="$(MSBuildProjectDirectory)\data\vSMR_Profiles.json" />
       <_VsmrRuntimeData Include="$(MSBuildProjectDirectory)\data\**\*.*"
-        Exclude="$(MSBuildProjectDirectory)\data\AVISO\*.bak;$(MSBuildProjectDirectory)\data\AVISO\ALL_FR_*.geojson;$(MSBuildProjectDirectory)\data\AVISO\_LFXX.geojson;$(MSBuildProjectDirectory)\data\AVISO\version.txt" />
-      <_VsmrLegacyFlatAviso Include="$(VsmrDistributionDirectory)AVISO_*.geojson;$(VsmrDistributionDirectory)AVISO_*.geojson.bak" />
+        Exclude="$(MSBuildProjectDirectory)\data\AVISO\ALL_FR_*.geojson;$(MSBuildProjectDirectory)\data\AVISO\_LFXX.geojson;$(MSBuildProjectDirectory)\data\AVISO\version.txt" />
+	  <_VsmrLegacyFlatAviso Include="$(VsmrDistributionDirectory)AVISO_*.geojson" />
       <_VsmrProjectLicense Include="$(MSBuildProjectDirectory)\..\LICENSE" />
       <_VsmrRapidJsonLicense Include="$(MSBuildProjectDirectory)\..\lib\include\rapidjson\license.txt" />
       <_VsmrWebView2License Include="$(PkgMicrosoft_Web_WebView2)\LICENSE.txt" />
@@ -461,12 +493,13 @@
   </Target>
   <Target Name="CleanVsmrRuntimeAssets" BeforeTargets="Clean">
     <ItemGroup>
-      <_VsmrLegacyFlatAviso Include="$(VsmrDistributionDirectory)AVISO_*.geojson;$(VsmrDistributionDirectory)AVISO_*.geojson.bak" />
+	  <_VsmrLegacyFlatAviso Include="$(VsmrDistributionDirectory)AVISO_*.geojson" />
     </ItemGroup>
     <RemoveDir Directories="$(VsmrDistributionDirectory)vSMR_webUI;$(VsmrDistributionDirectory)vSMR_Data;$(VsmrDistributionDirectory)THIRD_PARTY_LICENSES" />
     <Delete Files="$(VsmrDistributionDirectory)LICENSE" />
     <Delete Files="@(_VsmrLegacyFlatAviso)" />
   </Target>
+  <Import Project="BuildHardening.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <!-- VS 2022 restores native PackageReference items but can select the managed buildTransitive entry point. -->
   <Import Project="$(PkgMicrosoft_Web_WebView2)\build\native\Microsoft.Web.WebView2.targets" Condition="Exists('$(PkgMicrosoft_Web_WebView2)\build\native\Microsoft.Web.WebView2.targets')" />

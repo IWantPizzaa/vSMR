@@ -41,6 +41,8 @@ namespace vsmr::updater::verification
 				if (value_ != nullptr && value_ != INVALID_HANDLE_VALUE)
 					::CloseHandle(value_);
 			}
+			FileHandle(const FileHandle&) = delete;
+			FileHandle& operator=(const FileHandle&) = delete;
 			explicit operator bool() const noexcept
 			{
 				return value_ != nullptr && value_ != INVALID_HANDLE_VALUE;
@@ -63,6 +65,8 @@ namespace vsmr::updater::verification
 				if (value_ != nullptr)
 					::CertFreeCertificateContext(value_);
 			}
+			CertContextHandle(const CertContextHandle&) = delete;
+			CertContextHandle& operator=(const CertContextHandle&) = delete;
 			explicit operator bool() const noexcept
 			{
 				return value_ != nullptr;
@@ -98,41 +102,45 @@ namespace vsmr::updater::verification
 			return output.str();
 		}
 
-		bool Sha256Bytes(const BYTE* bytes, std::size_t size, std::string& digest)
+		class Sha256Digest final
 		{
-			BCRYPT_ALG_HANDLE algorithm = nullptr;
-			BCRYPT_HASH_HANDLE hash = nullptr;
-			std::vector<BYTE> hashObject;
-			std::array<BYTE, 32> result{};
-			DWORD objectLength = 0, resultLength = 0;
-			bool success = false;
-			if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
-				goto cleanup;
-			if (BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&objectLength),
-					sizeof(objectLength), &resultLength, 0) < 0 ||
-				objectLength == 0)
-				goto cleanup;
-			hashObject.resize(objectLength);
-			if (BCryptCreateHash(algorithm, &hash, hashObject.data(), objectLength, nullptr, 0, 0) < 0)
-				goto cleanup;
+		public:
+			Sha256Digest()
+			{
+				if (BCryptCreateHash(BCRYPT_SHA256_ALG_HANDLE, &hash_, nullptr, 0, nullptr, 0, 0) < 0)
+					hash_ = nullptr;
+			}
+			~Sha256Digest() { if (hash_ != nullptr) BCryptDestroyHash(hash_); }
+			Sha256Digest(const Sha256Digest&) = delete;
+			Sha256Digest& operator=(const Sha256Digest&) = delete;
+			[[nodiscard]] bool Append(const BYTE* bytes, ULONG size)
+			{
+				return hash_ != nullptr && BCryptHashData(hash_, const_cast<PUCHAR>(bytes), size, 0) >= 0;
+			}
+			[[nodiscard]] bool Finish(std::string& digest)
+			{
+				std::array<BYTE, 32> result{};
+				if (hash_ == nullptr || BCryptFinishHash(hash_, result.data(), static_cast<ULONG>(result.size()), 0) < 0)
+					return false;
+				digest = Hex(result.data(), static_cast<DWORD>(result.size()));
+				return true;
+			}
+		private:
+			BCRYPT_HASH_HANDLE hash_ = nullptr;
+		};
+
+		[[nodiscard]] bool Sha256Bytes(const BYTE* bytes, std::size_t size, std::string& digest)
+		{
+			digest.clear();
+			Sha256Digest hash;
 			while (size > 0)
 			{
 				const ULONG chunk = static_cast<ULONG>((std::min)(size, static_cast<std::size_t>(1024 * 1024)));
-				if (BCryptHashData(hash, const_cast<PUCHAR>(bytes), chunk, 0) < 0)
-					goto cleanup;
+				if (!hash.Append(bytes, chunk)) return false;
 				bytes += chunk;
 				size -= chunk;
 			}
-			if (BCryptFinishHash(hash, result.data(), static_cast<ULONG>(result.size()), 0) < 0)
-				goto cleanup;
-			digest = Hex(result.data(), static_cast<DWORD>(result.size()));
-			success = true;
-		cleanup:
-			if (hash != nullptr)
-				BCryptDestroyHash(hash);
-			if (algorithm != nullptr)
-				BCryptCloseAlgorithmProvider(algorithm, 0);
-			return success;
+			return hash.Finish(digest);
 		}
 
 		bool VerifyAuthenticodeAndGetSignerHash(const std::filesystem::path& file, std::string& signerCertificateSha256)
@@ -143,11 +151,11 @@ namespace vsmr::updater::verification
 			WINTRUST_DATA trustData{};
 			trustData.cbStruct = sizeof(trustData);
 			trustData.dwUIChoice = WTD_UI_NONE;
-			trustData.fdwRevocationChecks = WTD_REVOKE_NONE;
+			trustData.fdwRevocationChecks = WTD_REVOKE_WHOLECHAIN;
 			trustData.dwUnionChoice = WTD_CHOICE_FILE;
 			trustData.pFile = &fileInfo;
 			trustData.dwStateAction = WTD_STATEACTION_VERIFY;
-			trustData.dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL;
+			trustData.dwProvFlags = WTD_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT;
 			GUID policy = WINTRUST_ACTION_GENERIC_VERIFY_V2;
 			const LONG trustStatus = ::WinVerifyTrust(nullptr, &policy, &trustData);
 			trustData.dwStateAction = WTD_STATEACTION_CLOSE;
@@ -188,46 +196,22 @@ namespace vsmr::updater::verification
 
 	bool Sha256File(const std::filesystem::path& path, std::string& digest)
 	{
+		digest.clear();
 		FileHandle file(::CreateFileW(
 			path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr));
 		if (!file)
 			return false;
-		BCRYPT_ALG_HANDLE algorithm = nullptr;
-		BCRYPT_HASH_HANDLE hash = nullptr;
-		std::vector<BYTE> hashObject;
-		std::array<BYTE, 32> result{};
-		std::array<BYTE, 128 * 1024> buffer{};
-		DWORD objectLength = 0, resultLength = 0;
-		bool success = false;
-		if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
-			goto cleanup;
-		if (BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&objectLength),
-				sizeof(objectLength), &resultLength, 0) < 0 ||
-			objectLength == 0)
-			goto cleanup;
-		hashObject.resize(objectLength);
-		if (BCryptCreateHash(algorithm, &hash, hashObject.data(), objectLength, nullptr, 0, 0) < 0)
-			goto cleanup;
+		Sha256Digest hash;
+		std::vector<BYTE> buffer(128 * 1024);
 		for (;;)
 		{
 			DWORD read = 0;
 			if (!::ReadFile(file.get(), buffer.data(), static_cast<DWORD>(buffer.size()), &read, nullptr))
-				goto cleanup;
-			if (read == 0)
-				break;
-			if (BCryptHashData(hash, buffer.data(), read, 0) < 0)
-				goto cleanup;
+				return false;
+			if (read == 0) break;
+			if (!hash.Append(buffer.data(), read)) return false;
 		}
-		if (BCryptFinishHash(hash, result.data(), static_cast<ULONG>(result.size()), 0) < 0)
-			goto cleanup;
-		digest = Hex(result.data(), static_cast<DWORD>(result.size()));
-		success = true;
-	cleanup:
-		if (hash != nullptr)
-			BCryptDestroyHash(hash);
-		if (algorithm != nullptr)
-			BCryptCloseAlgorithmProvider(algorithm, 0);
-		return success;
+		return hash.Finish(digest);
 	}
 
 	std::string ResolveTrustedSignerHash(const StartupOptions& options)
