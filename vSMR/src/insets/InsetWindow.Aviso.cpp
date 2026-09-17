@@ -717,7 +717,7 @@ void CInsetWindow::renderAvisoTags(std::vector<AvisoTagTarget>& visibleTagTarget
 	};
 	std::vector<PreparedTag> preparedTags;
 	std::vector<CRect> occupiedTagBounds;
-	constexpr int leaderLength = 50;
+	const int leaderLength = static_cast<int>(std::lround(50 * radar_screen->GetDisplayScale()));
 	constexpr double angleStep = 22.5;
 	for (const AvisoTagTarget& visible : visibleTagTargets)
 	{
@@ -742,6 +742,7 @@ void CInsetWindow::renderAvisoTags(std::vector<AvisoTagTarget>& visibleTagTarget
 		}
 
 		VsmrTagRendering::PaintOptions options;
+		options.displayScale = radar_screen->GetDisplayScale();
 		options.targetPoint = visible.point;
 		const VsmrScene::TagPalette& palette = sceneTarget.tag.normalPalette;
 		options.background = SceneColorToGdi(
@@ -998,11 +999,8 @@ void CInsetWindow::renderAvisoAircraft(HDC hDC, CDC& dc, CSMRRadar* radar_screen
 	targetSettings.iconCache = radar_screen->CreateTargetIconCacheCallbacks();
 	VsmrTargetRendering::Frame targetRenderer(*gdi, std::move(targetSettings));
 	VsmrTargetRendering::DrawOptions targetDrawOptions;
-	const double avisoSymbolScale = std::isfinite(targetPresentation.symbolScale)
-		? std::clamp(targetPresentation.symbolScale, 0.25, 5.0)
-		: 1.0;
-	targetDrawOptions.minimumHitSize = static_cast<int>(
-		std::ceil(18.0 * avisoSymbolScale));
+	// The shared renderer applies the presentation scale to this baseline hit size.
+	targetDrawOptions.minimumHitSize = 18;
 
 	CPen symbolPen(PS_SOLID, 1, RGB(255, 255, 255));
 
@@ -1333,6 +1331,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			request.rasterWidth = (std::max)(1, static_cast<int>(std::floor(renderPixelWidth * rasterScale)));
 			request.rasterHeight = (std::max)(1, static_cast<int>(std::floor(renderPixelHeight * rasterScale)));
 			request.rasterScale = rasterScale;
+			request.displayScale = radar_screen->GetDisplayScale();
 			request.displayMinLongitude = displayMinLon;
 			request.displayMinLatitude = displayMinLat;
 			request.displayMaxLongitude = displayMaxLon;

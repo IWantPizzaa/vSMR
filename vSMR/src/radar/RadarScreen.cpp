@@ -516,10 +516,11 @@ void CSMRRadar::LoadCustomFont() {
 
 	auto createFont = [&](int size) -> std::unique_ptr<Gdiplus::Font>
 	{
-		std::unique_ptr<Gdiplus::Font> font = std::make_unique<Gdiplus::Font>(buffer.c_str(), Gdiplus::REAL(size), fontStyle, Gdiplus::UnitPixel);
+		const Gdiplus::REAL pixelSize = static_cast<Gdiplus::REAL>(size * GetDisplayScale());
+		std::unique_ptr<Gdiplus::Font> font = std::make_unique<Gdiplus::Font>(buffer.c_str(), pixelSize, fontStyle, Gdiplus::UnitPixel);
 		if (font->GetLastStatus() != Gdiplus::Ok)
 		{
-			font = std::make_unique<Gdiplus::Font>(L"Arial", Gdiplus::REAL(size), fontStyle, Gdiplus::UnitPixel);
+			font = std::make_unique<Gdiplus::Font>(L"Arial", pixelSize, fontStyle, Gdiplus::UnitPixel);
 		}
 		return font;
 	};

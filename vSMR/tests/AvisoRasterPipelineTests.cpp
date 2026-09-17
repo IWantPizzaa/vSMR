@@ -204,6 +204,15 @@ namespace
 			realResult != nullptr && realResult->colorPalette == "real",
 			"AVISO raster results retain their canonical palette",
 			failures);
+		Pipeline::Request scaledRequest = realPaletteRequest;
+		scaledRequest.displayScale = 2.0;
+		Check(pipeline.Queue(scaledRequest, false) == Pipeline::QueueStatus::Queued,
+			"resolution changes rebuild AVISO even when viewport and palette are unchanged", failures);
+		Check(completed.Wait([&]() { return refreshCalls.load(std::memory_order_relaxed) == 3; }),
+			"resolution-specific AVISO raster completes", failures);
+		pipeline.TakeCompleted();
+		Check(pipeline.Queue(scaledRequest, false) == Pipeline::QueueStatus::Coalesced,
+			"unchanged resolution still coalesces duplicate AVISO requests", failures);
 		pipeline.Stop();
 	}
 
