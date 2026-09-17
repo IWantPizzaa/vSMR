@@ -30,7 +30,7 @@ namespace
 
 	// vSID's provider declaration (vSIDPlugin.h): schema 1.0 publishes sid, rwy and
 	// cfl as aircraft STR fields of at most 32 bytes. automode is the optional
-	// schema 1.1 global described in docs/integrations/vsid-automode.md. The
+	// schema 1.1 global described in the Wiki Integrations page. The
 	// companion schema 1.2/1.3 also publishes the manual Paris rules snapshot.
 	constexpr char ProviderId[] = "vsid";
 	constexpr std::uint32_t SupportedSchemaMajor = 1U;
