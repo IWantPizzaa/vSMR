@@ -51,7 +51,7 @@ foreach ($suffix in @('.zip', '.update.json', '-symbols.zip', '-*-validation-onl
     Assert-Contains $ci "artifacts\vSMR-$Version$suffix" 'CI artifact path'
 }
 
-$manifest = Read-Source 'docs/aviso-set-20260917.json' | ConvertFrom-Json
+$manifest = Read-Source 'vSMR/tests/fixtures/aviso-set-20260917.json' | ConvertFrom-Json
 $policy = Read-Source 'vSMR/data/AVISO-UPDATE-POLICY.json' | ConvertFrom-Json
 if ($manifest.schema_version -ne 1 -or $manifest.release -ne $Version -or
     $policy.schema_version -ne 1 -or $policy.release -ne $Version) {
