@@ -125,6 +125,8 @@ Assert-File (Join-Path $PackageData "airports_hp.json")
 Assert-File (Join-Path $PackageData "Runtime\vSMR.Runtime.dll")
 Assert-File (Join-Path $PackageData "CrashReporter\vSMRCrashHandler.dll")
 Assert-File (Join-Path $PackageData "Tools\restore_vsmr_backup.ps1")
+Assert-File (Join-Path $PackageData "Tools\merge_user_data.ps1")
+Assert-File (Join-Path $PackageData "Tools\JsonThreeWayMerge.cs")
 if (-not (Test-Path -LiteralPath $DestinationDirectory -PathType Container)) {
     throw "Destination plugin directory does not exist: $DestinationDirectory"
 }
@@ -167,7 +169,15 @@ $hasPublishableMarker = $null -ne $automaticUpdateMetadata -and
 if ($hasPublishableMarker -and $automaticUpdateMetadata.publishable -isnot [bool]) {
     throw "Package release metadata has an invalid automatic-update publishable marker."
 }
-if ($hasPublishableMarker -and [bool]$automaticUpdateMetadata.publishable) {
+$requiresSignature = $true # Packages predating loader 1.2 used mandatory signing.
+if ($null -ne $automaticUpdateMetadata -and
+    $automaticUpdateMetadata.PSObject.Properties.Name -contains 'signature_required') {
+    if ($automaticUpdateMetadata.signature_required -isnot [bool]) {
+        throw 'Invalid package signature policy.'
+    }
+    $requiresSignature = [bool]$automaticUpdateMetadata.signature_required
+}
+if ($hasPublishableMarker -and [bool]$automaticUpdateMetadata.publishable -and $requiresSignature) {
     $expectedSignerHash = ([string]$automaticUpdateMetadata.signer_cert_der_sha256).ToLowerInvariant()
     if ($expectedSignerHash -notmatch '^[0-9a-f]{64}$') {
         throw "Publishable package release metadata has an invalid signer certificate pin."
@@ -384,7 +394,7 @@ if ($hadData -and -not $ReplaceUserData) {
         'vSMR_webUI', 'CrashReporter', 'Licenses', 'Runtime', 'Tools',
         'RELEASE-METADATA.json', 'SHA256SUMS.txt', 'INSTALLATION.json',
         'AVISO-UPDATE-POLICY.json', 'AVISO-INVENTORY.json', 'AVISO-UPDATE-REPORT.json',
-        'airports_hp.json', 'AVISO'
+        'airports_hp.json', 'AVISO', 'UpdateBaselines', 'DATA-UPDATE-REPORT.json'
     )
     foreach ($item in @(Get-ChildItem -LiteralPath $destinationData -Force)) {
         if ($immutableNames -contains $item.Name) { continue }
@@ -398,6 +408,34 @@ if ($hadData -and -not $ReplaceUserData) {
     }
 }
 
+. (Join-Path $PSScriptRoot 'merge_user_data.ps1')
+Initialize-UserDataMerge $destinationData $stageData ([string]$releaseMetadata.version)
+$profilesName = 'vSMR_Profiles.json'
+$incomingProfiles = Join-Path $PackageData $profilesName
+if (Test-Path -LiteralPath $incomingProfiles -PathType Leaf) {
+    if ($hadData -and -not $ReplaceUserData) {
+        $installedProfiles = Join-Path $destinationData $profilesName
+        $profileBaseline = Get-UserDataBaseline $profilesName
+        # An old package hash can prove the entire profile file is unmodified.
+        $unchangedProfiles = $false
+        $oldChecksums = Join-Path $destinationData 'SHA256SUMS.txt'
+        if ((Test-Path -LiteralPath $installedProfiles -PathType Leaf) -and (Test-Path -LiteralPath $oldChecksums -PathType Leaf)) {
+            foreach ($line in Get-Content -LiteralPath $oldChecksums) {
+                if ($line -match '^([0-9a-f]{64})  vSMR_Data[\\/]vSMR_Profiles\.json$') {
+                    $unchangedProfiles = (Get-FileSha256 $installedProfiles) -eq $Matches[1]
+                    break
+                }
+            }
+        }
+        if ($unchangedProfiles) {
+            Copy-Item -LiteralPath $incomingProfiles -Destination (Join-Path $stageData $profilesName) -Force
+        } elseif ((Test-Path -LiteralPath $installedProfiles -PathType Leaf) -or $profileBaseline) {
+            $null = Merge-UserDataFile $profilesName $incomingProfiles $true
+        }
+    }
+    Save-UserDataBaseline $profilesName $incomingProfiles
+}
+
 $avisoReport = [ordered]@{
     schema_version = 1
     release = [string]$releaseMetadata.version
@@ -409,6 +447,9 @@ $avisoReport = [ordered]@{
     updated = @()
     added = @()
     preserved_modified = @()
+    merged = @()
+    merge_conflicts = @()
+    preserved_user_deleted = @()
     deleted = @()
     preserved_deleted_modified = @()
     custom_preserved = @()
@@ -478,6 +519,13 @@ if ($hadData -and -not $ReplaceUserData) {
         $installedFile = Join-Path $installedAviso $name
         $stageFile = Join-Path $stageAviso $name
         $installedExists = Test-Path -LiteralPath $installedFile -PathType Leaf
+        $relative = 'AVISO/' + $name
+        if (-not $installedExists -and $protectModified -and
+            ($oldBaseline.ContainsKey($name) -or (Get-UserDataBaseline $relative))) {
+            $null = Merge-UserDataFile $relative $packageFile $false
+            $avisoReport.preserved_user_deleted += $name
+            continue
+        }
         $modified = $false
         if ($installedExists) {
             $modified = -not $oldBaseline.ContainsKey($name)
@@ -490,13 +538,19 @@ if ($hadData -and -not $ReplaceUserData) {
         if ($installedExists -and $modified -and $protectModified) {
             [System.IO.Directory]::CreateDirectory($incomingDirectory) | Out-Null
             Copy-Item -LiteralPath $packageFile -Destination (Join-Path $incomingDirectory $name) -Force
-            $avisoReport.preserved_modified += $name
+            $merge = Merge-UserDataFile $relative $packageFile $false
+            if ($merge.status -like 'merged*') {
+                $avisoReport.merged += $name
+                $effectiveBaseline[$name] = [string]$packageInventoryTable[$name]
+                if ($merge.conflicts.Count) { $avisoReport.merge_conflicts += $name }
+            } else { $avisoReport.preserved_modified += $name }
             continue
         }
 
         [System.IO.Directory]::CreateDirectory($stageAviso) | Out-Null
         Copy-Item -LiteralPath $packageFile -Destination $stageFile -Force
         $effectiveBaseline[$name] = [string]$packageInventoryTable[$name]
+        Save-UserDataBaseline $relative $packageFile
         if ($installedExists) { $avisoReport.updated += $name } else { $avisoReport.added += $name }
     }
 
@@ -517,6 +571,7 @@ if ($hadData -and -not $ReplaceUserData) {
         }
         Remove-Item -LiteralPath $stageFile -Force
         $effectiveBaseline.Remove($name)
+        $script:mergeNewHashes.Remove('AVISO/' + $name)
         $avisoReport.deleted += $name
     }
 
@@ -549,7 +604,12 @@ if ($hadData -and -not $ReplaceUserData) {
 else {
     $avisoReport.protected_modified_files = $false
     $avisoReport.added = @($avisoInventory.files.PSObject.Properties | ForEach-Object { [string]$_.Name })
+    foreach ($name in $avisoReport.added) {
+        Save-UserDataBaseline ('AVISO/' + $name) (Join-Path $PackageData ('AVISO/' + $name))
+    }
 }
+
+Complete-UserDataMerge
 
 [System.IO.File]::WriteAllText(
     (Join-Path $stageData 'AVISO-UPDATE-REPORT.json'),
