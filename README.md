@@ -40,9 +40,9 @@ The current converter-supplied AVISO set contains **160 maps** in [`vSMR/data/AV
 - [Microsoft Edge WebView2 Evergreen Runtime (x86)](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section)
 - The complete matching release package: `vSMR.dll` and `vSMR_Data\`
 
-The optional vSID, Ramp Agent, and CDM interfaces require [EuroScope Plugin Bridge](https://github.com/AlexisBalzano/Euroscope-Plugin-Bridge), plus a bridge-enabled [vSID](https://github.com/AlexisBalzano/vSID), [Ramp Agent](https://github.com/AlexisBalzano/EuroscopeRampAgent), or [CDM](https://github.com/IWantPizzaa/CDM) build. Stand and stand remark tag values come only from Ramp Agent through the bridge. Load them separately through EuroScope's plug-in settings; vSMR deliberately does not bundle or load their DLLs. The consumed fields are listed in [EuroScope Plugin Bridge data](docs/integrations/plugin-bridge.md).
+The optional vSID, Ramp Agent, and CDM interfaces require [EuroScope Plugin Bridge](https://github.com/AlexisBalzano/Euroscope-Plugin-Bridge), plus a bridge-enabled [vSID](https://github.com/AlexisBalzano/vSID), [Ramp Agent](https://github.com/AlexisBalzano/EuroscopeRampAgent), or [CDM](https://github.com/IWantPizzaa/CDM) build. Stand and stand remark tag values come only from Ramp Agent through the bridge. Load them separately through EuroScope's plug-in settings; vSMR deliberately does not bundle or load their DLLs. The consumed fields are listed in [EuroScope Plugin Bridge data](https://github.com/IWantPizzaa/vSMR/wiki/Integrations).
 
-[Paris configuration](docs/integrations/vsid-paris.md) requires the companion vSID build and configuration migration. LFPG/LFPO offer manual Linked/Unlinked selections; LFPG also has Minimum Taxiing and Ground Crossing actions. LFPN, LFPV, LFPT, and LFOB offer manual WL/EL/IPGW/IPOW selections. **Auto runways has been removed:** EuroScope runway changes do not select these rules. vSID's separate **Auto mode** for automatic SID assignment remains available. This does not affect RIMCAS, which still follows EuroScope's selected runways automatically.
+[Paris configuration](https://github.com/IWantPizzaa/vSMR/wiki/Paris-vSID-Configuration) requires the companion vSID build and configuration migration. LFPG/LFPO offer manual Linked/Unlinked selections; LFPG also has Minimum Taxiing and Ground Crossing actions. LFPN, LFPV, LFPT, and LFOB offer manual WL/EL/IPGW/IPOW selections. **Auto runways has been removed:** EuroScope runway changes do not select these rules. vSID's separate **Auto mode** for automatic SID assignment remains available. This does not affect RIMCAS, which still follows EuroScope's selected runways automatically.
 
 vSMR is a EuroScope plug-in, not a standalone application. WebView2 hosts the local Control Center; internet access is needed for online integrations, updates, and GitHub data imports.
 
@@ -82,7 +82,7 @@ Bundled operational data is a starting point and must be checked for the local a
 | AVISO maps, palettes, groups, and editing | [AVISO](https://github.com/IWantPizzaa/vSMR/wiki/Control-Center-AVISO) |
 | RIMCAS alerts | [RIMCAS](https://github.com/IWantPizzaa/vSMR/wiki/RIMCAS) |
 | Native inset windows | [Insets](https://github.com/IWantPizzaa/vSMR/wiki/Insets) |
-| CDM bridge data and manual CPDLC/PDC | [Datalink](https://github.com/IWantPizzaa/vSMR/wiki/Datalink), [current bridge fields](docs/integrations/plugin-bridge.md) |
+| CDM bridge data and manual CPDLC/PDC | [Datalink](https://github.com/IWantPizzaa/vSMR/wiki/Datalink), [current bridge fields](https://github.com/IWantPizzaa/vSMR/wiki/Integrations) |
 | Optional providers and bridge setup | [Integrations](https://github.com/IWantPizzaa/vSMR/wiki/Integrations) |
 | Manual Paris vSID configuration | [Paris configuration](https://github.com/IWantPizzaa/vSMR/wiki/Paris-vSID-Configuration) |
 | Commands, logs, and problem reports | [Troubleshooting](https://github.com/IWantPizzaa/vSMR/wiki/Commands-and-Troubleshooting) |
@@ -115,7 +115,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tests\run_tests.ps1
 
 Release-input checks enforce matching beta 6 versions, the exact 160-map import, and an update policy that never deletes a bundled airport. LFPG regression expectations match the supplied map's 1,468 features and empty group list; the older East/West arrow groups are not part of this import.
 
-Release packaging is fail-closed: publishable artifacts require a clean source commit, verified bundled-asset provenance, Authenticode-signed binaries, and the matching pinned update signer. The packager, binary product versions, and AppVeyor settings target beta 6. Five asset groups still need provenance verification; local validation packages are not distributable releases. See the [beta 6 release checklist](docs/beta-6-release.md), [release documentation](https://github.com/IWantPizzaa/vSMR/wiki/Development-and-Releases), and [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.md).
+Release packaging is fail-closed: publishable artifacts require a clean source commit, verified bundled-asset provenance, Authenticode-signed binaries, and the matching pinned update signer. The packager, binary product versions, and AppVeyor settings target beta 6. Five asset groups still need provenance verification; local validation packages are not distributable releases. See the [release documentation](https://github.com/IWantPizzaa/vSMR/wiki/Development-and-Releases), and [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.md).
 
 ## License
 
