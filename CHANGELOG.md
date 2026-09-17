@@ -24,7 +24,9 @@
 
 ### Changed
 
-- Replaced the bundled AVISO set with the supplied converter's 192 airport maps, including LFPO Real colors and detailed LFPG configuration groups. Removed maps absent from the replacement set and one invalid single-point taxiway line at LFLG.
+- Replaced the bundled AVISO set with exactly 160 converter-supplied airport maps, byte-for-byte. Added LFRJ and removed 33 maps from the previous import. Dark/Light are available everywhere; Real is available at LFML, LFMN, LFPG, and LFPO. The final LFPG map has no East/West arrow groups.
+- Applied the Settings resolution scale to AVISO geometry/text and aircraft icons/tags in the radar views, without resizing menus, Control Center, or inset controls.
+- Aligned package defaults, binary product versions, and AppVeyor configuration for beta 6. Added release-input validation of versions, map hashes, and update-policy consistency.
 - Reworked the EuroScope Plugin Bridge consumer to follow the bridge integration checklist: a single `esbridge.h` client shim attached from the timer, per-field resolution with type and schema checks, buffer resizing, stale-handle re-resolution, and one shared flight-plan scan per tick for vSID, Ramp Agent, and CDM. A missing plug-in or bridge now only disables the data it provides.
 - `uk_stand` and `remark` no longer read flight strip annotations 3 and 4.
 - Kept the declared CDM schema and manual Paris vSID controls when integrating the shared bridge client, with regression coverage for provider polling and Paris snapshots.
@@ -39,9 +41,6 @@
 
 - Updated Default-profile tags with bold callsigns, Ready Startup on detailed no-status/startup tags, CTOT on detailed taxi/line-up tags, and the revised arrival layouts.
 
-- Set LFPG taxiway, engine-test-area, terminal and TORA labels to zoom 7 and gates to 10; set LFMN gates to 9, taxiways to 6 and TORA labels to 7.
-
-- Restored LFPG East and West arrow groups from the original AVISO geometry. Removed the Runway details group while retaining its geometry and all existing airport palettes.
 - Redesigned the combined vSID / CPDLC Runtime Menu with a compact layout and consistent state indicators. Automatic mode reads the optional `vsid/automode` bridge snapshot; older providers show Unknown. Included a companion vSID patch for publishing the actual airport states.
 - Preserved native AVISO raster resolution at 2K and 4K by adapting off-screen cache margins to the existing memory budget, for both the main view and insets.
 
@@ -49,7 +48,7 @@
 - Split profile normalization, tag formatting, Runtime Menu panels/actions, and AVISO/SRW rendering into focused helpers. Expanded regression coverage and added an isolated AddressSanitizer run of the native suite.
 - Combined vSID and CPDLC/PDC controls into one Runtime Menu panel. Removed CDM Auto, its timer and message queue, bulk scans, timing controls, and saved settings.
 
-- Made AVISO geometry, text, and groups shared across Dark, Light, and Real. Palette changes now affect colors only; older maps migrate using Light geometry when loaded or imported. Updated all 395 bundled AVISOs to the shared format.
+- Made AVISO geometry, text, and groups shared across Dark, Light, and Real. Palette changes now affect colors only; older maps migrate using Light geometry when loaded or imported.
 
 - Cached parsed tag definitions and font measurements across frames, with invalidation when settings change and bounded text-cache growth. Reused contiguous tag-token storage and drawing brushes, reduced hot-path copies and callback overhead, and gated detailed SDK timing behind verbose diagnostics.
 - Applied consistent compiler warnings and binary hardening to local and CI builds, including Control Flow Guard and Spectre mitigations. Removed application-wide standard-library namespace pollution and marked security predicates `[[nodiscard]]`.
@@ -59,7 +58,6 @@
 - Renamed user-facing PDC reminder labels and messages to **CDM Reminder**.
 - Reworked the Icons page around a dedicated preview and consistent settings cards, replaced the ambiguous Display navigation glyph, and moved every slider to one shared compact control style.
 - Removed the legacy profile `.bak` fallback, restoration protocol, health state, UI action, and regression fixtures. Atomic writes, optimistic concurrency, Revert, and bundled-default recovery remain available.
-- Rebuilt 388 AVISO airport maps, using France-Ground-Layouts geometry and ground labels for its 53 airports and sector-pack fallbacks elsewhere. Existing Dark/Light colors are preserved; Real remains available only for LFML, LFMN, and LFPG. All palettes share the selected source geometry, and LFPG retains its previous Real colors.
 - Made AVISO palette availability airport-specific: missing palettes are shown as disabled grey options and airport changes automatically select a valid fallback. Added geometry repairs and reported exclusions for misplaced source records during map conversion.
 
 ### Fixed
@@ -86,7 +84,7 @@
 - Applied the active interface theme to AVISO, SRW, and Timer inset title bars, and corrected AVISO inset tag text so its bounds and line layout remain vertically centered.
 - Added automatic tag deconfliction to the AVISO inset and made its two-pass target rendering keep every aircraft symbol beneath every tag.
 - Prevented the Tag Options behaviour controls from colliding at narrow widths and standardized the Control Center close glyph with native inset windows.
-- Restored LFPG's East/West directional-arrow groups from `LFPG_Custom` and standardized all LFPG text halo widths at one pixel.
+- Corrected the AVISO update policy to preserve bundled LFRJ and remove superseded maps, while retaining modified-map protection. LFPG labels retain one-pixel halos.
 
 ## [2.0.0-beta.5] - 2026-09-01
 

@@ -113,9 +113,9 @@ After building the native test executable, run the regression suite independentl
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tests\run_tests.ps1
 ```
 
-Current validation caveat: the supplied LFPG map lacks the East/West arrow groups expected by two native regression assertions. The native suite therefore reports those two failures with this data set; they must be reconciled before treating the regression gate as passing.
+Release-input checks enforce matching beta 6 versions, the exact 160-map import, and an update policy that never deletes a bundled airport. LFPG regression expectations match the supplied map's 1,468 features and empty group list; the older East/West arrow groups are not part of this import.
 
-Release packaging is fail-closed: publishable artifacts require a clean source commit, verified bundled-asset provenance, Authenticode-signed binaries, and the matching pinned update signer. Asset provenance still contains unresolved entries. The packaging script's default version and AppVeyor release settings still name beta.5, so they must also be aligned before publishing beta.6. See the [release documentation](https://github.com/IWantPizzaa/vSMR/wiki/Development-and-Releases) and [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.md).
+Release packaging is fail-closed: publishable artifacts require a clean source commit, verified bundled-asset provenance, Authenticode-signed binaries, and the matching pinned update signer. The packager, binary product versions, and AppVeyor settings target beta 6. Five asset groups still need provenance verification; local validation packages are not distributable releases. See the [beta 6 release checklist](docs/beta-6-release.md), [release documentation](https://github.com/IWantPizzaa/vSMR/wiki/Development-and-Releases), and [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.md).
 
 ## License
 
