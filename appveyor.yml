@@ -1,11 +1,11 @@
-version: 2.0.0-beta.5.{build}
+version: 2.0.0-beta.6.{build}
 
 branches:
   only:
     - main
     - master
     - dev
-    - /^v?2[.]0[.]0-beta[.]5$/
+    - /^v?2[.]0[.]0-beta[.]6$/
   except:
     - gh-pages
 
@@ -14,7 +14,7 @@ clone_depth: 20
 image: Visual Studio 2022
 
 environment:
-  VSMR_RELEASE_VERSION: 2.0.0-beta.5
+  VSMR_RELEASE_VERSION: 2.0.0-beta.6
 
 configuration: Release
 platform: Win32
@@ -135,13 +135,13 @@ after_test:
       }
 
 artifacts:
-  - path: artifacts\vSMR-2.0.0-beta.5.zip
-    name: vSMR-2.0.0-beta.5
-  - path: artifacts\vSMR-2.0.0-beta.5.update.json
-    name: vSMR-2.0.0-beta.5-update-manifest
-  - path: artifacts\vSMR-2.0.0-beta.5-symbols.zip
-    name: vSMR-2.0.0-beta.5-symbols
-  - path: artifacts\vSMR-2.0.0-beta.5-*-validation-only.zip
+  - path: artifacts\vSMR-2.0.0-beta.6.zip
+    name: vSMR-2.0.0-beta.6
+  - path: artifacts\vSMR-2.0.0-beta.6.update.json
+    name: vSMR-2.0.0-beta.6-update-manifest
+  - path: artifacts\vSMR-2.0.0-beta.6-symbols.zip
+    name: vSMR-2.0.0-beta.6-symbols
+  - path: artifacts\vSMR-2.0.0-beta.6-*-validation-only.zip
     name: vSMR-validation-only
-  - path: artifacts\vSMR-2.0.0-beta.5-*-validation-only-symbols.zip
+  - path: artifacts\vSMR-2.0.0-beta.6-*-validation-only-symbols.zip
     name: vSMR-validation-only-symbols
