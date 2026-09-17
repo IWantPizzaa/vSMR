@@ -443,6 +443,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	scene->targetPresentation.trailAirbornePointCount = configuredTrailPointCount("trail_airborne_points", 8);
 	if (targetsConfig != nullptr && targetsConfig->HasMember("symbol_scale") && (*targetsConfig)["symbol_scale"].IsNumber())
 		scene->targetPresentation.symbolScale = std::clamp((*targetsConfig)["symbol_scale"].GetDouble(), 0.25, 5.0);
+	scene->targetPresentation.symbolScale *= GetDisplayScale();
 
 	// ----- Capturing targets -----
 	const auto targetCaptureStart = Clock::now();
