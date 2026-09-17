@@ -210,12 +210,11 @@ namespace
 			const auto& metadata = document["metadata"];
 			const bool hasReal = airport == "LFPG" || airport == "LFPO" || airport == "LFML" || airport == "LFMN";
 			const auto& palettes = metadata["color_palettes"];
-			const bool legacyNames = airport == "LFJD" || airport == "LFJE" || airport == "LFQI";
 			Expect(palettes.Size() == (hasReal ? 3U : 2U) &&
-				std::string(palettes[rapidjson::SizeType(0)].GetString()) == (legacyNames ? "night" : "dark") &&
-				std::string(palettes[1].GetString()) == (legacyNames ? "day" : "light") &&
+				std::string(palettes[rapidjson::SizeType(0)].GetString()) == "dark" &&
+				std::string(palettes[1].GetString()) == "light" &&
 				(!hasReal || std::string(palettes[2].GetString()) == "real"),
-				"Imported AVISO preserves supplied palettes, including Orly Real and legacy aliases: " + airport);
+				"Imported AVISO preserves supplied Dark/Light palettes and airport-specific Real colors: " + airport);
 			Expect(metadata["background_colors"].HasMember("real") == hasReal,
 				"Background palettes agree with available palettes: " + airport);
 			for (const auto& feature : document["features"].GetArray())
@@ -223,28 +222,16 @@ namespace
 					"Every palette uses the same sector-pack geometry: " + airport);
 			if (airport == "LFPG")
 			{
-				bool east = false, west = false;
-				for (const auto& group : document["vsmr_groups"].GetArray())
-				{
-					const std::string id = group["id"].GetString();
-					east = east || id == "ground-layout-east";
-					west = west || id == "ground-layout-west";
-					Expect(id != "runway-details", "LFPG runway details are not a toggleable group");
-				}
-				Expect(east && west, "LFPG includes independent East and West arrow controls");
-				int eastArrows = 0, westArrows = 0;
+				// The final beta 6 converter import intentionally has no optional groups.
+				// Keep validating the supplied geometry instead of restoring old map data.
+				Expect(document["vsmr_groups"].Empty(), "LFPG preserves the supplied empty group list");
+				Expect(model.FeatureCount() == 1468U, "LFPG preserves all 1468 supplied features");
 				for (const auto& feature : document["features"].GetArray())
 				{
 					const auto& properties = feature["properties"];
-					for (const auto& group : properties["vsmr_group_ids"].GetArray())
-					{
-						const std::string id = group.GetString();
-						Expect(id != "runway-details", "LFPG runway details retain visible geometry without group references");
-						if (id == "ground-layout-east") ++eastArrows;
-						if (id == "ground-layout-west") ++westArrows;
-					}
+					Expect(properties["vsmr_group_ids"].Empty(),
+						"LFPG supplied features do not reference removed groups");
 				}
-				Expect(eastArrows == 89 && westArrows == 97, "LFPG preserves the supplied detailed East and West configuration groups");
 				bool grassPaletteFound = false;
 				for (auto style = document["styles"].MemberBegin(); style != document["styles"].MemberEnd(); ++style)
 				{

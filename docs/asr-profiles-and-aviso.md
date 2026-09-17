@@ -8,10 +8,10 @@ Profile definitions and the chosen profiles-file source remain shared. Reloading
 
 ## Imported AVISO set
 
-The requested `AVISO.zip` was unavailable. The replacement uses the 192 `.geojson` files in the named converter's `GeoJSON` folder, imported on 2026-09-15. The 203 former maps absent from this set were removed; the update policy includes their deletion while retaining its existing modified-file protection setting.
+Beta 6 uses exactly the 160 `.geojson` files supplied in the vSMR AVISO Converter's `GeoJSON` folder on 2026-09-17. Compared with the previous import, LFRJ was added and 33 maps were removed. The update policy covers all 237 obsolete maps across these imports, excludes every currently bundled map, and retains its existing modified-file protection setting.
 
-[Source hashes and corrections](aviso-set-20260915.json) record every supplied file. LFLG contained one single-coordinate LineString, feature `LFLG-7eb871d1efb00b9af547`, which cannot form a line and prevented the complete airport map from loading. Only that feature was removed. The other 191 maps retain their supplied bytes.
+[Current source hashes](aviso-set-20260917.json) record every supplied file; all 160 maps retain their supplied bytes without corrections. The [2026-09-15 manifest](aviso-set-20260915.json) is historical and does not describe the release set. `verify_release_inputs.ps1` checks the current hashes, file count, release versions, and update policy during tests and packaging.
 
-The set includes LFPO Real colors and 89 East / 97 West features in LFPG's configuration groups. LFJD, LFJE and LFQI retain their supported legacy night/day palette names.
+All maps provide Dark and Light palettes. Real is available at LFML, LFMN, LFPG, and LFPO. The supplied LFPG map has 1,468 features and no optional groups; it does not contain the earlier East/West arrow controls. Native assertions validate this final data set rather than restoring removed geometry.
 
 Native validation loads every bundled map, checks geometry and input limits, and exercises independent profile selection, configuration reloads, reopening saved choices and missing-profile fallback. Live EuroScope verification should open two ASRs, select different profiles, save them, and reopen them in the opposite order.

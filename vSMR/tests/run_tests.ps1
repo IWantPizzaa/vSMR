@@ -46,6 +46,9 @@ if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
 }
 $RepositoryRoot = [System.IO.Path]::GetFullPath($RepositoryRoot)
 
+& (Join-Path $RepositoryRoot "vSMR\tools\verify_release_inputs.ps1") -RepositoryRoot $RepositoryRoot
+& (Join-Path $PSScriptRoot "test_release_inputs.ps1") -RepositoryRoot $RepositoryRoot
+
 $bundleScript = Join-Path $RepositoryRoot "vSMR\tools\build_control_center_bundle.ps1"
 & $bundleScript -RepositoryRoot $RepositoryRoot -Check
 if ($LASTEXITCODE -ne 0) {
