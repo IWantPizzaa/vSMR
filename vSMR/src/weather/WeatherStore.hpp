@@ -40,6 +40,18 @@ namespace VsmrWeather
 
 		bool hasQnh = false;
 		int qnhHpa = 0;
+
+		bool hasVisibility = false;
+		bool visibilityCavok = false;
+		int visibilityMeters = 0;
+
+		bool hasTemperature = false;
+		int temperatureCelsius = 0;
+		bool hasDewPoint = false;
+		int dewPointCelsius = 0;
+
+		// Compact cloud description such as BKN012 or FEW020 SCT040.
+		std::string cloudSummary;
 	};
 
 	// Trim and uppercase a four-character ICAO station identifier. Invalid

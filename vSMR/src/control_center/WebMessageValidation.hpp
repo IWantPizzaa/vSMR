@@ -9,8 +9,8 @@ namespace VsmrWebMessageValidation
 	inline constexpr std::size_t MaximumInboundMessageBytes =
 		32U * 1024U * 1024U;
 
-	bool TryGetInboundWebMessageSelector(
+	[[nodiscard]] bool TryGetInboundWebMessageSelector(
 		std::string_view json,
 		std::string& selector);
-	bool HasValidInboundWebMessageShape(std::string_view json);
+	[[nodiscard]] bool HasValidInboundWebMessageShape(std::string_view json);
 }

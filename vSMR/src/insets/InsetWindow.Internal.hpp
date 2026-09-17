@@ -121,6 +121,7 @@ namespace VsmrInsetWindowInternal
 		bool showFilter,
 		POINT mouseLocation,
 		bool allowResize,
+		bool dayTheme,
 		double* elapsedMilliseconds);
 	bool AvisoRectIntersects(const CRect& one, const CRect& two);
 }

@@ -1,4 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "radar/RecentAirports.hpp"
+#include "shared/JsonDocument.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
@@ -543,7 +545,7 @@ void CSMRRadar::LoadAircraftSpecs() {
 		std::string sanitized = sanitizeJson(rawJson);
 
 		rapidjson::Document doc;
-		if (doc.Parse<0>(sanitized.c_str()).HasParseError()) {
+		if (VsmrJson::ParseDocument(doc, sanitized).HasParseError()) {
 			Logger::info("Parse error in ICAO_Aircraft.json at: " + p.u8string());
 			continue;
 		}
@@ -1093,8 +1095,8 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 	return true;
 }
 
-string CSMRRadar::setActiveAirport(
-	string value,
+std::string CSMRRadar::setActiveAirport(
+	std::string value,
 	bool switchInsetContext,
 	bool syncControlCenter)
 {
@@ -1107,7 +1109,10 @@ string CSMRRadar::setActiveAirport(
 		SaveInsetStateToAsrForAirport(ActiveAirport);
 	}
 
+	VsmrRadar::RememberAirport(RecentAirports, ActiveAirport);
+	VsmrRadar::RememberAirport(RecentAirports, airport);
 	ActiveAirport = airport;
+	EnsureAvisoColorPaletteAvailable(switchInsetContext);
 	MarkPerformanceRefreshReason(
 		VsmrPerformance::FrameRefreshReason::AirportUpdate);
 	PublishCrashRadarState("main");
@@ -1117,7 +1122,7 @@ string CSMRRadar::setActiveAirport(
 	RunwayStatusLastAirport.clear();
 	ClearAvisoGeoJsonRasterCache();
 	AvisoGeoJsonLastViewValid = false;
-	RefreshLegacyRimcasRunwayMonitoring();
+	RefreshRimcasRunwayMonitoring();
 
 	if (switchInsetContext)
 	{
@@ -1143,7 +1148,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 		"CSMRRadar::OnAsrContentLoaded",
 		reinterpret_cast<std::uintptr_t>(this));
 	(void)Loaded;
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	const char * p_value;
 
 	// ReSharper disable CppZeroConstantCanBeReplacedWithNullptr
@@ -1186,29 +1191,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 			ConfigPath.c_str());
 	}
 
-	std::string loadedProfileName;
-	const std::string persistedProfile = ReadLastActiveProfileFromConfig();
-	if (!persistedProfile.empty())
-	{
-		this->LoadProfile(persistedProfile);
-		loadedProfileName = CurrentConfig != nullptr ? CurrentConfig->getActiveProfileName() : persistedProfile;
-	}
-	else if ((p_value = GetDataFromAsr("ActiveProfile")) != NULL)
-	{
-		this->LoadProfile(string(p_value));
-		loadedProfileName = CurrentConfig != nullptr ? CurrentConfig->getActiveProfileName() : std::string(p_value);
-	}
-	else if (CurrentConfig != nullptr)
-	{
-		loadedProfileName = CurrentConfig->getActiveProfileName();
-	}
-
-	if (!loadedProfileName.empty())
-	{
-		RememberSessionActiveProfile(loadedProfileName);
-		WriteLastActiveProfileToConfig(loadedProfileName);
-		SaveDataToAsr("ActiveProfile", "vSMR active profile", loadedProfileName.c_str());
-	}
+	RestoreActiveProfileFromAsr();
 
 	// Label font size is persisted per profile in vSMR_Profiles.json.
 	// Keep ASR value untouched to avoid overriding the active profile setting.
@@ -1217,9 +1200,14 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	if ((p_value = GetDataFromAsr("ShowFps")) != NULL)
 		ShowFps = atoi(p_value) != 0;
 
-	AvisoUseDayColorPalette = false;
+	AvisoColorPalette = "dark";
 	if ((p_value = GetDataFromAsr("AvisoColorPalette")) != NULL)
 		SetAvisoColorPalette(p_value, false);
+	EnsureAvisoColorPaletteAvailable(false);
+
+	UiUseDayColorTheme = false;
+	if ((p_value = GetDataFromAsr("UiColorTheme")) != NULL)
+		SetUiColorTheme(p_value, false);
 
 	LoadRuntimeMenuPositionFromAsr();
 
@@ -1242,8 +1230,8 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 		insetWindow->ResetAvisoInteractionState();
 	}
 
-	// Auto-detect active sector runways when no runway rows are configured.
-	RefreshLegacyRimcasRunwayMonitoring();
+	// RIMCAS assignments always follow the runway ends selected in EuroScope.
+	RefreshRimcasRunwayMonitoring();
 	PrewarmAvisoForActiveAirport();
 	PublishCrashRadarState("main");
 
@@ -1261,14 +1249,11 @@ void CSMRRadar::OnAsrContentToBeSaved()
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnAsrContentToBeSaved",
 		reinterpret_cast<std::uintptr_t>(this));
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 
 	SaveDataToAsr("Airport", "Active airport for RIMCAS", getActiveAirport().c_str());
 
-	const std::string activeProfileFallback = (CurrentConfig != nullptr) ? CurrentConfig->getActiveProfileName() : "Default";
-	const std::string activeProfileToPersist = GetSessionActiveProfile(activeProfileFallback);
-	SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfileToPersist.c_str());
-	WriteLastActiveProfileToConfig(activeProfileToPersist);
+	SaveActiveProfileToAsr();
 	SaveDataToAsr("ProfilesFile", "Active vSMR profiles file", ConfigPath.c_str());
 
 	SaveDataToAsr("FontSize", "vSMR font size", std::to_string(currentFontSize).c_str());
@@ -1278,6 +1263,10 @@ void CSMRRadar::OnAsrContentToBeSaved()
 		"AvisoColorPalette",
 		"AVISO day/night color palette",
 		GetAvisoColorPalette().c_str());
+	SaveDataToAsr(
+		"UiColorTheme",
+		"Control Center and inset UI theme",
+		GetUiColorTheme().c_str());
 
 	SaveRuntimeMenuPositionToAsr();
 	if (!InitialInsetStateRestorePending)

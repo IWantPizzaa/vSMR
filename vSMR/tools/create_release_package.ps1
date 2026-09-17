@@ -6,7 +6,7 @@ param(
     [string]$BuildOutputDirectory = "",
     [string]$ArtifactsDirectory = "",
     [ValidatePattern("^\d+\.\d+\.\d+(?:-beta\.\d+)?$")]
-    [string]$Version = "2.0.0-beta.5",
+    [string]$Version = "2.0.0-beta.6",
     [string]$Configuration = "Release",
     [string]$Platform = "Win32",
     [ValidatePattern("^(auto|v\d+)$")]
@@ -300,6 +300,7 @@ if ($RequireSignature -and ($null -eq $signingCertificate -or [string]::IsNullOr
 }
 
 $solutionPath = Join-Path $RepositoryRoot "vSMR.sln"
+& (Join-Path $RepositoryRoot "vSMR\tools\verify_release_inputs.ps1") -RepositoryRoot $RepositoryRoot -Version $Version
 $webBundleChecks = @(
     (Join-Path $RepositoryRoot "vSMR\tools\build_control_center_bundle.ps1"),
     (Join-Path $RepositoryRoot "vSMR\tools\build_control_center_styles.ps1")

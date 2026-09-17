@@ -1,0 +1,81 @@
+--- a/vSIDPlugin.h
++++ b/vSIDPlugin.h
+@@ -532,6 +532,7 @@
+ 		ESB_FieldId bridgeSidField_ = ESB_FIELD_NONE;
+ 		ESB_FieldId bridgeRwyField_ = ESB_FIELD_NONE;
+ 		ESB_FieldId bridgeCflField_ = ESB_FIELD_NONE;
++		ESB_FieldId bridgeAutomaticModeField_ = ESB_FIELD_NONE;
+ 		int bridgeMissingTicks_ = 0;
+ 		bool bridgeProviderConflict_ = false; // Another module owns "vsid"; stop retrying
+ 
+--- a/vSIDPlugin.cpp
++++ b/vSIDPlugin.cpp
+@@ -6158,6 +6158,34 @@
+ 		}
+ 	}
+ 
++	// Publish actual airport settings each timer tick, including changes made by
++	// commands, reloads and controller coordination. Command receipt is not state.
++	if (bridgeApi_ != nullptr && bridgeProvider_ != nullptr)
++	{
++		std::string automaticModes;
++		bool validSnapshot = true;
++		for (const auto& [icao, airport] : this->activeAirports)
++		{
++			const auto mode = airport.settings.find("auto");
++			if (mode == airport.settings.end()) continue;
++			if (icao.size() != 4 || !std::all_of(icao.begin(), icao.end(), [](char ch) {
++				return (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
++			}) || automaticModes.size() + 7 > 4096)
++			{
++				validSnapshot = false;
++				break;
++			}
++			automaticModes += icao;
++			automaticModes += mode->second ? "=1;" : "=0;";
++		}
++		if (validSnapshot)
++		{
++			const ESB_Value value = ESB_Str(automaticModes.c_str());
++			bridgeApi_->set_global(bridgeProvider_, bridgeAutomaticModeField_, &value);
++		}
++		else bridgeApi_->clear_global(bridgeProvider_, bridgeAutomaticModeField_);
++	}
++
+ 	// feed the bridge independently of the tag items: OnGetTagItem only runs for items the
+ 	// user actually put into a tag, so processing may never be triggered from there
+ 
+@@ -6248,6 +6276,8 @@
+ 	// The doc strings are what ".esb schema rampagent" prints, and in practice the only
+ 	// documentation a consumer will read (B1.3).
+ 	static const ESB_FieldDecl fields[] = {
++		{ "automode", ESB_T_STR, ESB_SCOPE_GLOBAL, 0, 4096,
++		  "Automatic mode by airport: ICAO=0; or ICAO=1; records; absent airports are unknown" },
+ 		{ BRIDGE_SID_FIELD, ESB_T_STR, ESB_SCOPE_AIRCRAFT, 0, BRIDGE_FIELD_MAX_BYTES,
+ 		  "SID assigned by the vSID service, empty when none is held" },
+ 		{ BRIDGE_RWY_FIELD, ESB_T_STR, ESB_SCOPE_AIRCRAFT, 0, BRIDGE_FIELD_MAX_BYTES,
+@@ -6260,7 +6290,7 @@
+ 	decl.struct_size = sizeof decl;
+ 	decl.provider_id = BRIDGE_PROVIDER_ID;
+ 	decl.schema_major = 1;
+-	decl.schema_minor = 0;
++	decl.schema_minor = 1;
+ 	decl.display_name = "vSID";
+ 	decl.contact = "https://github.com/AlexisBalzano/vSID";
+ 	decl.fields = fields;
+@@ -6283,12 +6313,14 @@
+ 	// Resolved once and cached; never called from the publish loop (B1.7)
+ 	if (bridgeApi_->own_field(bridgeProvider_, BRIDGE_SID_FIELD, &bridgeSidField_) != ESB_OK ||
+ 		bridgeApi_->own_field(bridgeProvider_, BRIDGE_RWY_FIELD, &bridgeRwyField_) != ESB_OK ||
+-		bridgeApi_->own_field(bridgeProvider_, BRIDGE_CFL_FIELD, &bridgeCflField_) != ESB_OK) {
++		bridgeApi_->own_field(bridgeProvider_, BRIDGE_CFL_FIELD, &bridgeCflField_) != ESB_OK ||
++		bridgeApi_->own_field(bridgeProvider_, "automode", &bridgeAutomaticModeField_) != ESB_OK) {
+ 		bridgeApi_->unregister_provider(bridgeProvider_);
+ 		bridgeProvider_ = nullptr;
+ 		bridgeSidField_ = ESB_FIELD_NONE;
+ 		bridgeRwyField_ = ESB_FIELD_NONE;
+ 		bridgeCflField_ = ESB_FIELD_NONE;
++		bridgeAutomaticModeField_ = ESB_FIELD_NONE;
+ 		return false;
+ 	}
+ 

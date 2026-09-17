@@ -8,6 +8,7 @@
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashReporter.hpp"
 #include "datalink/DatalinkProtocolSupport.hpp"
+#include "integrations/CdmBridgeClient.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "shared/TextUtils.hpp"
 #include "weather/WeatherStore.hpp"
@@ -31,8 +32,6 @@
 #include <set>
 #include <sstream>
 
-#include "rapidjson/document.h"
-
 using VsmrDatalinkProtocol::BuildHoppieLoginFailureMessage;
 using VsmrDatalinkProtocol::EncodeUrlQueryComponent;
 using VsmrDatalinkProtocol::FormatPdcFrequency;
@@ -45,499 +44,57 @@ using VsmrDatalinkProtocol::UnprotectHoppieCredential;
 
 #include "plugin/PluginRuntimeAudio.hpp"
 
-namespace
-{
-	bool CdmReminderSubmissionInFlight = false;
-	QueuedCdmReminderMessage CdmReminderBeingSubmitted;
-}
-
 HttpHelper& VsmrPluginRuntime::GetHttpHelper()
 {
 	static HttpHelper helper;
 	return helper;
 }
 
-bool TryGetVacdmPilotData(const std::string& callsign, VacdmPilotData& outData)
+bool TryGetCdmPilotData(const std::string& callsign, CdmPilotData& outData)
 {
-	std::lock_guard<std::mutex> guard(VacdmPilotsMutex);
-	// Match with the same normalization strategy used during ingest.
-	const std::vector<std::string> candidates = BuildVacdmLookupCandidates(callsign);
-	for (const auto& candidate : candidates)
+	VsmrCdm::AircraftData bridgeData;
+	if (!VsmrCdm::TryGetAircraftData(callsign, bridgeData))
+		return false;
+
+	auto toUtcTime = [](const std::optional<std::int64_t>& minutes)
 	{
-		auto it = VacdmPilots.find(candidate);
-		if (it != VacdmPilots.end())
-		{
-			outData = it->second;
-			return true;
-		}
-	}
-	return false;
-}
-
-void ProcessCdmAutoMode(CSMRPlugin* plugIn)
-{
-	if (plugIn == nullptr || !CdmAutoModeEnabled.load(std::memory_order_relaxed))
-		return;
-
-	const std::string activeAirport = ResolveActiveAirportFilterUpper();
-	if (!plugIn->ControllerMyself().IsController() || activeAirport.empty() ||
-		!IsVacdmSnapshotReadyForCdm())
-	{
-		ClearCdmAutoTrackingState(true);
-		return;
-	}
-
-	int delayMinutes = CdmAutoDelayMinutes.load(std::memory_order_relaxed);
-	if (delayMinutes < 0)
-		delayMinutes = 0;
-	const auto now = std::chrono::steady_clock::now();
-	const auto delay = std::chrono::minutes(delayMinutes);
-
-	// Collecting current reminder candidates
-	const std::vector<std::string> connectedCallsigns =
-		CollectFlightPlanCandidateCallsignsForActiveAirport(plugIn, activeAirport);
-	struct CandidateSnapshot
-	{
-		std::string callsign;
-		bool hasSubmittedTobt = false;
+		if (!minutes.has_value() || *minutes < 0 || *minutes >= 24 * 60)
+			return static_cast<std::time_t>(0);
+		const std::time_t now = std::time(nullptr);
+		std::tm utc = {};
+		if (::gmtime_s(&utc, &now) != 0)
+			return static_cast<std::time_t>(0);
+		utc.tm_hour = static_cast<int>(*minutes / 60);
+		utc.tm_min = static_cast<int>(*minutes % 60);
+		utc.tm_sec = 0;
+		std::time_t candidate = _mkgmtime(&utc);
+		if (candidate - now > 12 * 60 * 60)
+			candidate -= 24 * 60 * 60;
+		else if (now - candidate > 12 * 60 * 60)
+			candidate += 24 * 60 * 60;
+		return candidate;
 	};
-	std::vector<CandidateSnapshot> candidates;
-	candidates.reserve(connectedCallsigns.size());
-	for (const std::string& callsign : connectedCallsigns)
-	{
-		VacdmPilotData pilotData;
-		const bool hasPilotData = TryGetVacdmPilotData(callsign, pilotData);
-		candidates.push_back({
-			callsign,
-			hasPilotData && HasSubmittedTobtState(pilotData)
-		});
-	}
 
-	std::vector<std::string> callsignsToQueue;
-	callsignsToQueue.reserve(candidates.size());
-
-	// Updating the per-aircraft delay state
-	{
-		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		PruneCdmReminderHistoryUnlocked(now);
-
-		if (CdmAutoTrackedAirport != activeAirport)
-		{
-			AircraftCdmAutoTracked.clear();
-			CdmReminderMessageQueue.erase(
-				std::remove_if(
-					CdmReminderMessageQueue.begin(),
-					CdmReminderMessageQueue.end(),
-					[](const QueuedCdmReminderMessage& reminder)
-					{
-						return reminder.automatic;
-					}),
-				CdmReminderMessageQueue.end());
-			CdmAutoTrackedAirport = activeAirport;
-			++CdmAutoSessionGeneration;
-		}
-
-		for (auto it = AircraftCdmAutoTracked.begin(); it != AircraftCdmAutoTracked.end();)
-		{
-			if (std::find(connectedCallsigns.begin(), connectedCallsigns.end(), it->first) == connectedCallsigns.end())
-			{
-				if (CdmReminderCooldownMinutes.load(std::memory_order_relaxed) == 0)
-					AircraftCdmTobtReminderSentAt.erase(it->first);
-				RemoveQueuedCdmReminderUnlocked(it->first);
-				it = AircraftCdmAutoTracked.erase(it);
-			}
-			else
-				++it;
-		}
-
-		for (const CandidateSnapshot& candidate : candidates)
-		{
-			auto trackedIt = AircraftCdmAutoTracked.find(candidate.callsign);
-			if (trackedIt == AircraftCdmAutoTracked.end())
-			{
-				CdmAutoTrackedAircraftState state;
-				state.dueAt = now + delay;
-				state.eligibility = candidate.hasSubmittedTobt
-					? CdmAutoEligibility::SuppressedBySubmittedTobt
-					: CdmAutoEligibility::WaitingForMissingTobt;
-				trackedIt = AircraftCdmAutoTracked.emplace(candidate.callsign, state).first;
-			}
-
-			CdmAutoTrackedAircraftState& tracked = trackedIt->second;
-			if (candidate.hasSubmittedTobt)
-			{
-				tracked.eligibility = CdmAutoEligibility::SuppressedBySubmittedTobt;
-				continue;
-			}
-
-			// A TOBT that is later removed starts a new complete delay. It never
-			// inherits an already elapsed timer from the suppressed period.
-			if (tracked.eligibility == CdmAutoEligibility::SuppressedBySubmittedTobt)
-			{
-				if (CdmReminderCooldownMinutes.load(std::memory_order_relaxed) == 0)
-					AircraftCdmTobtReminderSentAt.erase(candidate.callsign);
-				tracked.dueAt = now + delay;
-				tracked.eligibility = CdmAutoEligibility::WaitingForMissingTobt;
-			}
-			if (tracked.eligibility == CdmAutoEligibility::RetryExhausted ||
-				HasCdmReminderSubmittedUnlocked(candidate.callsign) ||
-				HasRecentCdmReminderUnlocked(candidate.callsign, now) ||
-				IsCdmReminderQueuedUnlocked(candidate.callsign) ||
-				HasDatalinkClearanceSentUnlocked(candidate.callsign) ||
-				HasDatalinkClearanceInFlightUnlocked(candidate.callsign))
-				continue;
-
-			if (now >= tracked.dueAt)
-				callsignsToQueue.push_back(candidate.callsign);
-		}
-	}
-
-	// Queuing aircraft whose full delay has elapsed
-	int queuedCount = 0;
-	std::string reminderMessage;
-	if (!callsignsToQueue.empty() && !TryLoadCdmReminderMessage(plugIn, reminderMessage))
-	{
-		ClearCdmAutoTrackingState(true);
-		return;
-	}
-
-	for (const std::string& callsign : callsignsToQueue)
-	{
-		const CdmQueueReminderOutcome outcome =
-			TryQueueCdmReminderForCallsign(
-				plugIn,
-				callsign,
-				reminderMessage,
-				now,
-				nullptr,
-				nullptr,
-				true);
-		if (outcome == CdmQueueReminderOutcome::Queued)
-			++queuedCount;
-	}
-
-	if (queuedCount > 0)
-		Logger::info("CDM auto reminder queued count=" + std::to_string(queuedCount) + " delay_min=" + std::to_string(delayMinutes));
-}
-
-void ProcessQueuedCdmReminderMessages(CSMRPlugin* plugIn)
-{
-	if (plugIn == nullptr)
-		return;
-
-	const auto now = std::chrono::steady_clock::now();
-	const CdmChatSubmissionStatus submissionStatus =
-		PollPrivateChatMessageSubmission();
-	if (CdmReminderSubmissionInFlight)
-	{
-		if (submissionStatus == CdmChatSubmissionStatus::Pending)
-			return;
-
-		const std::string submittedCallsign =
-			CdmReminderBeingSubmitted.callsign;
-		if (submissionStatus == CdmChatSubmissionStatus::Confirmed)
-		{
-			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-			MarkCdmReminderSentUnlocked(submittedCallsign, now);
-			Logger::info(
-				"CDM reminder command consumed by EuroScope callsign=" +
-				submittedCallsign);
-		}
-		else
-		{
-			// An Enter key was posted, so retrying an unconfirmed result could send
-			// a duplicate. Keep automatic delivery one-shot and require an operator
-			// to review the aircraft before any manual follow-up.
-			Logger::info(
-				"CDM reminder submission became ambiguous; automatic retry suppressed callsign=" +
-				submittedCallsign);
-			plugIn->DisplayUserMessage(
-				"vSMR",
-				"CDM",
-				("Could not confirm the PDC reminder for " + submittedCallsign +
-					". It was not retried to avoid a duplicate.").c_str(),
-				true, true, false, true, false);
-		}
-		{
-			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-			RemoveQueuedCdmReminderUnlocked(submittedCallsign);
-		}
-		CdmReminderSubmissionInFlight = false;
-		CdmReminderBeingSubmitted = {};
-		return;
-	}
-	if (submissionStatus != CdmChatSubmissionStatus::Idle)
-		return;
-
-	QueuedCdmReminderMessage queuedReminder;
-	// Dropping stale sessions and taking the next ready reminder
-	{
-		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		PruneCdmReminderHistoryUnlocked(now);
-		CdmReminderMessageQueue.erase(
-			std::remove_if(
-				CdmReminderMessageQueue.begin(),
-				CdmReminderMessageQueue.end(),
-				[](const QueuedCdmReminderMessage& reminder)
-				{
-					return reminder.automatic &&
-						(!CdmAutoModeEnabled.load(std::memory_order_relaxed) ||
-							reminder.automaticSessionGeneration != CdmAutoSessionGeneration);
-				}),
-			CdmReminderMessageQueue.end());
-		auto readyIt = std::find_if(
-			CdmReminderMessageQueue.begin(),
-			CdmReminderMessageQueue.end(),
-			[&](const QueuedCdmReminderMessage& reminder)
-			{
-				return reminder.nextAttemptAt <= now;
-			});
-		if (readyIt == CdmReminderMessageQueue.end())
-			return;
-
-		queuedReminder = *readyIt;
-		CdmReminderMessageQueue.erase(readyIt);
-	}
-
-	const std::string callsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(queuedReminder.callsign));
-	const std::string queuedAirport = ToUpperAsciiCopy(
-		TrimAsciiWhitespaceCopy(queuedReminder.activeAirport));
-	const std::string message = TrimAsciiWhitespaceCopy(queuedReminder.message);
-	if (callsign.empty() || queuedAirport.empty() || message.empty())
-		return;
-	if (ResolveActiveAirportFilterUpper() != queuedAirport)
-		return;
-
-	{
-		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		if (HasRecentCdmReminderUnlocked(callsign, now))
-			return;
-	}
-
-	if (!IsCallsignEligibleForCdmReminderNow(plugIn, callsign))
-		return;
-	if (queuedReminder.automatic)
-	{
-		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		if (!CdmAutoModeEnabled.load(std::memory_order_relaxed) ||
-			queuedReminder.automaticSessionGeneration != CdmAutoSessionGeneration ||
-			HasCdmReminderSubmittedUnlocked(callsign) ||
-			HasDatalinkClearanceSentUnlocked(callsign) ||
-			HasDatalinkClearanceInFlightUnlocked(callsign))
-		{
-			return;
-		}
-	}
-
-	// Rechecking eligibility immediately before posting the command. A queued
-	// reminder is bound to the airport that was active when it was created.
-	if (ResolveActiveAirportFilterUpper() != queuedAirport ||
-		!IsCallsignEligibleForCdmReminderNow(plugIn, callsign))
-	{
-		return;
-	}
-	if (BeginPrivateChatMessageLikeDotMsg(plugIn, callsign, message))
-	{
-		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		MarkCdmReminderSubmittedUnlocked(callsign);
-		CdmReminderBeingSubmitted = queuedReminder;
-		CdmReminderSubmissionInFlight = true;
-		return;
-	}
-
-	// Retrying transient command-line injection failures
-	queuedReminder.sendAttempts += 1;
-	if (queuedReminder.sendAttempts >= CdmReminderQueueMaxSendAttempts)
-	{
-		{
-			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-			if (queuedReminder.automatic &&
-				queuedReminder.automaticSessionGeneration == CdmAutoSessionGeneration)
-			{
-				auto trackedIt = AircraftCdmAutoTracked.find(callsign);
-				if (trackedIt != AircraftCdmAutoTracked.end())
-					trackedIt->second.eligibility = CdmAutoEligibility::RetryExhausted;
-			}
-		}
-		Logger::info("CDM reminder dropped after repeated UI injection failures callsign=" + callsign);
-		plugIn->DisplayUserMessage(
-			"vSMR",
-			"CDM",
-			("The PDC reminder for " + callsign +
-				" was not submitted because EuroScope's command line was unavailable.").c_str(),
-			true, true, false, true, false);
-		return;
-	}
-	queuedReminder.nextAttemptAt = now + std::chrono::seconds(CdmReminderRetryDelaySeconds);
-
-	{
-		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		const bool automaticStillCurrent = !queuedReminder.automatic ||
-			(CdmAutoModeEnabled.load(std::memory_order_relaxed) &&
-				queuedReminder.automaticSessionGeneration == CdmAutoSessionGeneration);
-		if (automaticStillCurrent &&
-			!HasRecentCdmReminderUnlocked(callsign, now) &&
-			!IsCdmReminderQueuedUnlocked(callsign))
-			CdmReminderMessageQueue.push_back(queuedReminder);
-	}
-}
-
-void refreshVacdmDataImpl()
-{
-	unsigned long long sourceGeneration = 0;
-	const std::string pilotsUrl = ResolveVacdmPilotsUrl(&sourceGeneration);
-
-	struct ResetFetchFlag
-	{
-		unsigned long long sourceGeneration = 0;
-		explicit ResetFetchFlag(unsigned long long generation)
-			: sourceGeneration(generation) {}
-
-		~ResetFetchFlag()
-		{
-			bool sourceStillCurrent = false;
-			{
-				std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
-				sourceStillCurrent =
-					ProfilesSourceGeneration == sourceGeneration;
-			}
-			if (sourceStillCurrent)
-				VacdmLastFetchTick = CurrentSteadyTick();
-			VacdmFetchInProgress.store(false);
-		}
-	} reset{ sourceGeneration };
-
-	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
-		!VacdmPollingEnabled.load(std::memory_order_acquire))
-		return;
-
-	try
-	{
-		std::string raw = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
-			pilotsUrl,
-			6000,
-			&PluginShutdownRequested,
-			VacdmResponseLimitBytes);
-		if (PluginShutdownRequested.load(std::memory_order_relaxed))
-			return;
-
-		if (raw.empty())
-		{
-			Logger::info("VACDM refresh failed: empty response url=" + pilotsUrl);
-			return;
-		}
-
-		rapidjson::Document doc;
-		if (doc.Parse<0>(raw.c_str()).HasParseError() || !doc.IsArray())
-		{
-			Logger::info("VACDM refresh failed: invalid JSON array url=" + pilotsUrl);
-			return;
-		}
-
-		// Parse into a temporary map so readers never observe a partially refreshed cache.
-		std::map<std::string, VacdmPilotData> parsedData;
-
-		for (rapidjson::SizeType i = 0; i < doc.Size(); ++i)
-		{
-			const rapidjson::Value& pilot = doc[i];
-			if (!pilot.IsObject() || !pilot.HasMember("callsign") || !pilot["callsign"].IsString())
-				continue;
-
-			VacdmPilotData data;
-			data.callsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(pilot["callsign"].GetString()));
-
-			const rapidjson::Value* vacdm = nullptr;
-			if (pilot.HasMember("vacdm") && pilot["vacdm"].IsObject())
-				vacdm = &pilot["vacdm"];
-
-			auto readTime = [&](const char* key, std::time_t& outTime, bool& outHas) {
-				outTime = 0;
-				outHas = false;
-				if (vacdm == nullptr || !vacdm->HasMember(key) || !(*vacdm)[key].IsString())
-					return;
-				std::time_t parsed = 0;
-				if (TryParseIsoUtcTimestamp((*vacdm)[key].GetString(), parsed))
-				{
-					outTime = parsed;
-					outHas = true;
-				}
-				};
-
-			readTime("tobt", data.tobtUtc, data.hasTobt);
-			readTime("tsat", data.tsatUtc, data.hasTsat);
-			readTime("ttot", data.ttotUtc, data.hasTtot);
-			readTime("asat", data.asatUtc, data.hasAsat);
-			readTime("aobt", data.aobtUtc, data.hasAobt);
-			readTime("atot", data.atotUtc, data.hasAtot);
-			readTime("asrt", data.asrtUtc, data.hasAsrt);
-			readTime("aort", data.aortUtc, data.hasAort);
-			readTime("ctot", data.ctotUtc, data.hasCtot);
-
-			if (vacdm != nullptr && vacdm->HasMember("tobt_state") && (*vacdm)["tobt_state"].IsString())
-				data.tobtState = (*vacdm)["tobt_state"].GetString();
-
-			if (pilot.HasMember("hasBooking") && pilot["hasBooking"].IsBool())
-				data.hasBooking = pilot["hasBooking"].GetBool();
-
-			parsedData[data.callsign] = data;
-		}
-
-		if (PluginShutdownRequested.load(std::memory_order_relaxed))
-			return;
-
-		std::string aselCallsign;
-		{
-			std::lock_guard<std::mutex> stateGuard(VacdmDebugStateMutex);
-			aselCallsign = VacdmDebugAselCallsign;
-		}
-		const size_t parsedPilotCount = parsedData.size();
-		const bool aselFound = !aselCallsign.empty() && parsedData.find(aselCallsign) != parsedData.end();
-
-		// Publishing only if the profile source is still current
-		{
-			std::lock_guard<std::mutex> sourceGuard(ProfilesSourceMutex);
-			if (ProfilesSourceGeneration != sourceGeneration)
-				return;
-			std::lock_guard<std::mutex> pilotsGuard(VacdmPilotsMutex);
-			VacdmPilots.swap(parsedData);
-			VacdmSuccessfulSnapshotSourceGeneration = sourceGeneration;
-			VacdmSuccessfulSnapshotAt = std::chrono::steady_clock::now();
-		}
-
-		const unsigned long fetchIndex = ++VacdmFetchCounter;
-		Logger::info(
-			"VACDM refresh #" + std::to_string(fetchIndex) +
-			" pilots=" + std::to_string(parsedPilotCount) +
-			" asel=" + (aselCallsign.empty() ? std::string("<none>") : aselCallsign) +
-			" asel_present=" + std::string(aselFound ? "1" : "0") +
-			" url=" + pilotsUrl
-		);
-	}
-	catch (const std::exception& ex)
-	{
-		Logger::info("VACDM refresh exception: " + std::string(ex.what()));
-	}
-	catch (...)
-	{
-		Logger::info("VACDM refresh exception: unknown");
-	}
-}
-
-void refreshVacdmData()
-{
-#if defined(_MSC_VER)
-	__try
-	{
-		refreshVacdmDataImpl();
-	}
-	__except (CaptureVacdmSehCode(static_cast<unsigned long>(GetExceptionCode())))
-	{
-		VacdmLastFetchTick = CurrentSteadyTick();
-		VacdmFetchInProgress.store(false);
-	}
-#else
-	refreshVacdmDataImpl();
-#endif
+	outData = CdmPilotData();
+	outData.callsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
+	outData.bridgeData = bridgeData;
+	outData.tobtUtc = toUtcTime(bridgeData.tobt);
+	outData.tsatUtc = toUtcTime(bridgeData.tsat);
+	outData.ttotUtc = toUtcTime(bridgeData.ttot);
+	outData.ctotUtc = toUtcTime(bridgeData.ctot);
+	outData.tsacUtc = toUtcTime(bridgeData.tsac);
+	outData.asrtUtc = toUtcTime(bridgeData.asrt);
+	outData.asatUtc = toUtcTime(bridgeData.asat);
+	outData.hasTobt = outData.tobtUtc != 0;
+	outData.hasTsat = outData.tsatUtc != 0;
+	outData.hasTtot = outData.ttotUtc != 0;
+	outData.hasCtot = outData.ctotUtc != 0;
+	outData.hasTsac = outData.tsacUtc != 0;
+	outData.hasAsrt = outData.asrtUtc != 0;
+	outData.hasAsat = outData.asatUtc != 0;
+	// The CDM provider only publishes a TOBT after CDM has accepted it.
+	outData.tobtState = outData.hasTobt ? "CONFIRMED" : "";
+	return true;
 }
 
 void datalinkLogin(DatalinkLoginRequest request) {
@@ -557,13 +114,13 @@ void datalinkLogin(DatalinkLoginRequest request) {
 	std::string failureMessage;
 	try
 	{
-		string url = baseUrlDatalink;
+		std::string url = baseUrlDatalink;
 		url += "?logon=";
 		url += EncodeUrlQueryComponent(request.credentials.password);
 		url += "&from=";
 		url += EncodeUrlQueryComponent(request.credentials.callsign);
 		url += "&to=SERVER&type=PING";
-		const string raw = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
+		const std::string raw = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
 			url,
 			6000,
 			&PluginShutdownRequested,
@@ -650,10 +207,10 @@ void pollMessages(DatalinkPollRequest request) {
 		return;
 	}
 
-	string raw;
+	std::string raw;
 	try
 	{
-		string url = baseUrlDatalink;
+		std::string url = baseUrlDatalink;
 		url += "?logon=";
 		url += EncodeUrlQueryComponent(request.credentials.password);
 		url += "&from=";
@@ -692,7 +249,7 @@ void pollMessages(DatalinkPollRequest request) {
 	raw = raw + " ";
 	raw = raw.substr(3, raw.size() - 3);
 
-	string delimiter = "}} ";
+	std::string delimiter = "}} ";
 	size_t pos = 0;
 	std::string token;
 	while ((pos = raw.find(delimiter)) != std::string::npos) {
@@ -705,8 +262,8 @@ void pollMessages(DatalinkPollRequest request) {
 
 		token = raw.substr(1, pos);
 
-		string parsed;
-		stringstream input_stringstream(token);
+		std::string parsed;
+		std::stringstream input_stringstream(token);
 		struct AcarsMessage message;
 		int i = 1;
 		while (getline(input_stringstream, parsed, ' '))
@@ -838,7 +395,7 @@ void sendDatalinkClearance(DatalinkClearanceRequest request) {
 		return;
 	const DatalinkPacket& packet = request.packet;
 
-	string payload = "/data2/";
+	std::string payload = "/data2/";
 	payload += std::to_string(request.messageSequence);
 	payload += "//R/";
 	payload += "CLR TO @";
@@ -876,7 +433,7 @@ void sendDatalinkClearance(DatalinkClearanceRequest request) {
 	if (packet.message != "no" && packet.message.size() > 1)
 		payload += packet.message;
 
-	string url = baseUrlDatalink;
+	std::string url = baseUrlDatalink;
 	url += "?logon=";
 	url += EncodeUrlQueryComponent(request.credentials.password);
 	url += "&from=";
@@ -886,7 +443,7 @@ void sendDatalinkClearance(DatalinkClearanceRequest request) {
 	url += "&type=CPDLC&packet=";
 	url += EncodeUrlQueryComponent(payload);
 
-	const string raw = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
+	const std::string raw = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
 		url,
 		6000,
 		&PluginShutdownRequested,
@@ -919,39 +476,7 @@ void CSMRPlugin::PublishActiveProfilesConfigPath(
 	const std::string& path,
 	bool claimSelection)
 {
-	std::string configuredVacdmServerUrl;
-	const bool vacdmConfigured = TryReadVacdmServerUrl(
-		std::filesystem::u8path(path),
-		configuredVacdmServerUrl);
-	{
-		std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
-		ActiveProfilesConfigPath = path;
-		ActiveProfilesConfigPathClaimed = claimSelection;
-		VacdmConfiguredServerUrl = vacdmConfigured
-			? configuredVacdmServerUrl
-			: std::string();
-		++ProfilesSourceGeneration;
-		VacdmSuccessfulSnapshotSourceGeneration = 0;
-		VacdmSuccessfulSnapshotAt = std::chrono::steady_clock::time_point();
-		// Publish the enable state before workers can observe the new source
-		// generation. This prevents an old `true` value from starting a fetch
-		// against the fallback URL after switching to a profile without VACDM.
-		VacdmPollingEnabled.store(vacdmConfigured, std::memory_order_release);
-		std::lock_guard<std::mutex> pilotsGuard(VacdmPilotsMutex);
-		VacdmPilots.clear();
-	}
-
-	VacdmLastFetchTick.store(0, std::memory_order_relaxed);
-	if (vacdmConfigured)
-	{
-		Logger::info(
-			"VACDM polling enabled profiles=" + path +
-			" server_url=" + configuredVacdmServerUrl);
-	}
-	else
-	{
-		Logger::info(
-			"VACDM polling disabled profiles=" + path +
-			" (no _vsmr.vacdm.server_url)");
-	}
+	std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
+	ActiveProfilesConfigPath = path;
+	ActiveProfilesConfigPathClaimed = claimSelection;
 }

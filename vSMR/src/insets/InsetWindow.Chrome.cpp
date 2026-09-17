@@ -21,7 +21,7 @@ namespace VsmrInsetWindowInternal
 
 	double AvisoCosLatitude(double latitude)
 	{
-		return max(0.05, std::abs(std::cos(DegToRad(latitude))));
+		return (std::max)(0.05, std::abs(std::cos(DegToRad(latitude))));
 	}
 
 	bool AvisoWithinTolerance(double left, double right, double tolerance)
@@ -157,43 +157,53 @@ namespace VsmrInsetWindowInternal
 			buttonIndexFromRight * (kInsetToolbarButtonSize + kInsetToolbarButtonGap);
 	}
 
-	CRect DrawInsetButton(CDC& dc, const char* label, CRect rect, POINT mouseLocation)
+	CRect DrawInsetButton(CDC& dc, const char* label, CRect rect, POINT mouseLocation, bool dayTheme)
 	{
 		rect.NormalizeRect();
-		CBrush buttonBrush(mouseWithin(mouseLocation, rect) ? RGB(53, 71, 75) : RGB(41, 57, 59));
+		const COLORREF button = dayTheme
+			? (mouseWithin(mouseLocation, rect) ? RGB(190, 201, 204) : RGB(173, 181, 183))
+			: (mouseWithin(mouseLocation, rect) ? RGB(53, 71, 75) : RGB(41, 57, 59));
+		CBrush buttonBrush(button);
 		dc.FillRect(rect, &buttonBrush);
 
-		const COLORREF oldTextColor = dc.SetTextColor(RGB(208, 217, 220));
+		const COLORREF oldTextColor = dc.SetTextColor(dayTheme ? RGB(23, 33, 38) : RGB(208, 217, 220));
 		const int oldBkMode = dc.SetBkMode(TRANSPARENT);
 		dc.DrawTextA(label, -1, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 		dc.SetBkMode(oldBkMode);
 		dc.SetTextColor(oldTextColor);
 
-		dc.Draw3dRect(rect, RGB(82, 96, 101), RGB(5, 7, 8));
+		const COLORREF border = dayTheme ? RGB(63, 72, 76) : RGB(5, 7, 8);
+		dc.Draw3dRect(rect, border, border);
 
 		return rect;
 	}
 
-	CRect DrawInsetToolbarButton(CDC& dc, const char* label, const CRect& topBar, int rightOffset, POINT mouseLocation)
+	CRect DrawInsetToolbarButton(
+		CDC& dc,
+		const char* label,
+		const CRect& topBar,
+		int rightOffset,
+		POINT mouseLocation,
+		bool dayTheme)
 	{
 		CRect rect(
 			topBar.right - rightOffset - kInsetToolbarButtonSize,
 			topBar.top + 1,
 			topBar.right - rightOffset,
 			topBar.bottom - 1);
-		return DrawInsetButton(dc, label, rect, mouseLocation);
+		return DrawInsetButton(dc, label, rect, mouseLocation, dayTheme);
 	}
 
-	void DrawStripedInsetTitleBar(CDC& dc, CRect rect)
+	void DrawStripedInsetTitleBar(CDC& dc, CRect rect, bool dayTheme)
 	{
 		rect.NormalizeRect();
-		dc.FillSolidRect(rect, RGB(16, 20, 22));
+		dc.FillSolidRect(rect, dayTheme ? RGB(115, 125, 128) : RGB(16, 20, 22));
 		const int savedDc = ::SaveDC(dc.GetSafeHdc());
 		if (savedDc != 0)
 		{
 			::IntersectClipRect(dc.GetSafeHdc(), rect.left, rect.top, rect.right, rect.bottom);
 			::SelectObject(dc.GetSafeHdc(), ::GetStockObject(DC_PEN));
-			::SetDCPenColor(dc.GetSafeHdc(), RGB(46, 57, 60));
+			::SetDCPenColor(dc.GetSafeHdc(), dayTheme ? RGB(146, 155, 158) : RGB(46, 57, 60));
 			for (int x = rect.left - rect.Height(); x < rect.right; x += 5)
 			{
 				::MoveToEx(dc.GetSafeHdc(), x, rect.bottom, nullptr);
@@ -201,15 +211,16 @@ namespace VsmrInsetWindowInternal
 			}
 			::RestoreDC(dc.GetSafeHdc(), savedDc);
 		}
-		dc.Draw3dRect(rect, RGB(5, 7, 8), RGB(5, 7, 8));
+		const COLORREF border = dayTheme ? RGB(63, 72, 76) : RGB(5, 7, 8);
+		dc.Draw3dRect(rect, border, border);
 	}
 
-	void DrawInsetTitle(CDC& dc, const CRect& topBar, const std::string& title)
+	void DrawInsetTitle(CDC& dc, const CRect& topBar, const std::string& title, bool dayTheme)
 	{
 		const CSize titleSize = dc.GetTextExtent(title.c_str());
-		const int titleX = topBar.left + max(0, (topBar.Width() - titleSize.cx) / 2);
-		const int titleY = topBar.top + max(0, (topBar.Height() - titleSize.cy) / 2);
-		const COLORREF oldTextColor = dc.SetTextColor(RGB(208, 217, 220));
+		const int titleX = topBar.left + (std::max<LONG>)(0, (topBar.Width() - titleSize.cx) / 2);
+		const int titleY = topBar.top + (std::max<LONG>)(0, (topBar.Height() - titleSize.cy) / 2);
+		const COLORREF oldTextColor = dc.SetTextColor(dayTheme ? RGB(23, 33, 38) : RGB(208, 217, 220));
 		const int oldBkMode = dc.SetBkMode(TRANSPARENT);
 		dc.TextOutA(titleX, titleY, title.c_str());
 		dc.SetBkMode(oldBkMode);
@@ -318,8 +329,8 @@ namespace VsmrInsetWindowInternal
 		const int minimumFrameHeight = kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight;
 		const int boundsWidth = static_cast<int>(bounds.Width());
 		const int boundsHeight = static_cast<int>(bounds.Height());
-		const int minimumWidth = min(kAvisoMinLayoutWidth, boundsWidth);
-		const int minimumHeight = min(minimumFrameHeight, boundsHeight);
+		const int minimumWidth = (std::min)(kAvisoMinLayoutWidth, boundsWidth);
+		const int minimumHeight = (std::min)(minimumFrameHeight, boundsHeight);
 		const int width = std::clamp(static_cast<int>(requestedSize.cx), minimumWidth, boundsWidth);
 		const int height = std::clamp(static_cast<int>(requestedSize.cy), minimumHeight, boundsHeight);
 		const int left = IsAvisoCornerRightAnchored(mode) ? bounds.right - width : bounds.left;
@@ -396,7 +407,7 @@ namespace VsmrInsetWindowInternal
 		CRect content(areaValue);
 		content.NormalizeRect();
 		if (mode != AvisoLayoutMode::Floating)
-			content.top = min(content.bottom, content.top + kAvisoViewportTopBarHeight);
+			content.top = (std::min)(content.bottom, content.top + kAvisoViewportTopBarHeight);
 		return content;
 	}
 
@@ -406,7 +417,7 @@ namespace VsmrInsetWindowInternal
 		area.NormalizeRect();
 		if (mode == AvisoLayoutMode::Floating)
 			return CRect(area.left, area.top - kAvisoViewportTopBarHeight, area.right, area.top);
-		return CRect(area.left, area.top, area.right, min(area.bottom, area.top + kAvisoViewportTopBarHeight));
+		return CRect(area.left, area.top, area.right, (std::min)(area.bottom, area.top + kAvisoViewportTopBarHeight));
 	}
 
 	CRect InsetCloseButtonRect(AvisoLayoutMode mode, const RECT& areaValue)
@@ -439,19 +450,19 @@ namespace VsmrInsetWindowInternal
 		moveRect.NormalizeRect();
 		if (allowResize)
 		{
-			moveRect.left = min(moveRect.right, moveRect.left + kInsetResizeCornerPx);
-			moveRect.right = max(moveRect.left, moveRect.right - kInsetResizeCornerPx);
-			moveRect.top = min(moveRect.bottom, moveRect.top + kInsetResizeInsidePx + 1);
+			moveRect.left = (std::min)(moveRect.right, moveRect.left + kInsetResizeCornerPx);
+			moveRect.right = (std::max)(moveRect.left, moveRect.right - kInsetResizeCornerPx);
+			moveRect.top = (std::min)(moveRect.bottom, moveRect.top + kInsetResizeInsidePx + 1);
 		}
 
 		CRect closeButton = InsetCloseButtonRect(mode, areaValue);
 		closeButton.NormalizeRect();
-		moveRect.right = min(moveRect.right, closeButton.left);
+		moveRect.right = (std::min)(moveRect.right, closeButton.left);
 		if (showFilter && mode == AvisoLayoutMode::Floating)
 		{
 			CRect filterButton = InsetFilterButtonRect(mode, areaValue);
 			filterButton.NormalizeRect();
-			moveRect.right = min(moveRect.right, filterButton.left);
+			moveRect.right = (std::min)(moveRect.right, filterButton.left);
 		}
 		if (moveRect.right <= moveRect.left || moveRect.bottom <= moveRect.top)
 			return CRect(0, 0, 0, 0);
@@ -655,8 +666,8 @@ namespace VsmrInsetWindowInternal
 				mode,
 				bounds,
 				CSize(
-					max(kAvisoMinLayoutWidth, static_cast<int>(current.Width())),
-					max(minimumFrameHeight, static_cast<int>(current.Height()))));
+					(std::max)(kAvisoMinLayoutWidth, static_cast<int>(current.Width())),
+					(std::max)(minimumFrameHeight, static_cast<int>(current.Height()))));
 		}
 
 		const bool rightAnchored = IsAvisoCornerRightAnchored(mode);
@@ -697,6 +708,7 @@ namespace VsmrInsetWindowInternal
 		bool showFilter,
 		POINT mouseLocation,
 		bool allowResize,
+		bool dayTheme,
 		double* elapsedMilliseconds)
 	{
 		const auto chromeStarted = std::chrono::steady_clock::now();
@@ -723,17 +735,17 @@ namespace VsmrInsetWindowInternal
 
 		CRect titleBar = InsetTitleBarRect(mode, areaValue);
 		titleBar.NormalizeRect();
-		DrawStripedInsetTitleBar(dc, titleBar);
+		DrawStripedInsetTitleBar(dc, titleBar, dayTheme);
 		CRect titleBarMoveRect = InsetTitleBarMoveRect(mode, areaValue, showFilter, allowResize);
 		if (!titleBarMoveRect.IsRectEmpty())
 			radarScreen->AddScreenObject(objectType, "topbar", titleBarMoveRect, true, "");
-		DrawInsetTitle(dc, titleBar, title);
+		DrawInsetTitle(dc, titleBar, title, dayTheme);
 		if (allowResize)
 			RegisterInsetResizeObjects(radarScreen, objectType, mode, areaValue);
 
 		if (showFilter && mode == AvisoLayoutMode::Floating)
 		{
-			const CRect filterRect = DrawInsetToolbarButton(dc, "F", titleBar, InsetToolbarRightOffset(1), mouseLocation);
+			const CRect filterRect = DrawInsetToolbarButton(dc, "F", titleBar, InsetToolbarRightOffset(1), mouseLocation, dayTheme);
 			radarScreen->AddScreenObject(objectType, "filter", filterRect, false, "");
 		}
 		const CRect closeRect = DrawInsetToolbarButton(
@@ -741,7 +753,8 @@ namespace VsmrInsetWindowInternal
 			"X",
 			titleBar,
 			InsetToolbarRightOffset(0),
-			mouseLocation);
+			mouseLocation,
+			dayTheme);
 		radarScreen->AddScreenObject(objectType, "close", closeRect, false, "");
 	}
 
@@ -762,7 +775,8 @@ void CInsetWindow::DrawWindowChrome(
 	const std::string& title,
 	bool showFilter,
 	POINT mouseLocation,
-	bool allowResize)
+	bool allowResize,
+	bool dayTheme)
 {
 	VsmrInsetWindowInternal::DrawInsetWindowChrome(
 		dc,
@@ -774,5 +788,6 @@ void CInsetWindow::DrawWindowChrome(
 		showFilter,
 		mouseLocation,
 		allowResize,
+		dayTheme,
 		&m_LastChromeRenderMilliseconds);
 }

@@ -169,13 +169,13 @@ bool CInsetWindow::UpdateWindowMove(POINT Pt, const RECT* layoutBounds)
 		const CRect snappedTitleBar = InsetTitleBarRect(m_AvisoLayoutMode, m_Area);
 		const double horizontalGrabRatio = std::clamp(
 			static_cast<double>(m_WindowInteractionStartPoint.x - snappedFrame.left) /
-				static_cast<double>(max(1, snappedFrame.Width())),
+				static_cast<double>((std::max)(1, snappedFrame.Width())),
 			0.08,
 			0.92);
 		const int titleGrabOffsetY = std::clamp(
 			static_cast<int>(m_WindowInteractionStartPoint.y - snappedTitleBar.top),
 			1,
-			max(1, static_cast<int>(snappedTitleBar.Height()) - 1));
+			(std::max)(1, static_cast<int>(snappedTitleBar.Height()) - 1));
 		FloatAvisoViewport(Pt, layoutBounds);
 		CRect detachedContent(m_Area);
 		detachedContent.NormalizeRect();
@@ -284,8 +284,8 @@ bool CInsetWindow::UpdateWindowMove(POINT Pt, const RECT* layoutBounds)
 		{
 			const int minimumLeft = static_cast<int>(bounds.left);
 			const int minimumTop = static_cast<int>(bounds.top);
-			const int maximumLeft = max(minimumLeft, static_cast<int>(bounds.right) - frame.Width());
-			const int maximumTop = max(minimumTop, static_cast<int>(bounds.bottom) - frame.Height());
+			const int maximumLeft = (std::max)(minimumLeft, static_cast<int>(bounds.right) - frame.Width());
+			const int maximumTop = (std::max)(minimumTop, static_cast<int>(bounds.bottom) - frame.Height());
 			snappedLeft = std::clamp(snappedLeft, minimumLeft, maximumLeft);
 			snappedTop = std::clamp(snappedTop, minimumTop, maximumTop);
 			m_SnapPreviewArea = {
@@ -470,8 +470,8 @@ bool CInsetWindow::UpdateWindowResize(POINT Pt, const RECT* layoutBounds)
 	if (resizeBottom)
 		frame.bottom += deltaY;
 
-	const int minFrameWidth = min(kAvisoMinLayoutWidth, bounds.Width());
-	const int minFrameHeight = min(kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight, bounds.Height());
+	const int minFrameWidth = (std::min)(kAvisoMinLayoutWidth, bounds.Width());
+	const int minFrameHeight = (std::min)(kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight, bounds.Height());
 	if (frame.Width() < minFrameWidth)
 	{
 		if (resizeLeft)
@@ -488,13 +488,13 @@ bool CInsetWindow::UpdateWindowResize(POINT Pt, const RECT* layoutBounds)
 	}
 
 	if (resizeLeft)
-		frame.left = max(frame.left, bounds.left);
+		frame.left = (std::max)(frame.left, bounds.left);
 	if (resizeRight)
-		frame.right = min(frame.right, bounds.right);
+		frame.right = (std::min)(frame.right, bounds.right);
 	if (resizeTop)
-		frame.top = max(frame.top, bounds.top);
+		frame.top = (std::max)(frame.top, bounds.top);
 	if (resizeBottom)
-		frame.bottom = min(frame.bottom, bounds.bottom);
+		frame.bottom = (std::min)(frame.bottom, bounds.bottom);
 
 	m_Area = {
 		frame.left,
@@ -579,7 +579,7 @@ void CInsetWindow::RenderSnapPreview(Gdiplus::Graphics& graphics) const
 		Gdiplus::Rect(preview.left, preview.top, preview.Width(), preview.Height()));
 	graphics.DrawRectangle(
 		&outline,
-		Gdiplus::Rect(preview.left + 1, preview.top + 1, max(1, preview.Width() - 2), max(1, preview.Height() - 2)));
+		Gdiplus::Rect(preview.left + 1, preview.top + 1, (std::max)(1, preview.Width() - 2), (std::max)(1, preview.Height() - 2)));
 	graphics.Restore(state);
 }
 
@@ -596,12 +596,12 @@ void CInsetWindow::ApplyAvisoLayoutBounds(const RECT* layoutBounds)
 	{
 		CRect area(m_Area);
 		area.NormalizeRect();
-		const int width = min(kTimerContentWidth, bounds.Width());
-		const int height = min(kTimerContentHeight, static_cast<int>(bounds.bottom) - contentTop);
+		const int width = (std::min)(kTimerContentWidth, bounds.Width());
+		const int height = (std::min)(kTimerContentHeight, static_cast<int>(bounds.bottom) - contentTop);
 		const int minimumLeft = static_cast<int>(bounds.left);
 		const int minimumTop = contentTop;
-		const int maximumLeft = max(minimumLeft, static_cast<int>(bounds.right) - width);
-		const int maximumTop = max(minimumTop, static_cast<int>(bounds.bottom) - height);
+		const int maximumLeft = (std::max)(minimumLeft, static_cast<int>(bounds.right) - width);
+		const int maximumTop = (std::max)(minimumTop, static_cast<int>(bounds.bottom) - height);
 		int left = static_cast<int>(area.left);
 		int top = static_cast<int>(area.top);
 		switch (m_AvisoLayoutMode)
@@ -682,8 +682,8 @@ void CInsetWindow::ApplyAvisoLayoutBounds(const RECT* layoutBounds)
 		const int minimumFrameHeight = kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight;
 		const int boundsWidth = static_cast<int>(bounds.Width());
 		const int boundsHeight = static_cast<int>(bounds.Height());
-		const int minimumWidth = min(kAvisoMinLayoutWidth, boundsWidth);
-		const int minimumHeight = min(minimumFrameHeight, boundsHeight);
+		const int minimumWidth = (std::min)(kAvisoMinLayoutWidth, boundsWidth);
+		const int minimumHeight = (std::min)(minimumFrameHeight, boundsHeight);
 		const int width = std::clamp(static_cast<int>(area.Width()), minimumWidth, boundsWidth);
 		const int height = std::clamp(static_cast<int>(area.Height()), minimumHeight, boundsHeight);
 		m_Area = AvisoCornerRectForFrameSize(m_AvisoLayoutMode, bounds, CSize(width, height));
@@ -692,8 +692,8 @@ void CInsetWindow::ApplyAvisoLayoutBounds(const RECT* layoutBounds)
 	case AvisoLayoutMode::Floating:
 	default:
 	{
-		const int maxWidth = max(kAvisoMinLayoutWidth, bounds.Width());
-		const int maxHeight = max(kAvisoMinLayoutHeight, bounds.Height() - kAvisoViewportTopBarHeight);
+		const int maxWidth = (std::max)(kAvisoMinLayoutWidth, bounds.Width());
+		const int maxHeight = (std::max)(kAvisoMinLayoutHeight, bounds.Height() - kAvisoViewportTopBarHeight);
 		int width = std::clamp(area.Width(), kAvisoMinLayoutWidth, maxWidth);
 		int height = std::clamp(area.Height(), kAvisoMinLayoutHeight, maxHeight);
 		if (width > bounds.Width())
@@ -701,8 +701,8 @@ void CInsetWindow::ApplyAvisoLayoutBounds(const RECT* layoutBounds)
 		if (height > bounds.bottom - contentTop)
 			height = bounds.bottom - contentTop;
 
-		const int leftMax = max(bounds.left, bounds.right - width);
-		const int topMax = max(contentTop, bounds.bottom - height);
+		const int leftMax = (std::max)(bounds.left, bounds.right - width);
+		const int topMax = (std::max<LONG>)(contentTop, bounds.bottom - height);
 		const int left = std::clamp(static_cast<int>(area.left), static_cast<int>(bounds.left), leftMax);
 		const int top = std::clamp(static_cast<int>(area.top), contentTop, topMax);
 		m_Area = { left, top, left + width, top + height };
@@ -821,7 +821,7 @@ bool CInsetWindow::UpdateAvisoPan(POINT Pt)
 		return true;
 	}
 
-	const int scale = max(1, m_AvisoScale);
+	const int scale = (std::max)(1, m_AvisoScale);
 	const double metersPerPixel = kAvisoMetersPerNm / static_cast<double>(scale);
 	const double lonDegreesPerPixel = metersPerPixel / (kAvisoLonMetersPerDegree * AvisoCosLatitude(m_AvisoDragStartLatitude));
 	const double latDegreesPerPixel = metersPerPixel / kAvisoLatMetersPerDegree;
@@ -850,21 +850,21 @@ void CInsetWindow::FloatAvisoViewport(POINT Pt, const RECT* layoutBounds)
 	const bool preserveCornerSize = IsAvisoCornerLayout(m_AvisoLayoutMode);
 	const int detachedWidth = preserveCornerSize
 		? currentArea.Width()
-		: min(
-			max(kAvisoMinLayoutWidth, currentArea.Width() - 40),
+		: (std::min)(
+			(std::max)(kAvisoMinLayoutWidth, currentArea.Width() - 40),
 			std::clamp(currentArea.Width() / 2, kAvisoMinLayoutWidth, 620));
 	const int detachedHeight = preserveCornerSize
 		? currentArea.Height()
-		: min(
-			max(kAvisoMinLayoutHeight, currentArea.Height() - 40),
+		: (std::min)(
+			(std::max)(kAvisoMinLayoutHeight, currentArea.Height() - 40),
 			std::clamp(currentArea.Height() / 2, kAvisoMinLayoutHeight, 380));
 
 	const double xRatio = std::clamp(
-		static_cast<double>(Pt.x - currentArea.left) / static_cast<double>(max(1, currentArea.Width())),
+		static_cast<double>(Pt.x - currentArea.left) / static_cast<double>((std::max)(1, currentArea.Width())),
 		0.15,
 		0.85);
 	const double yRatio = std::clamp(
-		static_cast<double>(Pt.y - currentArea.top) / static_cast<double>(max(1, currentArea.Height())),
+		static_cast<double>(Pt.y - currentArea.top) / static_cast<double>((std::max)(1, currentArea.Height())),
 		0.15,
 		0.85);
 	const int left = Pt.x - static_cast<int>(std::lround(static_cast<double>(detachedWidth) * xRatio));
@@ -935,7 +935,7 @@ bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
 	const double dx = static_cast<double>(localOffset.X);
 	const double dy = static_cast<double>(localOffset.Y);
 
-	const int oldScale = max(1, m_AvisoScale);
+	const int oldScale = (std::max)(1, m_AvisoScale);
 	const double oldMetersPerPixel = kAvisoMetersPerNm / static_cast<double>(oldScale);
 	const double oldLonDegreesPerPixel = oldMetersPerPixel / (kAvisoLonMetersPerDegree * AvisoCosLatitude(m_AvisoCenterLatitude));
 	const double oldLatDegreesPerPixel = oldMetersPerPixel / kAvisoLatMetersPerDegree;
@@ -1109,8 +1109,8 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 			(m_Area.right - m_Area.left) / 2,
 			(m_Area.bottom - (m_Area.top + 15)) / 2
 		};
-		m_Offset.x = max(-maxoffset.x, min(maxoffset.x, m_OffsetInit.x + (Pt.x - m_OffsetDrag.x)));
-		m_Offset.y = max(-maxoffset.y, min(maxoffset.y, m_OffsetInit.y + (Pt.y - m_OffsetDrag.y)));
+		m_Offset.x = (std::max)(-maxoffset.x, (std::min)(maxoffset.x, m_OffsetInit.x + (Pt.x - m_OffsetDrag.x)));
+		m_Offset.y = (std::max)(-maxoffset.y, (std::min)(maxoffset.y, m_OffsetInit.y + (Pt.y - m_OffsetDrag.y)));
 
 		if (Released)
 		{
@@ -1178,7 +1178,7 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 		strcmp(sObjectId, "divider_x") != 0 &&
 		strcmp(sObjectId, "divider_y") != 0)
 	{
-		string callsign = sObjectId;
+		std::string callsign = sObjectId;
 		if (!callsign.empty())
 		{
 			POINT tagCenter{};

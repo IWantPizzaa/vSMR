@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 #include "control_center/ControlCenterBridge.Internal.hpp"
 
 #include "aviso/AvisoDocumentModel.hpp"
@@ -256,7 +257,7 @@ void VsmrControlCenterBridgeImpl::EvaluateAvisoHealth(
 			AvisoDocumentModel::ValidateSerializedInputLimits(
 				avisoJson,
 				inputError) &&
-			!parsed.Parse<0>(avisoJson.c_str()).HasParseError() &&
+			!VsmrJson::ParseDocument(parsed, avisoJson).HasParseError() &&
 			parsed.IsObject() &&
 			parsed.HasMember("type") &&
 			parsed["type"].IsString() &&
@@ -336,7 +337,7 @@ void VsmrControlCenterBridgeImpl::BuildSettings(
 		allocator);
 	CSMRPlugin* plugin = OwnerPlugin();
 	const std::string aliasPath = plugin != nullptr
-		? plugin->GetDatalinkControlState().cdmAliasPath
+		? plugin->GetDatalinkControlState().aliasPath
 		: std::string();
 	AddString(settings, "aliasFile", aliasPath, allocator);
 	AddString(
@@ -345,29 +346,21 @@ void VsmrControlCenterBridgeImpl::BuildSettings(
 		Owner->GetSmallTargetIconBoostResolutionPreset(),
 		allocator);
 	settings.AddMember("showFps", Owner->ShowFps, allocator);
+	AddString(settings, "uiColorTheme", Owner->GetUiColorTheme(), allocator);
 	AddString(settings, "avisoColorPalette", Owner->GetAvisoColorPalette(), allocator);
+	rapidjson::Value avisoColorPalettes(rapidjson::kArrayType);
+	for (const std::string& palette : Owner->GetAvailableAvisoColorPalettes(Owner->getActiveAirport()))
+	{
+		rapidjson::Value value;
+		value.SetString(palette.c_str(), static_cast<rapidjson::SizeType>(palette.size()), allocator);
+		avisoColorPalettes.PushBack(value, allocator);
+	}
+	settings.AddMember("avisoColorPalettes", avisoColorPalettes, allocator);
 
 	rapidjson::Value dataHealth(rapidjson::kObjectType);
 	const bool configHealthy =
 		Owner->CurrentConfig != nullptr && Owner->CurrentConfig->isConfigHealthy();
 	dataHealth.AddMember("profilesHealthy", configHealthy, allocator);
-	dataHealth.AddMember(
-		"profilesUsingBackup",
-		Owner->CurrentConfig != nullptr && Owner->CurrentConfig->isUsingBackup(),
-		allocator);
-	const bool profilesBackupAvailable =
-		Owner->CurrentConfig != nullptr && Owner->CurrentConfig->isBackupAvailable();
-	dataHealth.AddMember(
-		"profilesBackupAvailable",
-		profilesBackupAvailable,
-		allocator);
-	AddInt64(
-		dataHealth,
-		"profilesBackupModifiedUnixSeconds",
-		profilesBackupAvailable
-			? Owner->CurrentConfig->getBackupModifiedUnixSeconds()
-			: 0,
-		allocator);
 	AddString(
 		dataHealth,
 		"profilesMessage",
@@ -483,7 +476,7 @@ void VsmrControlCenterBridgeImpl::SendAvisoState(const std::string& requestId)
 	EvaluateAvisoHealth(path, healthy, validationError);
 	const bool valid = healthy &&
 		!AvisoHealthCacheDocumentJson.empty() &&
-		!aviso.Parse<0>(AvisoHealthCacheDocumentJson.c_str()).HasParseError() &&
+		!VsmrJson::ParseDocument(aviso, AvisoHealthCacheDocumentJson).HasParseError() &&
 		aviso.IsObject();
 	if (!valid)
 	{

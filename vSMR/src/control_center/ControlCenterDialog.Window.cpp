@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "control_center/ControlCenterDialog.Internal.hpp"
 
@@ -200,7 +201,7 @@ void CVsmrControlCenterDialog::RestoreWindowPlacementOrDefault(
 	if (ReadTextFile(path, text, kMaximumWindowPlacementBytes))
 	{
 		rapidjson::Document document;
-		document.Parse<0>(text.c_str());
+		VsmrJson::ParseDocument(document, text);
 		if (!document.HasParseError() && document.IsObject())
 		{
 			auto readInt = [&](const char* key, int fallbackValue)
@@ -262,14 +263,14 @@ void CVsmrControlCenterDialog::SaveWindowPlacement()
 
 	rapidjson::Document document;
 	document.SetObject();
-	document.AddMember("x", window.left, document.GetAllocator());
-	document.AddMember("y", window.top, document.GetAllocator());
+	document.AddMember("x", static_cast<int>(window.left), document.GetAllocator());
+	document.AddMember("y", static_cast<int>(window.top), document.GetAllocator());
 	rapidjson::StringBuffer buffer;
 	rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
 	document.Accept(writer);
 	if (WriteTextFileAtomically(
 		std::filesystem::path(WindowPlacementPath()),
-		std::string(buffer.GetString(), buffer.Size())))
+		std::string(buffer.GetString(), buffer.GetSize())))
 		WindowPlacementDirty = false;
 }
 

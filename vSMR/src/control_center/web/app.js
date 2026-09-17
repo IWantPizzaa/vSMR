@@ -111,7 +111,7 @@
       ["update", "preset"].includes(reason);
     const externallyChangedDirtyEditors =
 	  (state.dirty || hasUnappliedEditorWork) &&
-	  ["resource-source", "external-save", "backup-restored", "profile", "mode"].includes(reason);
+	  ["resource-source", "external-save", "profile", "mode"].includes(reason);
     const incomingAirport = normalizeAirportCode(
       typeof incoming.airport === "string" ? incoming.airport : state.hostAirport
     );
@@ -122,7 +122,7 @@
     const profileModeReplacement = !preservesStagedEditors &&
       ["profile", "mode"].includes(reason) && Array.isArray(incoming.profiles);
     const resetsSavedBaseline = !preservesStagedEditors && (
-      ["external-save", "backup-restored"].includes(reason) ||
+	  reason === "external-save" ||
       profileModeReplacement || hostAirportChanged
     );
     let avisoChanged = false;
@@ -135,15 +135,15 @@
       state.configRevision = incoming.configRevision;
     if (!preservesStagedEditors && typeof incoming.avisoRevision === "string")
       state.avisoRevision = incoming.avisoRevision;
-    if (["initial", "reload", "backup-restored", "resource-source"].includes(reason))
+    if (["initial", "reload", "resource-source"].includes(reason))
       state.recoveryConfirmed = false;
-    if (["initial", "reload", "backup-restored", "resource-source"].includes(reason))
+    if (["initial", "reload", "resource-source"].includes(reason))
       state.avisoRecoveryConfirmed = false;
     if (!preservesStagedEditors)
       state.externalEditConflict = false;
     else if (externallyChangedDirtyEditors)
       state.externalEditConflict = true;
-    if (["initial", "reload", "backup-restored"].includes(reason) &&
+    if (["initial", "reload"].includes(reason) &&
       persistentStatusState?.origin === "native")
       setPersistentStatus("", "", [], "native");
 
@@ -515,6 +515,7 @@
 
   applyQueryState();
   initializeScrollCues();
+  initializeInteractionHelp();
   bindEvents();
   renderAll();
   resetSavedSnapshot();

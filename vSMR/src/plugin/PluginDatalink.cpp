@@ -7,8 +7,9 @@
 #include "bootstrap/RuntimeContext.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashReporter.hpp"
-#include "datalink/CdmReminderSafety.hpp"
 #include "datalink/DatalinkProtocolSupport.hpp"
+#include "integrations/CdmBridgeClient.hpp"
+#include "platform/windows/EuroScopeCommandLine.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "shared/TextUtils.hpp"
@@ -31,9 +32,6 @@
 #include <mutex>
 #include <new>
 #include <set>
-#include <sstream>
-
-#include "rapidjson/document.h"
 
 using VsmrDatalinkProtocol::BuildHoppieLoginFailureMessage;
 using VsmrDatalinkProtocol::EncodeUrlQueryComponent;
@@ -54,86 +52,36 @@ std::atomic<unsigned long long> HoppiePollGeneration(0);
 std::atomic<bool> ConnectionMessage(false);
 std::atomic<bool> FailedToConnectMessage(false);
 
-string logonCode = "";
-string logonCallsign = "EGKK";
+std::string logonCode = "";
+std::string logonCallsign = "EGKK";
 
 std::string DatalinkStatusMessage = "Disconnected.";
 std::mutex DatalinkControlMutex;
 
-const string baseUrlDatalink = "https://www.hoppie.nl/acars/system/connect.html";
+const std::string baseUrlDatalink = "https://www.hoppie.nl/acars/system/connect.html";
 
-vector<string> AircraftDemandingClearance;
-vector<string> AircraftMessageSent;
-vector<string> AircraftMessage;
-vector<string> AircraftWilco;
-vector<string> AircraftStandby;
+std::vector<std::string> AircraftDemandingClearance;
+std::vector<std::string> AircraftMessageSent;
+std::vector<std::string> AircraftMessage;
+std::vector<std::string> AircraftWilco;
+std::vector<std::string> AircraftStandby;
 std::set<std::string> AircraftDatalinkClearedCallsigns;
 std::set<std::string> AircraftDatalinkClearanceInFlightCallsigns;
-map<string, std::chrono::steady_clock::time_point> AircraftCdmTobtReminderSentAt;
-std::set<std::string> AircraftCdmReminderSubmittedCallsigns;
 
-std::deque<QueuedCdmReminderMessage> CdmReminderMessageQueue;
-
-std::atomic<bool> CdmAutoModeEnabled(false);
-std::atomic<int> CdmAutoDelayMinutes(5);
-
-map<string, CdmAutoTrackedAircraftState> AircraftCdmAutoTracked;
-std::string CdmAutoTrackedAirport;
-unsigned long long CdmAutoSessionGeneration = 1;
-map<string, AcarsMessage> PendingMessages;
+std::map<std::string, AcarsMessage> PendingMessages;
 // Guards all mutable CPDLC message state used by worker threads.
 std::mutex DatalinkStateMutex;
-std::atomic<int> CdmReminderCooldownMinutes(60);
 
 std::atomic<int> messageId(0);
 
 PluginSteadyClock::time_point DatalinkLastPollAt;
 
-
-// Snapshot cache of the latest vACDM pilot data keyed by normalized callsign.
-std::mutex VacdmPilotsMutex;
-std::map<std::string, VacdmPilotData> VacdmPilots;
-std::atomic<bool> VacdmFetchInProgress(false);
-std::atomic<PluginSteadyTick> VacdmLastFetchTick(0);
-const int VacdmFetchIntervalSeconds = 15;
-const std::string VacdmPilotsUrlDefault = "https://app.vacdm.net/api/v1/pilots";
 std::mutex ProfilesSourceMutex;
 std::string ActiveProfilesConfigPath;
 bool ActiveProfilesConfigPathClaimed = false;
-unsigned long long ProfilesSourceGeneration = 0;
-// Guarded by ProfilesSourceMutex. Workers consume only a copied snapshot.
-std::string VacdmConfiguredServerUrl;
-std::atomic<bool> VacdmPollingEnabled(false);
-std::atomic<unsigned long> VacdmFetchCounter(0);
-std::atomic<unsigned long> VacdmLastSehCode(0);
-std::mutex VacdmDebugStateMutex;
-std::string VacdmDebugAselCallsign;
-unsigned long long VacdmSuccessfulSnapshotSourceGeneration = 0;
-std::chrono::steady_clock::time_point VacdmSuccessfulSnapshotAt;
 
-	const std::time_t CdmWarningCooldownSeconds = 60;
-	const int CdmReminderQueueMaxSendAttempts = 20;
-	const int CdmReminderRetryDelaySeconds = 5;
-	const int CdmMaximumMinutes = 24 * 60;
-	const int VacdmSnapshotMaximumAgeSeconds = VacdmFetchIntervalSeconds * 4;
 	const size_t HoppieResponseLimitBytes = 1024U * 1024U;
-	const size_t VacdmResponseLimitBytes = 16U * 1024U * 1024U;
 
-PluginSteadyTick CurrentSteadyTick() noexcept
-{
-	return std::chrono::duration_cast<std::chrono::milliseconds>(
-		PluginSteadyClock::now().time_since_epoch()).count();
-}
-
-bool HasSteadyIntervalElapsed(
-	PluginSteadyTick now,
-	PluginSteadyTick previous,
-	std::chrono::seconds interval) noexcept
-{
-	return previous == 0 ||
-		now - previous >=
-			std::chrono::duration_cast<std::chrono::milliseconds>(interval).count();
-}
 	DatalinkCredentialsSnapshot SnapshotDatalinkCredentials()
 	{
 		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
@@ -157,89 +105,9 @@ bool HasSteadyIntervalElapsed(
 
 	bool StartDatalinkPoll(bool reportStatus, std::string& error);
 
-	bool HasSubmittedTobtState(const VacdmPilotData& pilotData);
 
-	std::string KeepAsciiAlnumCopy(const std::string& text)
-	{
-		std::string normalized;
-		normalized.reserve(text.size());
-		for (char c : text)
-		{
-			if (std::isalnum(static_cast<unsigned char>(c)) != 0)
-				normalized.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
-		}
-		return normalized;
-	}
 
-	std::string StripAtFirstCallsignDelimiter(const std::string& text)
-	{
-		const size_t pos = text.find_first_of("/\\ _.-");
-		if (pos == std::string::npos)
-			return text;
-		return text.substr(0, pos);
-	}
 
-	std::vector<std::string> BuildVacdmLookupCandidates(const std::string& callsign)
-	{
-		std::vector<std::string> candidates;
-		auto pushUnique = [&](const std::string& value) {
-			const std::string candidate = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(value));
-			if (candidate.empty())
-				return;
-			if (std::find(candidates.begin(), candidates.end(), candidate) != candidates.end())
-				return;
-			candidates.push_back(candidate);
-			};
-
-		const std::string trimmed = TrimAsciiWhitespaceCopy(callsign);
-		pushUnique(trimmed);
-		pushUnique(StripAtFirstCallsignDelimiter(trimmed));
-		pushUnique(KeepAsciiAlnumCopy(trimmed));
-
-		const size_t slashPos = trimmed.find('/');
-		if (slashPos != std::string::npos)
-			pushUnique(trimmed.substr(0, slashPos));
-
-		return candidates;
-	}
-
-	bool TryParseNonNegativeInt(const std::string& text, int& outValue)
-	{
-		outValue = 0;
-		const std::string trimmed = TrimAsciiWhitespaceCopy(text);
-		if (trimmed.empty())
-			return false;
-
-		char* end = nullptr;
-		const long parsed = std::strtol(trimmed.c_str(), &end, 10);
-		if (end == trimmed.c_str() || parsed < 0 || parsed > 24 * 60)
-			return false;
-
-		const std::string trailing = TrimAsciiWhitespaceCopy(end != nullptr ? std::string(end) : std::string());
-		if (!trailing.empty())
-			return false;
-
-		outValue = static_cast<int>(parsed);
-		return true;
-	}
-
-	bool IsNoStatusGroundState(const char* rawGroundState)
-	{
-		const std::string raw = rawGroundState != nullptr ? rawGroundState : "";
-		const std::string trimmed = TrimAsciiWhitespaceCopy(raw);
-		if (trimmed.empty())
-			return true;
-
-		std::string normalized;
-		normalized.reserve(trimmed.size());
-		for (char c : trimmed)
-		{
-			if (std::isalnum(static_cast<unsigned char>(c)) != 0)
-				normalized.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
-		}
-
-		return normalized.empty() || normalized == "NSTS" || normalized == "NOSTATUS";
-	}
 
 	std::string ResolveActiveAirportFilterUpper()
 	{
@@ -264,208 +132,9 @@ bool HasSteadyIntervalElapsed(
 		return resolvedAirport;
 	}
 
-	bool TryResolveActiveAirportPosition(
-		const std::string& activeAirport,
-		CPosition& outPosition)
+	bool IsCdmBridgeReady()
 	{
-		if (activeAirport.empty() ||
-			ResolveActiveAirportFilterUpper() != activeAirport)
-		{
-			return false;
-		}
-
-		for (CSMRRadar* radar : RadarScreensOpened)
-		{
-			if (radar == nullptr || radar->IsShutdownRequested())
-				continue;
-			const std::string radarAirport = ToUpperAsciiCopy(
-				TrimAsciiWhitespaceCopy(radar->getActiveAirport()));
-			if (radarAirport == activeAirport &&
-				radar->TryGetActiveAirportPosition(outPosition))
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	bool IsVacdmSnapshotReadyForCdm()
-	{
-		std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
-		if (!VacdmPollingEnabled.load(std::memory_order_acquire) ||
-			VacdmSuccessfulSnapshotSourceGeneration != ProfilesSourceGeneration ||
-			VacdmSuccessfulSnapshotAt == std::chrono::steady_clock::time_point())
-		{
-			return false;
-		}
-
-		return std::chrono::steady_clock::now() - VacdmSuccessfulSnapshotAt <=
-			std::chrono::seconds(VacdmSnapshotMaximumAgeSeconds);
-	}
-
-	std::vector<std::string> CollectFlightPlanCandidateCallsignsForActiveAirport(
-		EuroScopePlugIn::CPlugIn* plugIn,
-		const std::string& activeAirportFilter)
-	{
-		std::vector<std::string> candidateCallsigns;
-		if (plugIn == nullptr || activeAirportFilter.empty())
-			return candidateCallsigns;
-		if (ResolveActiveAirportFilterUpper() != activeAirportFilter)
-			return candidateCallsigns;
-
-		CPosition airportPosition;
-		if (!TryResolveActiveAirportPosition(activeAirportFilter, airportPosition))
-			return candidateCallsigns;
-
-		candidateCallsigns.reserve(256);
-
-		auto addUniqueCallsign = [&](const std::string& rawCallsign)
-		{
-			const std::string callsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rawCallsign));
-			if (callsign.empty())
-				return;
-			if (std::find(candidateCallsigns.begin(), candidateCallsigns.end(), callsign) == candidateCallsigns.end())
-				candidateCallsigns.push_back(callsign);
-		};
-
-		std::size_t flightPlanGuard = 0;
-		for (CFlightPlan fp = plugIn->FlightPlanSelectFirst();
-			fp.IsValid() && flightPlanGuard < 4096;
-			fp = plugIn->FlightPlanSelectNext(fp), ++flightPlanGuard)
-		{
-			const char* fpCallsignRaw = fp.GetCallsign();
-			if (fpCallsignRaw == nullptr || fpCallsignRaw[0] == '\0')
-				continue;
-
-			const char* originRaw = fp.GetFlightPlanData().GetOrigin();
-			const std::string origin = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(originRaw != nullptr ? originRaw : ""));
-			CRadarTarget correlatedTarget = fp.GetCorrelatedRadarTarget();
-			CRadarTargetPositionData targetPosition;
-			if (correlatedTarget.IsValid())
-				targetPosition = correlatedTarget.GetPosition();
-
-			VsmrCdmReminderSafety::EligibilitySnapshot safety;
-			safety.activeAirportResolved = true;
-			safety.originMatchesActiveAirport = origin == activeAirportFilter;
-			safety.flightPlanNotStarted =
-				fp.GetFPState() == FLIGHT_PLAN_STATE_NOT_STARTED;
-			safety.simulatedFlightPlan = fp.GetSimulated();
-			safety.radarTargetValid = correlatedTarget.IsValid();
-			safety.radarPositionValid = targetPosition.IsValid();
-			safety.noGroundStatus = IsNoStatusGroundState(fp.GetGroundState());
-			if (targetPosition.IsValid())
-			{
-				safety.positionAgeSeconds = targetPosition.GetReceivedTime();
-				safety.groundSpeedKnots = (std::max)(
-					correlatedTarget.GetGS(),
-					targetPosition.GetReportedGS());
-				safety.verticalSpeedFeetPerMinute =
-					correlatedTarget.GetVerticalSpeed();
-				safety.airportDistanceNauticalMiles =
-					airportPosition.DistanceTo(targetPosition.GetPosition());
-			}
-			if (!VsmrCdmReminderSafety::IsEligible(safety))
-				continue;
-
-			addUniqueCallsign(fpCallsignRaw);
-		}
-
-		return candidateCallsigns;
-	}
-
-	void PruneCdmReminderHistoryUnlocked(std::chrono::steady_clock::time_point now)
-	{
-		int cooldownMinutes = CdmReminderCooldownMinutes.load(std::memory_order_relaxed);
-		if (cooldownMinutes < 0)
-			cooldownMinutes = 0;
-		// Zero disables repeated reminders for the current eligibility period.
-		if (cooldownMinutes == 0)
-			return;
-		const auto cooldown = std::chrono::minutes(cooldownMinutes);
-		for (auto it = AircraftCdmTobtReminderSentAt.begin(); it != AircraftCdmTobtReminderSentAt.end();)
-		{
-			if (now - it->second >= cooldown)
-				it = AircraftCdmTobtReminderSentAt.erase(it);
-			else
-				++it;
-		}
-	}
-
-	bool HasRecentCdmReminderUnlocked(
-		const std::string& callsign,
-		std::chrono::steady_clock::time_point now)
-	{
-		auto it = AircraftCdmTobtReminderSentAt.find(callsign);
-		if (it == AircraftCdmTobtReminderSentAt.end())
-			return false;
-
-		int cooldownMinutes = CdmReminderCooldownMinutes.load(std::memory_order_relaxed);
-		if (cooldownMinutes < 0)
-			cooldownMinutes = 0;
-		if (cooldownMinutes == 0)
-			return true;
-		if (now - it->second >= std::chrono::minutes(cooldownMinutes))
-		{
-			AircraftCdmTobtReminderSentAt.erase(it);
-			return false;
-		}
-
-		return true;
-	}
-
-	void MarkCdmReminderSentUnlocked(
-		const std::string& callsign,
-		std::chrono::steady_clock::time_point now)
-	{
-		AircraftCdmTobtReminderSentAt[callsign] = now;
-	}
-
-	bool IsCdmReminderQueuedUnlocked(const std::string& callsign)
-	{
-		return std::any_of(
-			CdmReminderMessageQueue.begin(),
-			CdmReminderMessageQueue.end(),
-			[&](const QueuedCdmReminderMessage& queued)
-			{
-				return queued.callsign == callsign;
-			});
-	}
-
-	bool QueueCdmReminderUnlocked(
-		const std::string& callsign,
-		const std::string& activeAirport,
-		const std::string& message,
-		bool automatic)
-	{
-		if (callsign.empty() || activeAirport.empty() || message.empty())
-			return false;
-		if (IsCdmReminderQueuedUnlocked(callsign))
-			return false;
-
-		QueuedCdmReminderMessage queued;
-		queued.callsign = callsign;
-		queued.activeAirport = activeAirport;
-		queued.message = message;
-		queued.sendAttempts = 0;
-		queued.automatic = automatic;
-		queued.automaticSessionGeneration = automatic ? CdmAutoSessionGeneration : 0;
-		queued.nextAttemptAt = std::chrono::steady_clock::now();
-		CdmReminderMessageQueue.push_back(queued);
-		return true;
-	}
-
-	void RemoveQueuedCdmReminderUnlocked(const std::string& callsign)
-	{
-		CdmReminderMessageQueue.erase(
-			std::remove_if(
-				CdmReminderMessageQueue.begin(),
-				CdmReminderMessageQueue.end(),
-				[&](const QueuedCdmReminderMessage& queued)
-				{
-					return queued.callsign == callsign;
-				}),
-			CdmReminderMessageQueue.end());
+		return VsmrCdm::GetInterfaceState().providerReady;
 	}
 
 	std::string NormalizeCallsignForState(const std::string& callsign)
@@ -489,28 +158,12 @@ bool HasSteadyIntervalElapsed(
 			AircraftDatalinkClearanceInFlightCallsigns.end();
 	}
 
-	bool HasCdmReminderSubmittedUnlocked(const std::string& callsign)
-	{
-		const std::string normalizedCallsign = NormalizeCallsignForState(callsign);
-		return !normalizedCallsign.empty() &&
-			AircraftCdmReminderSubmittedCallsigns.find(normalizedCallsign) !=
-			AircraftCdmReminderSubmittedCallsigns.end();
-	}
-
-	void MarkCdmReminderSubmittedUnlocked(const std::string& callsign)
-	{
-		const std::string normalizedCallsign = NormalizeCallsignForState(callsign);
-		if (!normalizedCallsign.empty())
-			AircraftCdmReminderSubmittedCallsigns.insert(normalizedCallsign);
-	}
-
 	void MarkDatalinkClearanceInFlightUnlocked(const std::string& callsign)
 	{
 		const std::string normalizedCallsign = NormalizeCallsignForState(callsign);
 		if (normalizedCallsign.empty())
 			return;
 		AircraftDatalinkClearanceInFlightCallsigns.insert(normalizedCallsign);
-		RemoveQueuedCdmReminderUnlocked(normalizedCallsign);
 	}
 
 	void ClearDatalinkClearanceInFlightUnlocked(const std::string& callsign)
@@ -528,7 +181,6 @@ bool HasSteadyIntervalElapsed(
 
 		AircraftDatalinkClearedCallsigns.insert(normalizedCallsign);
 		AircraftDatalinkClearanceInFlightCallsigns.erase(normalizedCallsign);
-		RemoveQueuedCdmReminderUnlocked(normalizedCallsign);
 	}
 
 	void ClearDatalinkClearanceSentUnlocked(const std::string& callsign)
@@ -540,121 +192,11 @@ bool HasSteadyIntervalElapsed(
 		AircraftDatalinkClearedCallsigns.erase(normalizedCallsign);
 	}
 
-	CdmQueueReminderOutcome TryQueueCdmReminderForCallsign(
-		EuroScopePlugIn::CPlugIn* plugIn,
-		const std::string& callsign,
-		const std::string& reminderMessage,
-		std::chrono::steady_clock::time_point now,
-		bool* outVacdmEvaluated,
-		bool* outHasVacdmData,
-		bool automatic)
-	{
-		if (outVacdmEvaluated != nullptr)
-			*outVacdmEvaluated = false;
-		if (outHasVacdmData != nullptr)
-			*outHasVacdmData = false;
-
-		const std::string normalizedCallsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
-		const std::string activeAirport = ResolveActiveAirportFilterUpper();
-		if (plugIn == nullptr || normalizedCallsign.empty() ||
-			activeAirport.empty() || reminderMessage.empty())
-			return CdmQueueReminderOutcome::Failed;
-		if (!IsCallsignEligibleForCdmReminderNow(plugIn, normalizedCallsign))
-			return CdmQueueReminderOutcome::Failed;
-
-		{
-			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-			if (automatic && HasCdmReminderSubmittedUnlocked(normalizedCallsign))
-				return CdmQueueReminderOutcome::AlreadyNotified;
-			if (HasRecentCdmReminderUnlocked(normalizedCallsign, now))
-				return CdmQueueReminderOutcome::AlreadyNotified;
-			if (IsCdmReminderQueuedUnlocked(normalizedCallsign))
-				return CdmQueueReminderOutcome::AlreadyQueued;
-			if (HasDatalinkClearanceSentUnlocked(normalizedCallsign) ||
-				HasDatalinkClearanceInFlightUnlocked(normalizedCallsign))
-				return CdmQueueReminderOutcome::AlreadyCleared;
-		}
-
-		VacdmPilotData pilotData;
-		const bool hasVacdmData = TryGetVacdmPilotData(normalizedCallsign, pilotData);
-		if (outVacdmEvaluated != nullptr)
-			*outVacdmEvaluated = true;
-		if (outHasVacdmData != nullptr)
-			*outHasVacdmData = hasVacdmData;
-
-		if (hasVacdmData && HasSubmittedTobtState(pilotData))
-			return CdmQueueReminderOutcome::HasSubmittedTobt;
-
-		// Rechecking after the unlocked vACDM lookup before committing to the queue
-		if (ResolveActiveAirportFilterUpper() != activeAirport ||
-			!IsCallsignEligibleForCdmReminderNow(plugIn, normalizedCallsign))
-		{
-			return CdmQueueReminderOutcome::Failed;
-		}
-		{
-			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-			if (automatic && HasCdmReminderSubmittedUnlocked(normalizedCallsign))
-				return CdmQueueReminderOutcome::AlreadyNotified;
-			if (HasRecentCdmReminderUnlocked(normalizedCallsign, now))
-				return CdmQueueReminderOutcome::AlreadyNotified;
-			if (IsCdmReminderQueuedUnlocked(normalizedCallsign))
-				return CdmQueueReminderOutcome::AlreadyQueued;
-			if (HasDatalinkClearanceSentUnlocked(normalizedCallsign) ||
-				HasDatalinkClearanceInFlightUnlocked(normalizedCallsign))
-				return CdmQueueReminderOutcome::AlreadyCleared;
-			if (!QueueCdmReminderUnlocked(
-				normalizedCallsign,
-				activeAirport,
-				reminderMessage,
-				automatic))
-				return CdmQueueReminderOutcome::Failed;
-		}
-
-		return CdmQueueReminderOutcome::Queued;
-	}
-
-	void ClearCdmAutoTrackingState(bool clearQueuedAutomaticReminders)
+	void ResetDatalinkClearanceState()
 	{
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		const bool hadAutomaticQueue = std::any_of(
-			CdmReminderMessageQueue.begin(),
-			CdmReminderMessageQueue.end(),
-			[](const QueuedCdmReminderMessage& reminder)
-			{
-				return reminder.automatic;
-			});
-		if (!AircraftCdmAutoTracked.empty() || !CdmAutoTrackedAirport.empty() ||
-			(clearQueuedAutomaticReminders && hadAutomaticQueue))
-		{
-			++CdmAutoSessionGeneration;
-		}
-		AircraftCdmAutoTracked.clear();
-		CdmAutoTrackedAirport.clear();
-		if (clearQueuedAutomaticReminders)
-		{
-			CdmReminderMessageQueue.erase(
-				std::remove_if(
-					CdmReminderMessageQueue.begin(),
-					CdmReminderMessageQueue.end(),
-					[](const QueuedCdmReminderMessage& reminder)
-					{
-						return reminder.automatic;
-					}),
-				CdmReminderMessageQueue.end());
-		}
-	}
-
-	void ResetCdmReminderSessionState()
-	{
-		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		AircraftCdmAutoTracked.clear();
-		CdmAutoTrackedAirport.clear();
-		CdmReminderMessageQueue.clear();
-		AircraftCdmTobtReminderSentAt.clear();
-		AircraftCdmReminderSubmittedCallsigns.clear();
 		AircraftDatalinkClearedCallsigns.clear();
 		AircraftDatalinkClearanceInFlightCallsigns.clear();
-		++CdmAutoSessionGeneration;
 	}
 
 	bool ContainsCallsignUnlocked(const std::vector<std::string>& collection, const std::string& callsign)
@@ -673,29 +215,6 @@ bool HasSteadyIntervalElapsed(
 		collection.erase(std::remove(collection.begin(), collection.end(), callsign), collection.end());
 	}
 
-	std::string NormalizeVacdmServerUrl(std::string value)
-	{
-		value = TrimAsciiWhitespaceCopy(value);
-		while (!value.empty() && value.back() == '/')
-			value.pop_back();
-		std::string host;
-		if (value.find('?') != std::string::npos ||
-			!HttpHelper::IsValidHttpsUrl(value, &host))
-		{
-			return "";
-		}
-		const bool numericHost = !host.empty() &&
-			std::all_of(host.begin(), host.end(), [](unsigned char character) {
-				return std::isdigit(character) != 0 || character == '.';
-			});
-		const bool localHost = host == "localhost" ||
-			(host.size() > 10 && host.compare(host.size() - 10, 10, ".localhost") == 0) ||
-			(host.size() > 6 && host.compare(host.size() - 6, 6, ".local") == 0);
-		if (numericHost || localHost || host.find('.') == std::string::npos)
-			return "";
-		return value;
-	}
-
 	std::filesystem::path ResolveDefaultProfilesConfigPath()
 	{
 		const std::filesystem::path pluginDirectory =
@@ -706,107 +225,6 @@ bool HasSteadyIntervalElapsed(
 		if (std::filesystem::exists(dataConfigPath, ec))
 			return dataConfigPath;
 		return pluginDirectory / "vSMR_Profiles.json";
-	}
-
-	bool TryReadVacdmServerUrl(
-		const std::filesystem::path& configPath,
-		std::string& outServerUrl)
-	{
-		outServerUrl.clear();
-		if (configPath.empty())
-			return false;
-		std::ifstream input(configPath, std::ios::binary);
-
-		if (!input.is_open())
-			return false;
-
-		std::stringstream buffer;
-		buffer << input.rdbuf();
-		std::string json = buffer.str();
-		if (json.size() >= 3 &&
-			static_cast<unsigned char>(json[0]) == 0xEF &&
-			static_cast<unsigned char>(json[1]) == 0xBB &&
-			static_cast<unsigned char>(json[2]) == 0xBF)
-		{
-			json = json.substr(3);
-		}
-
-		rapidjson::Document document;
-		if (document.Parse<0>(json.c_str()).HasParseError() || !document.IsArray())
-			return false;
-
-		for (rapidjson::SizeType i = 0; i < document.Size(); ++i)
-		{
-			const rapidjson::Value& entry = document[i];
-			if (!entry.IsObject() ||
-				!entry.HasMember("_vsmr") ||
-				!entry["_vsmr"].IsObject())
-			{
-				continue;
-			}
-
-			const rapidjson::Value& metadata = entry["_vsmr"];
-			if (!metadata.HasMember("vacdm") || !metadata["vacdm"].IsObject())
-				continue;
-
-			const rapidjson::Value& vacdm = metadata["vacdm"];
-			if (!vacdm.HasMember("server_url") || !vacdm["server_url"].IsString())
-				continue;
-
-			const std::string value = NormalizeVacdmServerUrl(vacdm["server_url"].GetString());
-			if (value.empty())
-				continue;
-
-			outServerUrl = value;
-			return true;
-		}
-
-		return false;
-	}
-
-	std::string ResolveVacdmPilotsUrl(unsigned long long* sourceGeneration)
-	{
-		std::string serverUrl;
-		{
-			std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
-			serverUrl = VacdmConfiguredServerUrl;
-			if (sourceGeneration != nullptr)
-				*sourceGeneration = ProfilesSourceGeneration;
-		}
-		if (!serverUrl.empty())
-			return serverUrl + "/api/v1/pilots";
-		return VacdmPilotsUrlDefault;
-	}
-
-	bool TryParseIsoUtcTimestamp(const std::string& iso, std::time_t& outUtc)
-	{
-		outUtc = 0;
-		if (iso.size() < 19)
-			return false;
-
-		int year = 0;
-		int month = 0;
-		int day = 0;
-		int hour = 0;
-		int minute = 0;
-		int second = 0;
-		if (::sscanf_s(iso.c_str(), "%d-%d-%dT%d:%d:%d", &year, &month, &day, &hour, &minute, &second) != 6)
-			return false;
-
-		std::tm tmUtc = {};
-		tmUtc.tm_year = year - 1900;
-		tmUtc.tm_mon = month - 1;
-		tmUtc.tm_mday = day;
-		tmUtc.tm_hour = hour;
-		tmUtc.tm_min = minute;
-		tmUtc.tm_sec = second;
-		tmUtc.tm_isdst = 0;
-		std::time_t parsed = _mkgmtime(&tmUtc);
-		if (parsed <= 0)
-			return false;
-
-		outUtc = parsed;
-		return true;
 	}
 
 	std::string FormatUtcHhmm(std::time_t utcTime)
@@ -820,46 +238,6 @@ bool HasSteadyIntervalElapsed(
 		if (std::strftime(value, sizeof(value), "%H%M", &utc) != 4)
 			return "";
 		return value;
-	}
-
-	std::string FormatSehCode(unsigned long code)
-	{
-		char buffer[16] = {};
-		sprintf_s(buffer, "0x%08lX", code);
-		return std::string(buffer);
-	}
-
-	int CaptureVacdmSehCode(unsigned long sehCode)
-	{
-		VacdmLastSehCode.store(sehCode, std::memory_order_relaxed);
-		return EXCEPTION_EXECUTE_HANDLER;
-	}
-
-	bool HasSubmittedTobtState(const VacdmPilotData& pilotData)
-	{
-		if (!pilotData.hasTobt)
-			return false;
-
-		const std::string state = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(pilotData.tobtState));
-		if (state == "FLIGHTPLAN" || state == "GUESS" || state == "MISSING")
-			return false;
-		return true;
-	}
-
-	bool StartsWithTokenCaseInsensitive(const std::string& text, const std::string& token)
-	{
-		if (text.size() < token.size())
-			return false;
-		for (size_t i = 0; i < token.size(); ++i)
-		{
-			const unsigned char lhs = static_cast<unsigned char>(text[i]);
-			const unsigned char rhs = static_cast<unsigned char>(token[i]);
-			if (std::tolower(lhs) != std::tolower(rhs))
-				return false;
-		}
-		if (text.size() == token.size())
-			return true;
-		return std::isspace(static_cast<unsigned char>(text[token.size()])) != 0;
 	}
 
 	std::string StripEnclosingQuotesCopy(const std::string& text)
@@ -899,7 +277,7 @@ bool HasSteadyIntervalElapsed(
 		candidates.push_back(normalizedPath);
 	}
 
-	std::filesystem::path ResolveCdmAliasPath(EuroScopePlugIn::CPlugIn* plugIn)
+	std::filesystem::path ResolveAliasFilePath(EuroScopePlugIn::CPlugIn* plugIn)
 	{
 		std::vector<std::filesystem::path> candidates;
 
@@ -960,336 +338,6 @@ bool HasSteadyIntervalElapsed(
 		return std::filesystem::path("alias.txt");
 	}
 
-	bool TryReadCdmReminderMessageFromAlias(EuroScopePlugIn::CPlugIn* plugIn, std::string& outMessage, std::string& outAliasPath)
-	{
-		outMessage.clear();
-		const std::filesystem::path aliasPath = ResolveCdmAliasPath(plugIn);
-		outAliasPath = aliasPath.string();
-
-		std::ifstream input(aliasPath);
-		if (!input.is_open())
-			return false;
-
-		std::string line;
-		while (std::getline(input, line))
-		{
-			std::string working = TrimAsciiWhitespaceCopy(line);
-			if (working.empty())
-				continue;
-			if (working[0] == ';' || working[0] == '#')
-				continue;
-			if (!StartsWithTokenCaseInsensitive(working, ".cdm"))
-				continue;
-
-			working = TrimAsciiWhitespaceCopy(working.substr(4));
-			if (StartsWithTokenCaseInsensitive(working, ".msg"))
-				working = TrimAsciiWhitespaceCopy(working.substr(4));
-			if (StartsWithTokenCaseInsensitive(working, "$aircraft"))
-				working = TrimAsciiWhitespaceCopy(working.substr(9));
-			if (working.empty())
-				continue;
-
-			outMessage = working;
-			return true;
-		}
-
-		return false;
-	}
-
-	void NotifyMissingCdmAliasMessage(EuroScopePlugIn::CPlugIn* plugIn, const std::string& aliasPath)
-	{
-		static std::time_t lastWarningUtc = 0;
-		const std::time_t nowUtc = std::time(nullptr);
-		if (plugIn == nullptr || nowUtc <= 0)
-			return;
-		if (lastWarningUtc != 0 && std::difftime(nowUtc, lastWarningUtc) < static_cast<double>(CdmWarningCooldownSeconds))
-			return;
-
-		lastWarningUtc = nowUtc;
-		const std::string detail = "Missing/invalid .cdm alias in " + aliasPath;
-		plugIn->DisplayUserMessage("vSMR", "CDM", detail.c_str(), true, true, false, true, false);
-		Logger::info("CDM alias load failed path=" + aliasPath);
-	}
-
-	bool TryLoadCdmReminderMessage(EuroScopePlugIn::CPlugIn* plugIn, std::string& outMessage)
-	{
-		std::string aliasPath;
-		if (TryReadCdmReminderMessageFromAlias(plugIn, outMessage, aliasPath))
-			return true;
-
-		NotifyMissingCdmAliasMessage(plugIn, aliasPath);
-		return false;
-	}
-
-	bool IsCallsignEligibleForCdmReminderNow(EuroScopePlugIn::CPlugIn* plugIn, const std::string& callsign)
-	{
-		if (plugIn == nullptr || callsign.empty() ||
-			!plugIn->ControllerMyself().IsController() ||
-			!IsVacdmSnapshotReadyForCdm())
-			return false;
-
-		{
-			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-			if (HasDatalinkClearanceSentUnlocked(callsign) ||
-				HasDatalinkClearanceInFlightUnlocked(callsign))
-				return false;
-		}
-
-		const std::string activeAirport = ResolveActiveAirportFilterUpper();
-		const std::vector<std::string> eligibleCallsigns =
-			CollectFlightPlanCandidateCallsignsForActiveAirport(plugIn, activeAirport);
-		if (std::find(eligibleCallsigns.begin(), eligibleCallsigns.end(), callsign) == eligibleCallsigns.end())
-			return false;
-
-		VacdmPilotData pilotData;
-		if (TryGetVacdmPilotData(callsign, pilotData) && HasSubmittedTobtState(pilotData))
-			return false;
-
-		return true;
-	}
-
-	bool IsLikelyCommandEditControl(HWND hwnd)
-	{
-		if (hwnd == nullptr || !::IsWindow(hwnd) || !::IsWindowVisible(hwnd) || !::IsWindowEnabled(hwnd))
-			return false;
-
-		char className[64] = {};
-		if (::GetClassNameA(hwnd, className, static_cast<int>(sizeof(className))) <= 0)
-			return false;
-		const std::string classUpper = ToUpperAsciiCopy(className);
-		if (!(classUpper == "EDIT" || classUpper.find("RICHEDIT") != std::string::npos))
-			return false;
-
-		const LONG style = ::GetWindowLong(hwnd, GWL_STYLE);
-		if ((style & ES_READONLY) != 0 || (style & ES_MULTILINE) != 0)
-			return false;
-
-		RECT rect = {};
-		if (!::GetWindowRect(hwnd, &rect))
-			return false;
-		const int width = rect.right - rect.left;
-		const int height = rect.bottom - rect.top;
-		if (width < 120 || height < 12)
-			return false;
-
-		return true;
-	}
-
-	struct MainWindowSearchContext
-	{
-		DWORD processId = 0;
-		HWND bestWindow = nullptr;
-		LONG bestArea = 0;
-	};
-
-	BOOL CALLBACK EnumMainWindowsForCurrentProcess(HWND hwnd, LPARAM lParam)
-	{
-		MainWindowSearchContext* context = reinterpret_cast<MainWindowSearchContext*>(lParam);
-		if (context == nullptr)
-			return TRUE;
-
-		DWORD windowProcessId = 0;
-		::GetWindowThreadProcessId(hwnd, &windowProcessId);
-		if (windowProcessId != context->processId)
-			return TRUE;
-		if (!::IsWindowVisible(hwnd))
-			return TRUE;
-		if (::GetWindow(hwnd, GW_OWNER) != nullptr)
-			return TRUE;
-
-		RECT rect = {};
-		if (!::GetWindowRect(hwnd, &rect))
-			return TRUE;
-		LONG width = rect.right - rect.left;
-		LONG height = rect.bottom - rect.top;
-		if (width < 0)
-			width = 0;
-		if (height < 0)
-			height = 0;
-		const LONG area = width * height;
-		if (area > context->bestArea)
-		{
-			context->bestArea = area;
-			context->bestWindow = hwnd;
-		}
-
-		return TRUE;
-	}
-
-	struct CommandEditSearchContext
-	{
-		RECT mainRect = {};
-		HWND bestEdit = nullptr;
-		LONG bestScore = LONG_MIN;
-	};
-
-	BOOL CALLBACK EnumCommandEditControls(HWND hwnd, LPARAM lParam)
-	{
-		CommandEditSearchContext* context = reinterpret_cast<CommandEditSearchContext*>(lParam);
-		if (context == nullptr)
-			return TRUE;
-		if (!IsLikelyCommandEditControl(hwnd))
-			return TRUE;
-
-		RECT rect = {};
-		if (!::GetWindowRect(hwnd, &rect))
-			return TRUE;
-		// Fail closed if the control is not in EuroScope's bottom command strip.
-		// Dialog and plug-in edit controls must never receive an automatic .msg.
-		if (rect.left < context->mainRect.left ||
-			rect.right > context->mainRect.right ||
-			rect.bottom < context->mainRect.bottom - 120 ||
-			rect.bottom > context->mainRect.bottom)
-		{
-			return TRUE;
-		}
-		const LONG style = ::GetWindowLong(hwnd, GWL_STYLE);
-		const int width = rect.right - rect.left;
-
-		LONG score = rect.top;
-		score += width / 4;
-		if ((style & WS_TABSTOP) != 0)
-			score += 1000;
-		if ((style & ES_AUTOHSCROLL) != 0)
-			score += 500;
-		if (rect.bottom >= context->mainRect.bottom - 80)
-			score += 2000;
-
-		if (score > context->bestScore)
-		{
-			context->bestScore = score;
-			context->bestEdit = hwnd;
-		}
-
-		return TRUE;
-	}
-
-	HWND FindEuroScopeCommandEditControl()
-	{
-		MainWindowSearchContext mainContext;
-		mainContext.processId = ::GetCurrentProcessId();
-		::EnumWindows(EnumMainWindowsForCurrentProcess, reinterpret_cast<LPARAM>(&mainContext));
-		if (mainContext.bestWindow == nullptr)
-			return nullptr;
-
-		CommandEditSearchContext editContext;
-		::GetWindowRect(mainContext.bestWindow, &editContext.mainRect);
-		::EnumChildWindows(mainContext.bestWindow, EnumCommandEditControls, reinterpret_cast<LPARAM>(&editContext));
-		return editContext.bestEdit;
-	}
-
-	struct PendingCdmChatCommand
-	{
-		HWND editControl = nullptr;
-		std::string command;
-		std::chrono::steady_clock::time_point startedAt;
-	};
-
-	PendingCdmChatCommand PendingCdmChatSubmission;
-
-	bool TryReadWindowText(HWND window, std::string& outText)
-	{
-		outText.clear();
-		if (window == nullptr || !::IsWindow(window))
-			return false;
-
-		constexpr int kMaximumPreservedCommandCharacters = 64 * 1024;
-		const int textLength = ::GetWindowTextLengthA(window);
-		if (textLength < 0 || textLength > kMaximumPreservedCommandCharacters)
-			return false;
-		std::vector<char> textBuffer(static_cast<size_t>(textLength) + 1U, '\0');
-		if (textLength > 0 &&
-			::GetWindowTextA(
-				window,
-				textBuffer.data(),
-				static_cast<int>(textBuffer.size())) != textLength)
-		{
-			return false;
-		}
-		outText.assign(textBuffer.data(), static_cast<size_t>(textLength));
-		return true;
-	}
-
-	CdmChatSubmissionStatus PollPrivateChatMessageSubmission()
-	{
-		if (PendingCdmChatSubmission.editControl == nullptr)
-			return CdmChatSubmissionStatus::Idle;
-
-		std::string currentText;
-		if (!TryReadWindowText(PendingCdmChatSubmission.editControl, currentText))
-		{
-			PendingCdmChatSubmission = {};
-			return CdmChatSubmissionStatus::Ambiguous;
-		}
-
-		// EuroScope clears its command field only after it has consumed the
-		// posted Enter key. Do not report success merely because Windows queued
-		// the key message.
-		if (currentText != PendingCdmChatSubmission.command)
-		{
-			PendingCdmChatSubmission = {};
-			return CdmChatSubmissionStatus::Confirmed;
-		}
-
-		constexpr auto kSubmissionTimeout = std::chrono::seconds(4);
-		if (std::chrono::steady_clock::now() -
-			PendingCdmChatSubmission.startedAt < kSubmissionTimeout)
-		{
-			return CdmChatSubmissionStatus::Pending;
-		}
-
-		// The Enter key was already posted, so a timeout is ambiguous. Remove
-		// only the exact command inserted by vSMR and never retry it automatically.
-		::SetWindowTextA(PendingCdmChatSubmission.editControl, "");
-		PendingCdmChatSubmission = {};
-		return CdmChatSubmissionStatus::Ambiguous;
-	}
-
-	bool BeginPrivateChatMessageLikeDotMsg(EuroScopePlugIn::CPlugIn* plugIn, const std::string& callsign, const std::string& message)
-	{
-		if (plugIn == nullptr ||
-			PendingCdmChatSubmission.editControl != nullptr)
-			return false;
-
-		const std::string normalizedCallsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
-		const std::string normalizedMessage = TrimAsciiWhitespaceCopy(message);
-		if (normalizedCallsign.empty() || normalizedMessage.empty())
-			return false;
-
-		HWND editControl = FindEuroScopeCommandEditControl();
-		std::string existingText;
-		if (editControl == nullptr ||
-			!TryReadWindowText(editControl, existingText) ||
-			!existingText.empty())
-		{
-			return false;
-		}
-
-		const std::string command =
-			".msg " + normalizedCallsign + " " + normalizedMessage;
-		if (!::SetWindowTextA(editControl, command.c_str()))
-			return false;
-
-		const bool keyDownPosted =
-			::PostMessageA(editControl, WM_KEYDOWN, VK_RETURN, 0) != FALSE;
-		const bool keyUpPosted =
-			::PostMessageA(editControl, WM_KEYUP, VK_RETURN, 0) != FALSE;
-		if (!keyDownPosted)
-		{
-			std::string currentText;
-			if (TryReadWindowText(editControl, currentText) && currentText == command)
-				::SetWindowTextA(editControl, "");
-			return false;
-		}
-		if (!keyUpPosted)
-			Logger::info("CDM command key-up could not be posted after key-down");
-
-		PendingCdmChatSubmission.editControl = editControl;
-		PendingCdmChatSubmission.command = command;
-		PendingCdmChatSubmission.startedAt = std::chrono::steady_clock::now();
-		return true;
-	}
-
 	bool SendDatalinkPacketMessage(const DatalinkMessageRequest& request)
 	{
 		if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
@@ -1297,8 +345,8 @@ bool HasSteadyIntervalElapsed(
 				std::memory_order_acquire))
 			return false;
 
-		string raw;
-		string url = baseUrlDatalink;
+		std::string raw;
+		std::string url = baseUrlDatalink;
 		url += "?logon=";
 		url += EncodeUrlQueryComponent(request.credentials.password);
 		url += "&from=";

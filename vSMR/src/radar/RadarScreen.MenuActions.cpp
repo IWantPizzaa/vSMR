@@ -29,7 +29,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		"CSMRRadar::OnFunctionCall",
 		reinterpret_cast<std::uintptr_t>(this));
 	(void)Area;
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	mouseLocation = Pt;
 	const bool hasItemString = (sItemString != nullptr && sItemString[0] != '\0');
 	const char* itemString = hasItemString ? sItemString : "";
@@ -154,8 +154,6 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 			if (airport.empty())
 				return;
 			setActiveAirport(airport);
-			if (VsmrControlCenterDialog != nullptr)
-				VsmrControlCenterDialog->SyncFromRadar();
 			RequestRefresh();
 		}
 		return;
@@ -185,15 +183,11 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 			showConfigError("The CPDLC service is unavailable.");
 			return;
 		}
-		const DatalinkControlState state = plugin->GetDatalinkControlState();
 		std::string error;
 		if (!plugin->UpdateDatalinkControlSettings(
 			callsign,
 			"",
 			false,
-			state.cdmAutoEnabled,
-			state.cdmDelayMinutes,
-			state.cdmCooldownMinutes,
 			error,
 			true))
 		{
@@ -204,57 +198,6 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		return;
 	}
 
-	if (FunctionId == RUNTIME_DATALINK_DELAY_EDIT ||
-		FunctionId == RUNTIME_DATALINK_COOLDOWN_EDIT)
-	{
-		if (!hasItemString)
-			return;
-		char* end = nullptr;
-		errno = 0;
-		const long parsed = std::strtol(itemString, &end, 10);
-		while (end != nullptr && *end != '\0' && std::isspace(static_cast<unsigned char>(*end)))
-			++end;
-		if (errno != 0 || end == itemString || (end != nullptr && *end != '\0') || parsed < 0 || parsed > 1440)
-		{
-			showConfigError("Enter a whole number from 0 to 1440 minutes.");
-			return;
-		}
-
-		CSMRPlugin* plugin = static_cast<CSMRPlugin*>(GetPlugIn());
-		if (plugin == nullptr)
-		{
-			showConfigError("The PDC reminder service is unavailable.");
-			return;
-		}
-		const DatalinkControlState state = plugin->GetDatalinkControlState();
-		if (state.cdmAutoEnabled)
-		{
-			showConfigError("Stop automatic PDC reminders before changing their timing.");
-			return;
-		}
-		const int delayMinutes = FunctionId == RUNTIME_DATALINK_DELAY_EDIT
-			? static_cast<int>(parsed)
-			: state.cdmDelayMinutes;
-		const int cooldownMinutes = FunctionId == RUNTIME_DATALINK_COOLDOWN_EDIT
-			? static_cast<int>(parsed)
-			: state.cdmCooldownMinutes;
-		std::string error;
-		if (!plugin->UpdateDatalinkControlSettings(
-			state.logonCallsign,
-			"",
-			false,
-			state.cdmAutoEnabled,
-			delayMinutes,
-			cooldownMinutes,
-			error,
-			false))
-		{
-			showConfigError(error.c_str());
-			return;
-		}
-		RequestRefresh();
-		return;
-	}
 
 	if (FunctionId > RIMCAS_UPDATEFILTER && FunctionId <= RIMCAS_UPDATEFILTER3) {
 		int id = FunctionId - RIMCAS_UPDATEFILTER;

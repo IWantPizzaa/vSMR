@@ -149,89 +149,33 @@ namespace
 		return normalized < 0.0 ? normalized + 360.0 : normalized;
 	}
 
-	void ProjectPolygon(
-		const std::vector<VsmrScene::GeoPoint>& source,
-		const std::function<POINT(const VsmrScene::GeoPoint&)>& projectPoint,
-		double symbolScale,
-		std::vector<Gdiplus::PointF>& polygon)
+	bool DrawPrimaryPolygon(Gdiplus::Graphics& graphics,
+		const std::vector<Gdiplus::PointF>& polygon, const Gdiplus::Color& color,
+		BoundsBuilder& bounds, VsmrRendering::BrushCache& brushes)
 	{
-		polygon.clear();
-		polygon.reserve(source.size());
-		for (const VsmrScene::GeoPoint& sourcePoint : source)
-		{
-			if (!sourcePoint.valid)
-				continue;
-			const POINT point = projectPoint(sourcePoint);
-			polygon.emplace_back(
-				static_cast<Gdiplus::REAL>(point.x),
-				static_cast<Gdiplus::REAL>(point.y));
-		}
-
-		if (polygon.size() < 3 || std::abs(symbolScale - 1.0) <= 0.0001)
-			return;
-
-		Gdiplus::REAL centerX = 0.0f;
-		Gdiplus::REAL centerY = 0.0f;
-		for (const Gdiplus::PointF& point : polygon)
-		{
-			centerX += point.X;
-			centerY += point.Y;
-		}
-		centerX /= static_cast<Gdiplus::REAL>(polygon.size());
-		centerY /= static_cast<Gdiplus::REAL>(polygon.size());
-		for (Gdiplus::PointF& point : polygon)
-		{
-			point.X = centerX + static_cast<Gdiplus::REAL>((point.X - centerX) * symbolScale);
-			point.Y = centerY + static_cast<Gdiplus::REAL>((point.Y - centerY) * symbolScale);
-		}
-	}
-
-	bool DrawPrimaryPolygon(
-		Gdiplus::Graphics& graphics,
-		const std::vector<VsmrScene::GeoPoint>& source,
-		const std::function<POINT(const VsmrScene::GeoPoint&)>& projectPoint,
-		double symbolScale,
-		const Gdiplus::Color& color,
-		BoundsBuilder& bounds,
-		std::vector<Gdiplus::PointF>& polygon)
-	{
-		ProjectPolygon(source, projectPoint, symbolScale, polygon);
-		if (polygon.size() < 3)
-			return false;
-
-		Gdiplus::SolidBrush brush(color);
+		if (polygon.size() < 3) return false;
+		Gdiplus::SolidBrush& brush = brushes.Get(color);
 		graphics.FillPolygon(&brush, polygon.data(), static_cast<INT>(polygon.size()));
 		bounds.AddPoints(polygon);
 		return true;
 	}
 
-	bool DrawTrails(
-		Gdiplus::Graphics& graphics,
-		const VsmrScene::Target& target,
-		const VsmrScene::TargetPresentation& presentation,
-		const std::function<POINT(const VsmrScene::GeoPoint&)>& projectPoint,
-		const std::function<bool(const POINT&, int)>& pointVisible,
-		double symbolScale,
-		BoundsBuilder& bounds,
-		std::vector<Gdiplus::PointF>& polygon)
+	bool DrawTrails(Gdiplus::Graphics& graphics, const VsmrScene::Target& target,
+		const VsmrTargetRendering::ProjectedTarget& projected,
+		BoundsBuilder& bounds, VsmrRendering::BrushCache& brushes, double symbolScale)
 	{
-		if (!presentation.trailEnabled)
-			return false;
-
 		bool drawn = false;
 		if (target.style.icon == VsmrScene::IconStyle::Nova)
 		{
 			constexpr BYTE afterglowChannels[] = { 255, 219, 183 };
 			for (int historyIndex = 2; historyIndex >= 0; --historyIndex)
 			{
-				const std::vector<VsmrScene::GeoPoint>& source =
-					target.primaryReturnAfterglow[static_cast<std::size_t>(historyIndex)];
-				ProjectPolygon(source, projectPoint, symbolScale, polygon);
+				const auto& polygon = projected.afterglow[static_cast<std::size_t>(historyIndex)];
 				if (polygon.size() < 3)
 					continue;
 
 				const BYTE channel = afterglowChannels[historyIndex];
-				Gdiplus::SolidBrush brush(Gdiplus::Color(255, 0, channel, channel));
+				Gdiplus::SolidBrush& brush = brushes.Get(Gdiplus::Color(255, 0, channel, channel));
 				graphics.FillPolygon(&brush, polygon.data(), static_cast<INT>(polygon.size()));
 				bounds.AddPoints(polygon);
 				drawn = true;
@@ -240,23 +184,20 @@ namespace
 
 		const std::size_t pointCount = target.trailPositions.size();
 		const VsmrScene::Color& sourceColor = target.style.color;
-		for (std::size_t index = 0; index < pointCount; ++index)
+		for (const auto& history : projected.trail)
 		{
-			const VsmrScene::GeoPoint& history = target.trailPositions[index];
-			if (!history.valid)
-				continue;
-			const POINT point = projectPoint(history);
-			if (pointVisible && !pointVisible(point, 7))
-				continue;
+			const POINT point = history.point;
+			const std::size_t index = history.index;
 
 			const double age = pointCount > 1
 				? static_cast<double>(index) / static_cast<double>(pointCount - 1)
 				: 0.0;
 			if (target.style.icon == VsmrScene::IconStyle::Nova)
 			{
-				Gdiplus::SolidBrush brush(Gdiplus::Color(255, 255, 255, 255));
-				graphics.FillRectangle(&brush, point.x - 1, point.y - 1, 2, 2);
-				bounds.Add(RECT{ point.x - 1, point.y - 1, point.x + 1, point.y + 1 });
+				Gdiplus::SolidBrush& brush = brushes.Get(Gdiplus::Color(255, 255, 255, 255));
+				const int radius = (std::max)(1, static_cast<int>(std::lround(symbolScale)));
+				graphics.FillRectangle(&brush, point.x - radius, point.y - radius, radius * 2, radius * 2);
+				bounds.Add(RECT{ point.x - radius, point.y - radius, point.x + radius, point.y + radius });
 				drawn = true;
 				continue;
 			}
@@ -268,12 +209,12 @@ namespace
 			const BYTE alpha = BlendChannel(newestAlpha, 38, age);
 			if (target.style.icon == VsmrScene::IconStyle::Realistic)
 			{
-				const int diameter = std::clamp(
+				const int diameter = (std::max)(1, static_cast<int>(std::lround(symbolScale * std::clamp(
 					static_cast<int>(std::lround(5.0 - age * 2.0)),
 					2,
-					5);
+					5))));
 				const int radius = diameter / 2;
-				Gdiplus::SolidBrush brush(Gdiplus::Color(alpha, red, green, blue));
+				Gdiplus::SolidBrush& brush = brushes.Get(Gdiplus::Color(alpha, red, green, blue));
 				graphics.FillEllipse(&brush, point.x - radius, point.y - radius, diameter, diameter);
 				bounds.Add(RECT{
 					point.x - radius,
@@ -284,12 +225,12 @@ namespace
 				continue;
 			}
 
-			const int diameter = std::clamp(
+			const int diameter = (std::max)(1, static_cast<int>(std::lround(symbolScale * std::clamp(
 				static_cast<int>(std::lround(9.0 - age * 4.0)),
 				4,
-				9);
+				9))));
 			const int radius = diameter / 2;
-			Gdiplus::Pen pen(Gdiplus::Color(alpha, red, green, blue), 1.5f);
+			Gdiplus::Pen pen(Gdiplus::Color(alpha, red, green, blue), static_cast<Gdiplus::REAL>(1.5 * symbolScale));
 			graphics.DrawEllipse(&pen, point.x - radius, point.y - radius, diameter, diameter);
 			bounds.Add(RECT{
 				point.x - radius - 1,
@@ -301,18 +242,8 @@ namespace
 		return drawn;
 	}
 
-	double ScreenRotationDegrees(
-		const VsmrScene::Target& target,
-		const POINT& center,
-		const std::function<POINT(const VsmrScene::GeoPoint&)>& projectPoint)
+	double ScreenRotationDegrees(const POINT& center, const POINT& headingPoint)
 	{
-		VsmrScene::GeoPoint headingProbe = target.headingProbe;
-		if (!headingProbe.valid && target.position.valid)
-			headingProbe = DestinationPoint(target.position, NormalizeHeading(target.headingTrueDegrees), 50.0);
-		if (!headingProbe.valid)
-			return 0.0;
-
-		const POINT headingPoint = projectPoint(headingProbe);
 		const double forwardX = static_cast<double>(headingPoint.x - center.x);
 		const double forwardY = static_cast<double>(headingPoint.y - center.y);
 		if (!std::isfinite(forwardX) || !std::isfinite(forwardY) ||
@@ -333,6 +264,35 @@ namespace
 
 namespace VsmrTargetRendering
 {
+	VsmrScene::GeoPoint detail::HeadingProbe(const VsmrScene::Target& target)
+	{
+		if (target.headingProbe.valid) return target.headingProbe;
+		return target.position.valid
+			? DestinationPoint(target.position, NormalizeHeading(target.headingTrueDegrees), 50.0)
+			: VsmrScene::GeoPoint{};
+	}
+
+	void detail::ScalePolygon(std::vector<Gdiplus::PointF>& polygon, double symbolScale)
+	{
+		if (polygon.size() < 3 || std::abs(symbolScale - 1.0) <= 0.0001)
+			return;
+
+		Gdiplus::REAL centerX = 0.0f;
+		Gdiplus::REAL centerY = 0.0f;
+		for (const Gdiplus::PointF& point : polygon)
+		{
+			centerX += point.X;
+			centerY += point.Y;
+		}
+		centerX /= static_cast<Gdiplus::REAL>(polygon.size());
+		centerY /= static_cast<Gdiplus::REAL>(polygon.size());
+		for (Gdiplus::PointF& point : polygon)
+		{
+			point.X = centerX + static_cast<Gdiplus::REAL>((point.X - centerX) * symbolScale);
+			point.Y = centerY + static_cast<Gdiplus::REAL>((point.Y - centerY) * symbolScale);
+		}
+	}
+
 	Frame::Frame(Gdiplus::Graphics& graphics, FrameSettings settings)
 		: m_Graphics(graphics),
 		  m_Settings(std::move(settings)),
@@ -343,8 +303,8 @@ namespace VsmrTargetRendering
 		m_Settings.presentation.symbolScale = ClampFinite(
 			m_Settings.presentation.symbolScale,
 			1.0,
-			0.5,
-			1.5);
+			0.25,
+			10.0);
 		m_Settings.pixelsPerMeter = ClampFinite(
 			m_Settings.pixelsPerMeter,
 			0.0,
@@ -374,13 +334,11 @@ namespace VsmrTargetRendering
 		m_Graphics.SetCompositingQuality(m_SavedCompositingQuality);
 	}
 
-	DrawResult Frame::DrawTarget(
+	DrawResult Frame::DrawProjectedTarget(
 		const VsmrScene::Target& target,
 		const DrawOptions& options)
 	{
 		DrawResult result;
-		if (!target.position.valid || !m_Settings.projectPoint)
-			return result;
 
 		auto trace = [&](const char* step)
 		{
@@ -389,34 +347,20 @@ namespace VsmrTargetRendering
 		};
 		trace("begin");
 
-		result.center = m_Settings.projectPoint(target.position);
+		result.center = m_Projected.center;
 		const double symbolScale = m_Settings.presentation.symbolScale;
 		BoundsBuilder visualBounds;
 		if (options.drawTrail)
 		{
-			result.trailDrawn = DrawTrails(
-				m_Graphics,
-				target,
-				m_Settings.presentation,
-				m_Settings.projectPoint,
-				m_Settings.pointVisible,
-				symbolScale,
-				visualBounds,
-				m_PolygonScratch);
+			result.trailDrawn = DrawTrails(m_Graphics, target, m_Projected, visualBounds, m_Brushes, symbolScale);
 		}
 
 		if (options.drawPrimaryReturn &&
 			target.style.icon == VsmrScene::IconStyle::Nova &&
 			target.style.showPrimaryReturn)
 		{
-			result.primaryReturnDrawn = DrawPrimaryPolygon(
-				m_Graphics,
-				target.primaryReturnPolygon,
-				m_Settings.projectPoint,
-				symbolScale,
-				ToGdiColor(target.style.primaryReturnColor),
-				visualBounds,
-				m_PolygonScratch);
+			result.primaryReturnDrawn = DrawPrimaryPolygon(m_Graphics, m_Projected.primary,
+				ToGdiColor(target.style.primaryReturnColor), visualBounds, m_Brushes);
 		}
 
 		const Gdiplus::Color targetColor = ToGdiColor(target.style.color);
@@ -424,7 +368,7 @@ namespace VsmrTargetRendering
 		if (target.style.icon == VsmrScene::IconStyle::Nova)
 		{
 			trace("nova");
-			Gdiplus::Pen symbolPen(Gdiplus::Color(255, 255, 255, 255), 1.0f);
+			Gdiplus::Pen symbolPen(Gdiplus::Color(255, 255, 255, 255), static_cast<Gdiplus::REAL>((std::max)(1.0, symbolScale)));
 			const Gdiplus::REAL scale = static_cast<Gdiplus::REAL>(symbolScale);
 			if (target.transponderModeC)
 			{
@@ -468,8 +412,8 @@ namespace VsmrTargetRendering
 			if (sourceBitmapValid)
 			{
 				trace("realistic");
-				double drawWidth = 40.0;
-				double drawHeight = 40.0;
+				double drawWidth = 40.0 * symbolScale;
+				double drawHeight = 40.0 * symbolScale;
 				if (m_Settings.pixelsPerMeter > 0.0)
 				{
 					drawWidth = target.style.wingspanMeters * m_Settings.pixelsPerMeter * symbolScale;
@@ -500,10 +444,7 @@ namespace VsmrTargetRendering
 				pixelWidth = std::clamp(pixelWidth, 1, 2048);
 				pixelHeight = std::clamp(pixelHeight, 1, 2048);
 
-				const double rotationDegrees = ScreenRotationDegrees(
-					target,
-					result.center,
-					m_Settings.projectPoint);
+				const double rotationDegrees = ScreenRotationDegrees(result.center, m_Projected.heading);
 				CachedBitmap rotatedBitmap;
 				if (scaledBitmap != nullptr &&
 					!scaledCacheKey.empty() &&
@@ -603,19 +544,19 @@ namespace VsmrTargetRendering
 			{
 				const double lengthPixels = ClampFinite(
 					m_Settings.pixelsPerMeter * 20.0 * symbolScale,
-					1.0,
-					0.5,
-					220.0);
+					1.0 * symbolScale,
+					0.5 * symbolScale,
+					220.0 * symbolScale);
 				const double halfWidthPixels = ClampFinite(
 					m_Settings.pixelsPerMeter * 12.0 * symbolScale,
-					0.5,
-					0.35,
-					110.0);
+					0.5 * symbolScale,
+					0.35 * symbolScale,
+					110.0 * symbolScale);
 
 				if (target.style.icon == VsmrScene::IconStyle::Diamond)
 				{
 					trace("diamond");
-					const double diagonalPixels = std::clamp(lengthPixels + halfWidthPixels, 10.0, 220.0);
+					const double diagonalPixels = std::clamp(lengthPixels + halfWidthPixels, 10.0 * symbolScale, 220.0 * symbolScale);
 					const double sidePixels = diagonalPixels / std::sqrt(2.0);
 					const double halfSide = sidePixels / 2.0;
 					const Gdiplus::REAL left = static_cast<Gdiplus::REAL>(result.center.x - halfSide);
@@ -623,7 +564,7 @@ namespace VsmrTargetRendering
 					const Gdiplus::REAL side = static_cast<Gdiplus::REAL>(sidePixels);
 					const Gdiplus::REAL radius = std::clamp(
 						static_cast<Gdiplus::REAL>(sidePixels * 0.22),
-						2.0f,
+						static_cast<Gdiplus::REAL>(2.0 * symbolScale),
 						static_cast<Gdiplus::REAL>(sidePixels / 2.0));
 					const Gdiplus::REAL diameter = radius * 2.0f;
 
@@ -634,10 +575,7 @@ namespace VsmrTargetRendering
 					path.AddArc(left, top + side - diameter, diameter, diameter, 90.0f, 90.0f);
 					path.CloseFigure();
 
-					const double rotationDegrees = ScreenRotationDegrees(
-						target,
-						result.center,
-						m_Settings.projectPoint) - 45.0;
+					const double rotationDegrees = ScreenRotationDegrees(result.center, m_Projected.heading) - 45.0;
 					Gdiplus::GraphicsState state = m_Graphics.Save();
 					Gdiplus::Matrix transform;
 					transform.RotateAt(
@@ -646,7 +584,7 @@ namespace VsmrTargetRendering
 							static_cast<Gdiplus::REAL>(result.center.x),
 							static_cast<Gdiplus::REAL>(result.center.y)));
 					m_Graphics.MultiplyTransform(&transform);
-					Gdiplus::SolidBrush brush(targetColor);
+					Gdiplus::SolidBrush& brush = m_Brushes.Get(targetColor);
 					m_Graphics.FillPath(&brush, &path);
 					m_Graphics.Restore(state);
 
@@ -656,10 +594,7 @@ namespace VsmrTargetRendering
 				else
 				{
 					trace("arrow");
-					const double rotationDegrees = ScreenRotationDegrees(
-						target,
-						result.center,
-						m_Settings.projectPoint);
+					const double rotationDegrees = ScreenRotationDegrees(result.center, m_Projected.heading);
 					const double forwardRadians = (rotationDegrees - 90.0) * kPi / 180.0;
 					const double forwardX = std::cos(forwardRadians);
 					const double forwardY = std::sin(forwardRadians);
@@ -675,7 +610,7 @@ namespace VsmrTargetRendering
 						{ static_cast<Gdiplus::REAL>(centerX - forwardX * lengthPixels * 0.05), static_cast<Gdiplus::REAL>(centerY - forwardY * lengthPixels * 0.05) },
 						{ static_cast<Gdiplus::REAL>(baseX - rightX * halfWidthPixels), static_cast<Gdiplus::REAL>(baseY - rightY * halfWidthPixels) }
 					};
-					Gdiplus::SolidBrush brush(targetColor);
+					Gdiplus::SolidBrush& brush = m_Brushes.Get(targetColor);
 					m_Graphics.FillPolygon(&brush, points, static_cast<INT>(_countof(points)));
 					result.symbolBounds = BoundsFromPoints(points, _countof(points));
 					nominalIconSize = static_cast<int>((std::max)(12.0, lengthPixels + halfWidthPixels));
@@ -685,7 +620,7 @@ namespace VsmrTargetRendering
 
 		visualBounds.Add(result.symbolBounds);
 		result.visualBounds = visualBounds.Valid() ? visualBounds.Get() : result.symbolBounds;
-		const int hitSize = (std::max)((std::max)(1, options.minimumHitSize), nominalIconSize);
+		const int hitSize = (std::max)((std::max)(1, static_cast<int>(std::lround(options.minimumHitSize * symbolScale))), nominalIconSize);
 		result.hitBounds = CenteredRect(result.center, hitSize, hitSize);
 		result.drawn = true;
 		trace("end");

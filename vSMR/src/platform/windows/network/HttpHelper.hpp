@@ -12,10 +12,10 @@ public:
 		int timeoutMs = 6000,
 		const std::atomic<bool>* cancelRequested = nullptr,
 		size_t maxResponseBytes = 8U * 1024U * 1024U);
-	static bool IsValidHttpsUrl(
+	[[nodiscard]] static bool IsValidHttpsUrl(
 		const std::string& url,
 		std::string* host = nullptr);
-	static bool IsHttpsUrlForHost(
+	[[nodiscard]] static bool IsHttpsUrlForHost(
 		const std::string& url,
 		const std::string& expectedHost);
 	~HttpHelper();

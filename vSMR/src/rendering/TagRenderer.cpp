@@ -1,11 +1,15 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "rendering/TagRenderer.hpp"
+#include "rendering/DisplayScale.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 namespace
 {
+	constexpr Gdiplus::REAL BoldInkOffset = 0.5f;
+
 	Gdiplus::Rect ToGdiRect(const CRect& rect)
 	{
 		return Gdiplus::Rect(rect.left, rect.top, rect.Width(), rect.Height());
@@ -72,10 +76,9 @@ namespace
 		return true;
 	}
 
-	void BuildRoundedPath(const Gdiplus::Rect& rect, Gdiplus::GraphicsPath& path)
+	void BuildRoundedPath(const Gdiplus::Rect& rect, Gdiplus::GraphicsPath& path, double scale)
 	{
-		constexpr int radius = 4;
-		constexpr int diameter = radius * 2;
+		const int diameter = (std::max)(1, (std::min)({ VsmrRendering::ScalePixels(8, scale), rect.Width, rect.Height }));
 		path.Reset();
 		path.AddArc(rect.X, rect.Y, diameter, diameter, 180, 90);
 		path.AddArc(rect.GetRight() - diameter, rect.Y, diameter, diameter, 270, 90);
@@ -90,17 +93,18 @@ namespace
 		const Gdiplus::Color& color,
 		bool roundedCorners,
 		bool highlighted,
-		Gdiplus::GraphicsPath* roundedPath)
+		Gdiplus::GraphicsPath* roundedPath,
+		const VsmrTagRendering::FontContext& fonts, double scale)
 	{
 		const Gdiplus::Rect rect = ToGdiRect(bounds);
-		Gdiplus::SolidBrush brush(color);
+		Gdiplus::SolidBrush& brush = fonts.Brush(color);
 		if (roundedCorners && roundedPath != nullptr)
 		{
-			BuildRoundedPath(rect, *roundedPath);
+			BuildRoundedPath(rect, *roundedPath, scale);
 			graphics.FillPath(&brush, roundedPath);
 			if (highlighted)
 			{
-				Gdiplus::Pen outline(Gdiplus::Color(255, 255, 255, 255));
+				Gdiplus::Pen outline(Gdiplus::Color(255, 255, 255, 255), static_cast<Gdiplus::REAL>(scale));
 				graphics.DrawPath(&outline, roundedPath);
 			}
 			return;
@@ -109,7 +113,7 @@ namespace
 		graphics.FillRectangle(&brush, rect);
 		if (highlighted)
 		{
-			Gdiplus::Pen outline(Gdiplus::Color(255, 255, 255, 255));
+			Gdiplus::Pen outline(Gdiplus::Color(255, 255, 255, 255), static_cast<Gdiplus::REAL>(scale));
 			graphics.DrawRectangle(&outline, rect);
 		}
 	}
@@ -117,6 +121,44 @@ namespace
 
 namespace VsmrTagRendering
 {
+	void TextCache::Clear()
+	{
+		signature_.clear();
+		decodedText_.clear();
+		regularMeasurements_.clear();
+		boldMeasurements_.clear();
+	}
+
+	void TextCache::Bind(Gdiplus::Graphics& graphics, Gdiplus::Font* regular, Gdiplus::Font* bold)
+	{
+		std::string signature;
+		auto append = [&](const auto& value) { signature.append(reinterpret_cast<const char*>(&value), sizeof(value)); };
+		for (auto* font : { regular, bold })
+		{
+			LOGFONTW description{};
+			if (font != nullptr) font->GetLogFontW(&graphics, &description);
+			append(description);
+			if (font != nullptr)
+			{
+				append(font->GetSize());
+				append(font->GetUnit());
+				append(font->GetStyle());
+			}
+		}
+		append(graphics.GetDpiX());
+		append(graphics.GetDpiY());
+		append(graphics.GetPageUnit());
+		append(graphics.GetPageScale());
+		append(graphics.GetTextRenderingHint());
+		append(graphics.GetTextContrast());
+		Gdiplus::Matrix transform;
+		graphics.GetTransform(&transform);
+		Gdiplus::REAL elements[6]{};
+		transform.GetElements(elements);
+		append(elements);
+		if (signature_ != signature) { Clear(); signature_ = std::move(signature); }
+	}
+
 	bool Layout::Empty() const noexcept
 	{
 		return lines.empty() || width <= 0 || height <= 0;
@@ -125,10 +167,11 @@ namespace VsmrTagRendering
 	FontContext::FontContext(
 		Gdiplus::Graphics& graphics,
 		Gdiplus::Font* regularFont,
-		int minimumBlankWidth) :
+		int minimumBlankWidth, TextCache* cache) :
 		graphics_(&graphics),
 		regularFont_(regularFont),
-		boldFont_(regularFont)
+		boldFont_(regularFont),
+		cache_(cache != nullptr ? cache : &ownedCache_)
 	{
 		if (regularFont_ == nullptr)
 			return;
@@ -148,6 +191,7 @@ namespace VsmrTagRendering
 				ownedBoldFont_.reset();
 		}
 
+		cache_->Bind(graphics, regularFont_, boldFont_);
 		blankWidth_ = (std::max)((std::max)(1, minimumBlankWidth), Measure(" ").Width);
 		lineHeight_ = (std::max)(1, Measure("AZERTYUIOPQSDFGHJKLMWXCVBN").Height);
 		if (boldFont_ != regularFont_)
@@ -159,13 +203,15 @@ namespace VsmrTagRendering
 		Gdiplus::Font* regularFont,
 		Gdiplus::Font* boldFont,
 		int blankWidth,
-		int lineHeight) :
+		int lineHeight, TextCache* cache) :
 		graphics_(&graphics),
 		regularFont_(regularFont),
 		boldFont_(boldFont != nullptr ? boldFont : regularFont),
 		blankWidth_((std::max)(1, blankWidth)),
-		lineHeight_((std::max)(1, lineHeight))
+		lineHeight_((std::max)(1, lineHeight)),
+		cache_(cache != nullptr ? cache : &ownedCache_)
 	{
+		cache_->Bind(graphics, regularFont_, boldFont_);
 	}
 
 	bool FontContext::IsValid() const noexcept
@@ -200,8 +246,8 @@ namespace VsmrTagRendering
 
 	const std::wstring& FontContext::Utf16Text(const std::string& text) const
 	{
-		const auto existing = decodedText_.find(text);
-		if (existing != decodedText_.end())
+		const auto existing = cache_->decodedText_.find(text);
+		if (existing != cache_->decodedText_.end())
 			return existing->second;
 
 		std::wstring wide;
@@ -240,7 +286,9 @@ namespace VsmrTagRendering
 			}
 		}
 
-		return decodedText_.emplace(text, std::move(wide)).first->second;
+		if (text.size() > 1024) { uncachedText_ = std::move(wide); return uncachedText_; }
+		if (cache_->decodedText_.size() >= TextCache::MaximumEntries) cache_->decodedText_.clear();
+		return cache_->decodedText_.emplace(text, std::move(wide)).first->second;
 	}
 
 	Gdiplus::Size FontContext::Measure(const std::string& text, bool bold) const
@@ -248,7 +296,7 @@ namespace VsmrTagRendering
 		if (!IsValid() || text.empty())
 			return Gdiplus::Size();
 
-		auto& measurements = bold ? boldMeasurements_ : regularMeasurements_;
+		auto& measurements = bold ? cache_->boldMeasurements_ : cache_->regularMeasurements_;
 		const auto existing = measurements.find(text);
 		if (existing != measurements.end())
 			return existing->second;
@@ -259,6 +307,7 @@ namespace VsmrTagRendering
 
 		Gdiplus::RectF measured;
 		Gdiplus::Font* font = bold ? BoldFont() : RegularFont();
+		++cache_->measurementCount_;
 		graphics_->MeasureString(
 			wide.c_str(),
 			static_cast<INT>(wide.size()),
@@ -267,9 +316,13 @@ namespace VsmrTagRendering
 			&format_,
 			&measured);
 		const Gdiplus::Size size(
-			static_cast<INT>(measured.GetRight()),
+			static_cast<INT>(bold ? std::ceil(measured.GetRight() + BoldInkOffset) : measured.GetRight()),
 			static_cast<INT>(measured.GetBottom()));
-		measurements.emplace(text, size);
+		if (text.size() <= 1024)
+		{
+			if (measurements.size() >= TextCache::MaximumEntries) measurements.clear();
+			measurements.emplace(text, size);
+		}
 		return size;
 	}
 
@@ -284,7 +337,7 @@ namespace VsmrTagRendering
 
 		for (const VsmrScene::TagLine& sourceLine : variant.lines)
 		{
-			if (sourceLine.elements.empty())
+			if (!sourceLine.visible || sourceLine.elements.empty())
 				continue;
 
 			LineLayout line;
@@ -326,19 +379,19 @@ namespace VsmrTagRendering
 			: Gdiplus::Size();
 		const int topBandHeight = options.topBand != nullptr ? fonts.LineHeight() : 0;
 		const int contentWidth = (std::max)(layout.width, topBandSize.Width);
-		const int padding = options.roundedCorners ? 1 : 0;
+		const int padding = options.roundedCorners ? VsmrRendering::ScalePixels(1, options.displayScale) : 0;
 		const int totalWidth = contentWidth + padding * 2;
-		const int bodyHeight = (std::max)(
-			1,
-			layout.height - (std::max)(0, options.contentHeightTrim));
+		const int bodyHeight = (std::max)(1, layout.height);
 		const int totalHeight = bodyHeight + topBandHeight + padding * 2;
 		if (options.symmetricBounds)
 		{
+			const int left = options.tagCenter.x - totalWidth / 2;
+			const int top = options.tagCenter.y - totalHeight / 2;
 			return CRect(
-				options.tagCenter.x - totalWidth / 2,
-				options.tagCenter.y - totalHeight / 2,
-				options.tagCenter.x + totalWidth / 2,
-				options.tagCenter.y + totalHeight / 2);
+				left,
+				top,
+				left + totalWidth,
+				top + totalHeight);
 		}
 
 		return CRect(
@@ -346,6 +399,22 @@ namespace VsmrTagRendering
 			options.tagCenter.y - totalHeight / 2,
 			options.tagCenter.x - totalWidth / 2 + totalWidth,
 			options.tagCenter.y - totalHeight / 2 + totalHeight);
+	}
+
+	bool SelectHoveredLayout(
+		const FontContext& fonts, const VsmrScene::TagContent& tag,
+		const PaintOptions& options, POINT pointer, bool hoverAllowed,
+		bool dragged, bool wasDetailed, const Layout& normalLayout, Layout& layout)
+	{
+		layout = normalLayout;
+		const bool overNormal = hoverAllowed && CalculateBounds(fonts, normalLayout, options).PtInRect(pointer);
+		if (!dragged && !overNormal && !(hoverAllowed && wasDetailed)) return false;
+		Layout detailedLayout;
+		if (!MeasureLayout(fonts, tag.detailed, detailedLayout)) return false;
+		if (!dragged && !overNormal && !CalculateBounds(fonts, detailedLayout, options).PtInRect(pointer))
+			return false;
+		layout = std::move(detailedLayout);
+		return true;
 	}
 
 	PaintResult Paint(
@@ -362,19 +431,19 @@ namespace VsmrTagRendering
 			? fonts.Measure(options.topBand->text)
 			: Gdiplus::Size();
 		const int topBandHeight = options.topBand != nullptr ? fonts.LineHeight() : 0;
-		const int padding = options.roundedCorners ? 1 : 0;
+		const int padding = options.roundedCorners ? VsmrRendering::ScalePixels(1, options.displayScale) : 0;
 		result.bounds = CalculateBounds(fonts, layout, options);
 		if (result.bounds.IsRectEmpty())
 			return result;
 
 		Gdiplus::GraphicsPath roundedPath;
-		FillBackground(
+		if (!options.fitBackgroundToText) FillBackground(
 			graphics,
 			result.bounds,
 			ScaleAlpha(options.background, options.backgroundAlphaNumerator),
 			options.roundedCorners,
 			options.highlighted,
-			&roundedPath);
+			&roundedPath, fonts, options.displayScale);
 
 		if (options.drawLeader)
 		{
@@ -388,7 +457,7 @@ namespace VsmrTagRendering
 				clippedFrom,
 				clippedTo))
 			{
-				Gdiplus::Pen leader(options.leaderColor);
+				Gdiplus::Pen leader(options.leaderColor, static_cast<Gdiplus::REAL>(options.displayScale));
 				graphics.DrawLine(
 					&leader,
 					Gdiplus::PointF(static_cast<Gdiplus::REAL>(options.targetPoint.x), static_cast<Gdiplus::REAL>(options.targetPoint.y)),
@@ -407,9 +476,9 @@ namespace VsmrTagRendering
 				result.bounds.right,
 				result.bounds.top + padding + topBandHeight);
 			const Gdiplus::GraphicsState state = graphics.Save();
-			if (options.roundedCorners)
+			if (options.roundedCorners && !options.fitBackgroundToText)
 				graphics.SetClip(&roundedPath, Gdiplus::CombineModeIntersect);
-			Gdiplus::SolidBrush bandBrush(options.topBand->background);
+			Gdiplus::SolidBrush& bandBrush = fonts.Brush(options.topBand->background);
 			graphics.FillRectangle(&bandBrush, ToGdiRect(bandRect));
 			graphics.Restore(state);
 
@@ -418,7 +487,7 @@ namespace VsmrTagRendering
 				: textLeft;
 			const int bandY = textTop + (std::max)(0, topBandHeight - topBandSize.Height + 1) / 2;
 			const std::wstring& bandText = fonts.Utf16Text(options.topBand->text);
-			Gdiplus::SolidBrush bandTextBrush(options.topBand->textColor);
+			Gdiplus::SolidBrush& bandTextBrush = fonts.Brush(options.topBand->textColor);
 			graphics.DrawString(
 				bandText.c_str(),
 				static_cast<INT>(bandText.size()),
@@ -448,13 +517,23 @@ namespace VsmrTagRendering
 			int x = options.centerLines
 				? textLeft + (std::max)(0, textWidth - line.width) / 2
 				: textLeft;
+			if (options.fitBackgroundToText && line.width > 0)
+			{
+				const int topPadding = &line == &layout.lines.front() && options.topBand == nullptr ? padding : 0;
+				const int bottomPadding = &line == &layout.lines.back() ? padding : 0;
+				const CRect lineBounds(x - padding, textTop - topPadding,
+					x + line.width + padding, textTop + fonts.LineHeight() + bottomPadding);
+				Gdiplus::GraphicsPath linePath;
+				FillBackground(graphics, lineBounds, ScaleAlpha(options.background, options.backgroundAlphaNumerator),
+					options.roundedCorners, options.highlighted, &linePath, fonts, options.displayScale);
+			}
 			for (const ElementLayout& element : line.elements)
 			{
 				if (!element.text.empty())
 				{
 					const int y = textTop + (std::max)(0, fonts.LineHeight() - element.height + 1) / 2;
 					const std::wstring& text = fonts.Utf16Text(element.text);
-					Gdiplus::SolidBrush textBrush(ToGdiColor(element.color));
+					Gdiplus::SolidBrush& textBrush = fonts.Brush(ToGdiColor(element.color));
 					graphics.DrawString(
 						text.c_str(),
 						static_cast<INT>(text.size()),
@@ -462,10 +541,19 @@ namespace VsmrTagRendering
 						Gdiplus::PointF(static_cast<Gdiplus::REAL>(x), static_cast<Gdiplus::REAL>(y)),
 						&fonts.Format(),
 						&textBrush);
+					if (element.bold)
+					{
+						// A small horizontal overdraw strengthens bold glyphs without
+						// changing their font size or baseline. Measurement reserves it.
+						graphics.DrawString(text.c_str(), static_cast<INT>(text.size()), fonts.BoldFont(),
+							Gdiplus::PointF(static_cast<Gdiplus::REAL>(x) + BoldInkOffset, static_cast<Gdiplus::REAL>(y)),
+							&fonts.Format(), &textBrush);
+					}
+
 				}
 
 				int hitWidth = element.width;
-				if (options.extendScratchpadHit && element.action == options.scratchpadAction)
+				if (options.extendScratchpadHit && !options.fitBackgroundToText && element.action == options.scratchpadAction)
 					hitWidth = (std::max)(
 						hitWidth,
 						static_cast<int>(result.bounds.right) - padding - x);
@@ -503,13 +591,13 @@ namespace VsmrTagRendering
 			bodyBounds.top - bandHeight,
 			bodyBounds.right,
 			bodyBounds.top);
-		Gdiplus::SolidBrush backgroundBrush(band.background);
+		Gdiplus::SolidBrush& backgroundBrush = fonts.Brush(band.background);
 		graphics.FillRectangle(&backgroundBrush, ToGdiRect(bandBounds));
 
 		Gdiplus::StringFormat format;
 		format.SetAlignment(Gdiplus::StringAlignmentCenter);
 		const std::wstring& text = fonts.Utf16Text(band.text);
-		Gdiplus::SolidBrush textBrush(band.textColor);
+		Gdiplus::SolidBrush& textBrush = fonts.Brush(band.textColor);
 		graphics.DrawString(
 			text.c_str(),
 			static_cast<INT>(text.size()),

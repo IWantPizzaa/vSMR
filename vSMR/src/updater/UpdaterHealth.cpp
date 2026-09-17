@@ -1,4 +1,5 @@
 #include "updater/UpdaterCore.hpp"
+#include "shared/JsonDocument.hpp"
 #include "updater/UpdaterCore.Internal.hpp"
 #include "updater/UpdaterReleaseModel.hpp"
 
@@ -92,7 +93,7 @@ namespace vsmr::updater::internal
 		document.Accept(writer);
 		return AtomicWriteText(
 			result.healthMarkerPath,
-			std::string(buffer.GetString(), buffer.Size()) + "\n");
+			std::string(buffer.GetString(), buffer.GetSize()) + "\n");
 	}
 
 	bool ReadHealthMarker(
@@ -107,7 +108,7 @@ namespace vsmr::updater::internal
 		if (!ReadText(markerPath, json, 128 * 1024))
 			return false;
 		rapidjson::Document document;
-		document.Parse<0>(json.c_str());
+		VsmrJson::ParseDocument(document, json);
 		if (document.HasParseError() || !document.IsObject() ||
 			!document.HasMember("schema_version") || !document["schema_version"].IsInt() ||
 			document["schema_version"].GetInt() != 1 ||
@@ -153,7 +154,7 @@ namespace vsmr::updater::internal
 		if (!ReadText(update.healthMarkerPath, json, 128 * 1024))
 			return false;
 		rapidjson::Document document;
-		document.Parse<0>(json.c_str());
+		VsmrJson::ParseDocument(document, json);
 		if (document.HasParseError() || !document.IsObject() ||
 			!document.HasMember("schema_version") || !document["schema_version"].IsInt() ||
 			document["schema_version"].GetInt() != 1 ||
@@ -175,7 +176,7 @@ namespace vsmr::updater::internal
 		document.Accept(writer);
 		return AtomicWriteText(
 			update.healthMarkerPath,
-			std::string(buffer.GetString(), buffer.Size()) + "\n");
+			std::string(buffer.GetString(), buffer.GetSize()) + "\n");
 	}
 
 	bool WriteQuarantineMarker(
@@ -196,7 +197,7 @@ namespace vsmr::updater::internal
 		document.Accept(writer);
 		return AtomicWriteText(
 			storageRoot / L"quarantine" / (Utf8ToWide(version) + L".json"),
-			std::string(buffer.GetString(), buffer.Size()) + "\n");
+			std::string(buffer.GetString(), buffer.GetSize()) + "\n");
 	}
 
 }

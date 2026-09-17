@@ -21,8 +21,10 @@ $sourceNames = @(
     "app-profile-colors.js",
     "app-profile-editor.js",
     "app-aviso-editor.js",
+	"app-aviso-clipboard.js",
     "app-settings.js",
     "app-persistence.js",
+	"app-interaction-help.js",
     "app-events.js",
     "app-actions.js",
     "app.js"

@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 #include "control_center/ControlCenterBridge.Internal.hpp"
 
 #include "aviso/AvisoDocumentModel.hpp"
@@ -44,7 +45,7 @@ bool VsmrControlCenterBridge::ValidateLoadedResource(
 	}
 
 	rapidjson::Document parsed;
-	parsed.Parse<0>(jsonText.c_str());
+	VsmrJson::ParseDocument(parsed, jsonText);
 	if (parsed.HasParseError())
 	{
 		error = "The selected resource contains invalid JSON.";
@@ -122,7 +123,7 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 	}
 
 	rapidjson::Document parsed;
-	parsed.Parse<0>(jsonText.c_str());
+	VsmrJson::ParseDocument(parsed, jsonText);
 	const std::string normalizedResource = LowerAscii(resource);
 	if (normalizedResource == "profiles")
 	{
@@ -273,7 +274,7 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 			}
 			activatedAvisoRevision =
 				State->ContentRevision(activatedJson);
-			parsed.Parse<0>(activatedJson.c_str());
+			VsmrJson::ParseDocument(parsed, activatedJson);
 			if (parsed.HasParseError() ||
 				DetectAvisoAirport(parsed, source) != activeAirport)
 			{

@@ -1,26 +1,44 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "radar/RadarScreen.hpp"
+#include "config/ProfileNormalization.hpp"
+#include "rendering/DisplayScale.hpp"
+#include "insets/InsetWindow.hpp"
+
+std::string CSMRRadar::GetUiColorTheme() const
+{
+	return UiUseDayColorTheme ? "day" : "night";
+}
+
+bool CSMRRadar::SetUiColorTheme(const std::string& rawTheme, bool persistToAsr)
+{
+	std::string theme = rawTheme;
+	theme.erase(
+		theme.begin(),
+		std::find_if(theme.begin(), theme.end(), [](unsigned char value)
+			{ return !std::isspace(value); }));
+	theme.erase(
+		std::find_if(theme.rbegin(), theme.rend(), [](unsigned char value)
+			{ return !std::isspace(value); }).base(),
+		theme.end());
+	std::transform(theme.begin(), theme.end(), theme.begin(), [](unsigned char value)
+		{ return static_cast<char>(std::tolower(value)); });
+	if (theme != "day" && theme != "night")
+		return false;
+
+	UiUseDayColorTheme = theme == "day";
+	if (persistToAsr)
+	{
+		SaveDataToAsr(
+			"UiColorTheme",
+			"Control Center and inset UI theme",
+			GetUiColorTheme().c_str());
+	}
+	return true;
+}
 
 std::string CSMRRadar::NormalizeTargetIconStyle(const std::string& style) const
 {
-	std::string lowered = style;
-	std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-
-	if (lowered.find("nova") != std::string::npos)
-		return "nova";
-
-	if (lowered.find("diamond") != std::string::npos ||
-		lowered.find("square") != std::string::npos ||
-		lowered.find("rhomb") != std::string::npos)
-		return "diamond";
-
-	if (lowered.find("triang") != std::string::npos ||
-		lowered.find("arrow") != std::string::npos ||
-		lowered.find("draw") != std::string::npos ||
-		lowered.find("legacy") != std::string::npos)
-		return "triangle";
-
-	return "realistic";
+	return VsmrProfile::NormalizeTargetIconStyle(style);
 }
 
 std::string CSMRRadar::GetActiveTargetIconStyle() const
@@ -183,12 +201,29 @@ bool CSMRRadar::SetSmallTargetIconBoostResolutionPreset(const std::string& prese
 
 double CSMRRadar::GetSmallTargetIconBoostResolutionScale() const
 {
-	const std::string preset = GetSmallTargetIconBoostResolutionPreset();
-	if (preset == "4k")
-		return 1.55;
-	if (preset == "2k")
-		return 1.25;
-	return 1.0;
+	return GetDisplayScale();
+}
+
+double CSMRRadar::GetDisplayScale() const
+{
+	// Keep the persisted key compatible with existing profiles.
+	return VsmrRendering::ResolutionScale(GetSmallTargetIconBoostResolutionPreset());
+}
+
+void CSMRRadar::RefreshDisplayScale()
+{
+	const double scale = GetDisplayScale();
+	if (AppliedDisplayScale == scale) return;
+	AppliedDisplayScale = scale;
+	LoadCustomFont();
+	TagTextCache.Clear();
+	InvalidateAvisoGroupRendering();
+	ClearAvisoGeoJsonRasterCache();
+	for (const auto& entry : appWindows)
+	{
+		if (entry.second != nullptr)
+			entry.second->ClearAvisoViewportCache();
+	}
 }
 
 std::vector<std::string> CSMRRadar::GetAvailableTagFonts() const

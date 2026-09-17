@@ -16,7 +16,6 @@ enum class VsmrBridgeAction
 	StateSave,
 	StateReload,
 	StateReset,
-	StateRestoreBackup,
 	RuntimeProfileChange,
 	RuntimeModeChange,
 	RuntimeGroupVisibility,

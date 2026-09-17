@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 #include "control_center/ControlCenterBridge.hpp"
 #include "control_center/ControlCenterBridge.Internal.hpp"
 
@@ -36,7 +37,7 @@ bool VsmrControlCenterBridge::HandleWebMessage(const std::string& messageJson)
 	}
 
 	rapidjson::Document document;
-	document.Parse<0>(messageJson.c_str());
+	VsmrJson::ParseDocument(document, messageJson);
 	if (document.HasParseError())
 	{
 		State->SendError("", "Bridge message contains invalid JSON.");

@@ -63,17 +63,17 @@ namespace
 
 	void AddDoubleMember(rapidjson::Value& object, const char* key, double value, rapidjson::Document::AllocatorType& allocator)
 	{
-		object.AddMember(key, value, allocator);
+		object.AddMember(rapidjson::Value(key, allocator).Move(), value, allocator);
 	}
 
 	void AddIntMember(rapidjson::Value& object, const char* key, int value, rapidjson::Document::AllocatorType& allocator)
 	{
-		object.AddMember(key, value, allocator);
+		object.AddMember(rapidjson::Value(key, allocator).Move(), value, allocator);
 	}
 
 	void AddBoolMember(rapidjson::Value& object, const char* key, bool value, rapidjson::Document::AllocatorType& allocator)
 	{
-		object.AddMember(key, value, allocator);
+		object.AddMember(rapidjson::Value(key, allocator).Move(), value, allocator);
 	}
 
 	bool ReadDoubleMember(const rapidjson::Value& object, const char* key, double& out)

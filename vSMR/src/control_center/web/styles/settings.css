@@ -2,6 +2,8 @@
 
 .settings-group > .check-field { margin-top: 4px; }
 
+.settings-theme-control { width: 150px; }
+
 .profile-settings-scroll {
   min-height: 0;
   overflow: auto;
@@ -16,7 +18,7 @@
 
 .rail-settings {
   margin-top: 0;
-  border-top-color: #050708;
+  border-top-color: var(--ui-outer-border);
 }
 
 .settings-column {
@@ -36,14 +38,14 @@
 }
 
 .settings-file-heading strong {
-  color: #d4dfe1;
+  color: var(--ui-text);
   font-size: 9px;
 }
 
 .settings-file-heading small {
   min-width: 0;
   overflow: hidden;
-  color: #829399;
+  color: var(--ui-muted-text);
   text-overflow: ellipsis;
   white-space: nowrap;
   font: 7.5px/1 var(--mono);
@@ -82,9 +84,39 @@
 .icon-settings-grid {
   display: grid;
   align-content: start;
-  grid-template-columns: minmax(0, .9fr) minmax(0, 1.45fr);
-  padding: 4px;
-  gap: 4px;
+  grid-template-columns: minmax(150px, .72fr) minmax(240px, 1.28fr);
+  padding: var(--ui-page-padding);
+  gap: var(--ui-gap);
+}
+
+.icon-settings-stack {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: var(--ui-gap);
+}
+
+.icon-preview-column {
+	min-width: 0;
+	display: grid;
+	align-content: start;
+	gap: var(--ui-gap);
+  overflow: hidden;
+  border: 1px solid var(--ui-outer-border);
+  border-radius: var(--ui-card-radius);
+  background: var(--ui-card-bg);
+}
+
+.icon-section-heading {
+  min-height: var(--ui-card-title-height);
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  border-bottom: 1px solid var(--ui-inner-border);
+  background: var(--ui-card-title-bg);
+  color: var(--ui-text);
+  font-size: var(--ui-font-size-small);
+  font-weight: 700;
 }
 
 .group-settings-card { margin-bottom: 0; }
@@ -107,7 +139,7 @@
   box-shadow: none;
   padding: 4px 0 7px;
   border: 0;
-  border-bottom: 1px solid #3b494d;
+  border-bottom: 1px solid var(--ui-divider);
   border-radius: 0;
   background: transparent;
 }
@@ -149,7 +181,7 @@
 
 .settings-recovery-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   padding-top: 2px;
 }
@@ -250,7 +282,7 @@
 
 .settings-page .settings-layout {
   gap: 3px;
-  padding: 3px;
+  padding: var(--ui-page-padding);
   overflow: hidden;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: minmax(0, 1fr);

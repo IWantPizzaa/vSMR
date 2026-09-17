@@ -210,7 +210,8 @@ void CInsetWindow::renderTimer(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphi
 		"Timer",
 		false,
 		mouseLocation,
-		false);
+		false,
+		radar_screen->GetUiColorTheme() == "day");
 
 	dc.Detach();
 }

@@ -10,6 +10,8 @@
     return state.aviso.vsmr_groups;
   }
 
+
+
   function featureGroupIds(feature) {
     const properties = feature?.properties || {};
     let ids = [];
@@ -165,6 +167,7 @@
   }
 
   function renderRuntimeMenu() {
+    applyUiTheme();
     const menu = $("#runtimeMenu");
     if (!menu || HOST_MODE) return;
     const groups = avisoGroups();

@@ -8,7 +8,6 @@
 #include "crash/CrashRuntime.hpp"
 
 extern CPoint mouseLocation;
-extern string TagBeingDragged;
 extern HCURSOR smrCursor;
 extern bool standardCursor;
 extern bool customCursor;
@@ -40,8 +39,8 @@ struct VsmrRadarInteractionAccess
 
 		return
 			radar.ActiveRuntimeMenuPopup != CSMRRadar::RuntimeMenuPopup::None &&
-			!radar.RuntimeMenuPopupArea.IsRectEmpty() &&
-			radar.RuntimeMenuPopupArea.PtInRect(point);
+			((!radar.RuntimeMenuPopupArea.IsRectEmpty() && radar.RuntimeMenuPopupArea.PtInRect(point)) ||
+			 (!radar.RuntimeMenuSecondaryPopupArea.IsRectEmpty() && radar.RuntimeMenuSecondaryPopupArea.PtInRect(point)));
 	}
 
 	static void SetMainAvisoSelected(CSMRRadar& radar, bool selected) noexcept
@@ -386,7 +385,7 @@ void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId,
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnButtonDownScreenObject",
 		reinterpret_cast<std::uintptr_t>(this));
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	UNREFERENCED_PARAMETER(sObjectId);
 	UNREFERENCED_PARAMETER(Area);
 	mouseLocation = Pt;
@@ -430,7 +429,7 @@ void CSMRRadar::OnButtonUpScreenObject(int ObjectType, const char * sObjectId, P
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnButtonUpScreenObject",
 		reinterpret_cast<std::uintptr_t>(this));
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	UNREFERENCED_PARAMETER(ObjectType);
 	UNREFERENCED_PARAMETER(sObjectId);
 	UNREFERENCED_PARAMETER(Area);
@@ -448,11 +447,13 @@ void CSMRRadar::OnButtonUpScreenObject(int ObjectType, const char * sObjectId, P
 }
 
 void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, bool Released) {
+	// Release must end dragging even when the target disappeared or routing changed.
+	if (Released) TagBeingDragged.clear();
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnMoveScreenObject",
 		reinterpret_cast<std::uintptr_t>(this));
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	if (HandleRuntimeMenuMove(ObjectType, sObjectId, Pt, Area, Released))
 	{
 		mouseLocation = Pt;
@@ -700,7 +701,7 @@ void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT
 		"CSMRRadar::OnOverScreenObject",
 		reinterpret_cast<std::uintptr_t>(this));
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	UNREFERENCED_PARAMETER(Area);
 	UNREFERENCED_PARAMETER(sObjectId);
 	mouseLocation = Pt;
@@ -759,6 +760,36 @@ void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT
 		return;
 	}
 	RequestRefresh();
+}
+
+bool CSMRRadar::CanHoverTags(POINT point, const CInsetWindow* inset)
+{
+	if (!CRect(GetRadarArea()).PtInRect(point) || IsPointInRuntimeMenuOverlay(this, point))
+		return false;
+	const CInsetWindow* topmost = TopmostVisibleInsetFrameAtPoint(this, point);
+	return topmost == inset && (inset == nullptr || CRect(inset->m_Area).PtInRect(point));
+}
+
+bool CSMRRadar::HasDetailedTags() const
+{
+	if (!DetailedTagCallsigns.empty() || !TagBeingDragged.empty()) return true;
+	for (const auto& entry : appWindows)
+		if (entry.second && IsAppWindowDisplayed(entry.first) &&
+			(!entry.second->m_DetailedTagCallsigns.empty() || !entry.second->m_TagBeingDragged.empty()))
+			return true;
+	return false;
+}
+
+void CSMRRadar::CancelTagDrag()
+{
+	TagBeingDragged.clear();
+	TagDragOffsetFromCenter.clear();
+	for (const auto& entry : appWindows)
+		if (entry.second)
+		{
+			entry.second->m_TagBeingDragged.clear();
+			entry.second->m_TagDragOffsetFromCenter.clear();
+		}
 }
 
 bool CSMRRadar::HandleInsetSetCursor(HWND hwnd)
@@ -1007,7 +1038,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnClickScreenObject",
 		reinterpret_cast<std::uintptr_t>(this));
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	mouseLocation = Pt;
 	MarkPerformanceRefreshReason(
 		VsmrPerformance::FrameRefreshReason::UserActionExternal);
@@ -1166,6 +1197,29 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		RequestRefresh();
 		return;
 	}
+	if (Button == BUTTON_LEFT && ObjectType == TAG_CITEM_READY_STARTUP)
+	{
+		CRadarTarget target = selectAseAndGetTarget();
+		CFlightPlan flightPlan = target.IsValid()
+			? target.GetCorrelatedFlightPlan()
+			: CFlightPlan();
+		const char* callsign = flightPlan.IsValid() ? flightPlan.GetCallsign() : nullptr;
+		if (callsign != nullptr && callsign[0] != '\0')
+		{
+			// Dispatch CDM's own toggle so its controller permissions and state updates remain authoritative.
+			StartTagFunction(
+				callsign,
+				VsmrCdm::PluginName,
+				VsmrCdm::ReadyStartupTagItemCode,
+				"RDY",
+				VsmrCdm::PluginName,
+				VsmrCdm::ToggleReadyStartupFunctionId,
+				Pt,
+				Area);
+		}
+		RequestRefresh();
+		return;
+	}
 	if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
 		SelectAvisoScrollTargetAtPoint(this, Pt);
 	if (Button == BUTTON_RIGHT &&
@@ -1242,7 +1296,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 				GetPlugIn()->AddPopupListElement("2500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 2500));
 				GetPlugIn()->AddPopupListElement("1500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 1500));
 				GetPlugIn()->AddPopupListElement("500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 500));
-				string tmp = std::to_string(GetPlugIn()->GetTransitionAltitude());
+				std::string tmp = std::to_string(GetPlugIn()->GetTransitionAltitude());
 				GetPlugIn()->AddPopupListElement(tmp.c_str(), "", RIMCAS_UPDATEFILTER + appWindowId, false, 2, false, true);
 			});
 		}

@@ -22,19 +22,9 @@
   function ensureAlertsDraft() {
     const profileId = state.activeProfileId;
     if (!drafts.alerts || drafts.alerts.profileId !== profileId) {
-      const profile = activeProfile();
-      const hasConfiguredRunways = Boolean(
-        profile?.rimcas &&
-        Object.prototype.hasOwnProperty.call(profile.rimcas, "runways") &&
-        Array.isArray(profile.rimcas.runways) &&
-        profile.rimcas.runways.length
-      );
       const rimcas = ensureProfileRimcas();
       const runtimeAlerts = state.runtime.alerts ||= { visibility: "normal", runways: clone(DEFAULT_ALERT_RUNWAYS) };
       if (!Array.isArray(runtimeAlerts.runways)) runtimeAlerts.runways = clone(DEFAULT_ALERT_RUNWAYS);
-      // Empty arrays were written by older editors even when runway monitoring
-      // was meant to follow EuroScope. Only actual rows override the runtime list.
-      const profileRunways = hasConfiguredRunways ? rimcas.runways : runtimeAlerts.runways;
       const profileVisibility = ["normal", "lvp"].includes(rimcas.visibility)
         ? rimcas.visibility
         : runtimeAlerts.visibility;
@@ -42,7 +32,9 @@
         profileId,
         data: {
           visibility: profileVisibility === "lvp" ? "lvp" : "normal",
-          runways: clone(profileRunways),
+          // The native runtime derives runway pairs and ARR/DEP assignments from
+          // EuroScope. The editor only owns each pair's independent closed state.
+          runways: clone(runtimeAlerts.runways),
           rimcas
         }
       };
@@ -57,13 +49,13 @@
 
     $("#alertVisibilityMode").value = data.visibility;
     const runwayRowsHtml = data.runways.map((runway, index) => `<div class="alert-runway-row" data-alert-runway-index="${index}">
-      <input aria-label="Runway pair" data-alert-runway-name="${index}" spellcheck="false" type="text" value="${escapeHtml(runway.id)}">
-      <label class="alert-table-check"><input data-alert-runway-arr="${index}" type="checkbox" ${runway.arrival ? "checked" : ""}><span></span></label>
-      <label class="alert-table-check"><input data-alert-runway-dep="${index}" type="checkbox" ${runway.departure ? "checked" : ""}><span></span></label>
+      <input aria-label="Runway pair" data-alert-runway-name="${index}" readonly spellcheck="false" title="Runway pair from the active EuroScope sector file" type="text" value="${escapeHtml(runway.id)}">
+      <label class="alert-table-check" title="Arrival assignment follows EuroScope"><input data-alert-runway-arr="${index}" disabled type="checkbox" ${runway.arrival ? "checked" : ""}><span></span></label>
+      <label class="alert-table-check" title="Departure assignment follows EuroScope"><input data-alert-runway-dep="${index}" disabled type="checkbox" ${runway.departure ? "checked" : ""}><span></span></label>
       <label class="alert-table-check"><input data-alert-runway-closed="${index}" type="checkbox" ${runway.closed ? "checked" : ""}><span></span></label>
-      <button aria-label="Remove runway pair ${escapeHtml(runway.id)}" class="ui-button ui-button--compact ui-button--icon ui-button--destructive alert-runway-remove" data-action="remove-alert-runway" data-index="${index}" title="Remove" type="button">×</button>
+      <span></span>
     </div>`).join("");
-    $("#alertRunwayTable").innerHTML = `<div class="alert-runway-header"><span>Runway pair</span><span>ARR</span><span>DEP</span><span>Closed</span><span></span></div>${runwayRowsHtml || `<div class="ui-list__empty">No monitored runway pairs.</div>`}`;
+    $("#alertRunwayTable").innerHTML = `<div class="alert-runway-header"><span>Runway pair</span><span>ARR</span><span>DEP</span><span>Closed</span><span></span></div>${runwayRowsHtml || `<div class="ui-list__empty">No runways found for the active airport.</div>`}`;
 
     renderAlertTimerRow("#alertTimerNormal", data.rimcas.timer);
     renderAlertTimerRow("#alertTimerLvp", data.rimcas.timer_lvp);
@@ -120,29 +112,9 @@
     renderAlerts();
   }
 
-  function setAllAlertRunwayField(field, value = true) {
+  function openAllAlertRunways() {
     captureAlertsDraft();
-    ensureAlertsDraft().runways.forEach(runway => { runway[field] = value; });
-    renderAlerts();
-    applyAlerts({ render: false, feedback: false });
-  }
-
-  function addAlertRunway() {
-    captureAlertsDraft();
-    const input = window.prompt("Runway pair (for example 09L / 27R)", "");
-    if (input == null) return;
-    const normalized = input.trim().toUpperCase().replace(/\s*\/\s*/g, " / ");
-    if (!/^\d{2}[LRC]? \/ \d{2}[LRC]?$/.test(normalized)) { showToast("Use a runway pair such as 09L / 27R", "error"); return; }
-    const data = ensureAlertsDraft();
-    if (data.runways.some(row => row.id === normalized)) { showToast("This runway pair is already monitored", "error"); return; }
-    data.runways.push({ id: normalized, arrival: true, departure: true, closed: false });
-    renderAlerts();
-    applyAlerts({ render: false, feedback: false });
-  }
-
-  function removeAlertRunway(index) {
-    captureAlertsDraft();
-    ensureAlertsDraft().runways.splice(index, 1);
+    ensureAlertsDraft().runways.forEach(runway => { runway.closed = false; });
     renderAlerts();
     applyAlerts({ render: false, feedback: false });
   }
@@ -159,25 +131,6 @@
     return timestamp.toLocaleString([], {
       year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit"
     });
-  }
-
-  function describeLegacyProfilesBackup(health) {
-    const unixSeconds = Number(health?.profilesBackupModifiedUnixSeconds);
-    if (!Number.isFinite(unixSeconds) || unixSeconds <= 0)
-      return "Validated legacy profiles .bak (modification date unavailable)";
-
-    const modified = new Date(unixSeconds * 1000);
-    if (Number.isNaN(modified.getTime()))
-      return "Validated legacy profiles .bak (modification date unavailable)";
-
-    const ageMinutes = Math.floor(Math.max(0, Date.now() - modified.getTime()) / 60000);
-    const ageValue = ageMinutes >= 1440
-      ? Math.floor(ageMinutes / 1440)
-      : ageMinutes >= 60
-        ? Math.floor(ageMinutes / 60)
-        : ageMinutes;
-    const ageUnit = ageMinutes >= 1440 ? "day" : ageMinutes >= 60 ? "hour" : "minute";
-    return `Validated legacy profiles .bak from ${modified.toLocaleString()} (${ageValue} ${ageUnit}${ageValue === 1 ? "" : "s"} old)`;
   }
 
   function expireUpdateRequest(slot, now = Date.now()) {
@@ -404,15 +357,10 @@
     $("#settingsAliasFile").title = aliasFile || "No alias file found";
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
-    const avisoColorPalette = settings.avisoColorPalette === "day" ? "day" : "night";
+    const uiColorTheme = settings.uiColorTheme === "day" ? "day" : "night";
+    syncToggleButtons('[data-ui-color-theme]', uiColorTheme, "uiColorTheme");
+    const avisoColorPalette = normalizeAvisoColorPalette(settings.avisoColorPalette);
     syncToggleButtons('[data-aviso-color-palette]', avisoColorPalette, "avisoColorPalette");
-    const restoreBackup = $("#restoreProfilesBackupButton");
-    if (restoreBackup) {
-      restoreBackup.disabled = !settings.dataHealth?.profilesBackupAvailable || Boolean(pending.reload || pending.save || pending.resource);
-      restoreBackup.title = restoreBackup.disabled
-        ? "No validated profiles backup is available"
-        : describeLegacyProfilesBackup(settings.dataHealth);
-    }
     if (HOST_MODE) {
       ["#settingsProfileFile", "#settingsAvisoFile", "#settingsAliasFile"].forEach(selector => {
         const control = $(selector);

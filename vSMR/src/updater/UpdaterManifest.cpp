@@ -1,4 +1,5 @@
 #include "updater/UpdaterCore.hpp"
+#include "shared/JsonDocument.hpp"
 #include "updater/UpdaterCore.Internal.hpp"
 #include "updater/UpdaterReleaseModel.hpp"
 #include "updater/UpdaterTransport.hpp"
@@ -75,7 +76,7 @@ namespace vsmr::updater::internal
 		std::vector<Release> releases;
 		rapidjson::Document document;
 		const std::string json(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-		document.Parse<0>(json.c_str());
+		VsmrJson::ParseDocument(document, json);
 		if (document.HasParseError() || !document.IsArray())
 			return releases;
 		for (rapidjson::SizeType releaseIndex = 0; releaseIndex < document.Size(); ++releaseIndex)
@@ -219,7 +220,7 @@ namespace vsmr::updater::internal
 	{
 		rapidjson::Document document;
 		const std::string json(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-		document.Parse<0>(json.c_str());
+		VsmrJson::ParseDocument(document, json);
 		if (document.HasParseError() || !document.IsObject())
 		{
 			error = "manifest_json_invalid";

@@ -6,6 +6,7 @@
 #include "aircraft/HoldingPoint.hpp"
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
+#include "integrations/PluginBridgeClient.hpp"
 #include "plugin/PluginCommandHandler.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "shared/TextUtils.hpp"
@@ -35,7 +36,7 @@ void CSMRPlugin::OnFunctionCall(
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFunctionCall");
 	(void)Pt;
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
 
@@ -47,7 +48,7 @@ void CSMRPlugin::OnFunctionCall(
 void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFlightPlanDisconnect");
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
 
@@ -62,6 +63,7 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 		return;
 	VsmrGroundState::ClearLineupOverride(normalizedCallsign.c_str());
 	VsmrHoldingPoint::ForgetPending(normalizedCallsign);
+	VsmrPluginBridge::ForgetAircraft(normalizedCallsign);
 
 	ForgetDatalinkFlightPlan(normalizedCallsign);
 }
@@ -91,6 +93,7 @@ void CSMRPlugin::OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan)
 	if (FlightPlan.IsValid())
 	{
 		const char* callsign = FlightPlan.GetCallsign();
+		VsmrPluginBridge::ObserveAircraft(callsign != nullptr ? callsign : "");
 		const char* remarks = FlightPlan.GetFlightPlanData().GetRemarks();
 		(void)VsmrHoldingPoint::Resolve(
 			callsign != nullptr ? callsign : "",
@@ -110,7 +113,7 @@ CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool 
 	(void)GeoReferenced;
 	(void)CanBeSaved;
 	(void)CanBeCreated;
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return NULL;
 

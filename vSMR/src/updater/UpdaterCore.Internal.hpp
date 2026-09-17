@@ -291,7 +291,7 @@ namespace vsmr::updater::internal
 		const std::vector<std::uint8_t>& bytes,
 		Manifest& manifest,
 		std::string& error);
-	bool ValidateManifestForRelease(
+	[[nodiscard]] bool ValidateManifestForRelease(
 		const Manifest& manifest,
 		const Release& release,
 		const ReleaseAsset& archiveAsset,
@@ -321,7 +321,7 @@ namespace vsmr::updater::internal
 		bool terminateOnTimeout,
 		const std::function<void()>& pulse = {},
 		const std::vector<HANDLE>& handlesToInherit = {});
-	bool IsPathBelow(
+	[[nodiscard]] bool IsPathBelow(
 		const std::filesystem::path& child,
 		const std::filesystem::path& parent);
 	bool SafelyExtractArchive(
@@ -400,12 +400,12 @@ namespace vsmr::updater::internal
 		HANDLE existingSessionLock = nullptr,
 		const char* quarantineReason = nullptr);
 	bool IsX86PortableExecutable(const std::filesystem::path& path);
-	bool ValidateExtractedPackage(
+	[[nodiscard]] bool ValidateExtractedPackage(
 		Context& context,
 		const std::filesystem::path& packageRoot,
 		const Manifest& manifest,
 		std::string& error);
-	bool VerifyArchive(
+	[[nodiscard]] bool VerifyArchive(
 		const std::filesystem::path& archive,
 		const Manifest& manifest,
 		std::string& error);

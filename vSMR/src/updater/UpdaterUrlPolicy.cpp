@@ -32,12 +32,6 @@ namespace vsmr::updater::url_policy
 			return value;
 		}
 
-		bool EndsWith(const std::wstring& value, const std::wstring& suffix)
-		{
-			return suffix.size() <= value.size() &&
-				value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
-		}
-
 		bool IsAllowedDownloadHost(const std::wstring& host)
 		{
 			const std::wstring normalized = ToLowerWide(host);
@@ -45,8 +39,7 @@ namespace vsmr::updater::url_policy
 				normalized == L"github.com" ||
 				normalized == L"release-assets.githubusercontent.com" ||
 				normalized == L"objects.githubusercontent.com" ||
-				normalized == L"github-releases.githubusercontent.com" ||
-				EndsWith(normalized, L".githubusercontent.com");
+				normalized == L"github-releases.githubusercontent.com";
 		}
 	}
 
@@ -54,7 +47,8 @@ namespace vsmr::updater::url_policy
 		const std::wstring& url,
 		ParsedHttpsUrl& result)
 	{
-		if (url.empty() || url.find(L'#') != std::wstring::npos)
+		if (url.empty() || url.find(L'#') != std::wstring::npos ||
+			std::any_of(url.begin(), url.end(), [](wchar_t c) { return c <= 0x20 || c == 0x7f; }))
 			return false;
 
 		URL_COMPONENTS components{};

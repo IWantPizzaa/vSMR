@@ -19,8 +19,8 @@ namespace
 			euroScopeWindow->ClientToScreen(&mainRect);
 			if (!mainRect.IsRectEmpty())
 			{
-				fallback.left = mainRect.left + max(24, (mainRect.Width() - defaultWidth) / 2);
-				fallback.top = mainRect.top + max(24, (mainRect.Height() - defaultHeight) / 2);
+				fallback.left = mainRect.left + (std::max)(24, (mainRect.Width() - defaultWidth) / 2);
+				fallback.top = mainRect.top + (std::max)(24, (mainRect.Height() - defaultHeight) / 2);
 				fallback.right = fallback.left + defaultWidth;
 				fallback.bottom = fallback.top + defaultHeight;
 			}

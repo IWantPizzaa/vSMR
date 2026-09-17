@@ -134,6 +134,7 @@ private:
 	std::string GenerateRuntimeFeatureId();
 	void EnsureRuntimeFeatureIds();
 	void AssignRuntimeFeatureIdsForCurrentDocument();
+	void NormalizeSharedGeometry();
 	void CaptureOriginalCoordinatesJson(const std::string& sourceJson);
 	void PatchSerializedCoordinates(std::string& serializedJson) const;
 	void SetNumberMember(rapidjson::Value& object, const char* key, int value);

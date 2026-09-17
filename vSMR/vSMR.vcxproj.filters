@@ -39,6 +39,8 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\config\ProfileNormalization.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\tags\TagDataFormatting.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\aircraft\CallsignLookup.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\app\PluginEntry.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\bootstrap\RuntimeContext.cpp"><Filter>Bootstrap</Filter></ClCompile>
@@ -73,6 +75,11 @@
     <ClCompile Include="src\datalink\DatalinkProtocolSupport.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\datalink\DataLinkDialog.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\integrations\CdmBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\integrations\PluginBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\integrations\PluginBridgeReads.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\integrations\RampAgentBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\integrations\VsidBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.Aviso.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.Chrome.cpp"><Filter>Source</Filter></ClCompile>
@@ -80,6 +87,7 @@
     <ClCompile Include="src\insets\InsetWindow.SecondaryRadar.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.Timer.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.Weather.cpp"><Filter>Source</Filter></ClCompile>
+	<ClCompile Include="src\platform\windows\EuroScopeCommandLine.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\platform\windows\network\HttpHelper.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\platform\windows\PrecompiledHeader.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\Plugin.cpp"><Filter>Source</Filter></ClCompile>
@@ -124,10 +132,15 @@
     <ClCompile Include="src\tags\RadarScreen.TagDefinitions.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\tags\RadarScreen.TagRendering.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\tags\TagColorRuleParser.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\tags\CompiledTagDefinition.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\tags\TagColorRules.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\weather\WeatherStore.cpp"><Filter>Source</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\config\ProfileNormalization.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\rendering\TargetProjection.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\safety\RunwayTraffic.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\tags\TagDataFormatting.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\CallsignLookup.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\GroundState.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\HoldingPoint.hpp"><Filter>Headers</Filter></ClInclude>
@@ -138,6 +151,8 @@
     <ClInclude Include="src\aviso\AvisoFeatureMetadata.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoRasterBlitter.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoRasterPipeline.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\AvisoRasterSizing.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\radar\RecentAirports.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\config\RuntimeConfig.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\config\RuntimeConfig.Internal.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\control_center\ControlCenterBridge.hpp"><Filter>Headers</Filter></ClInclude>
@@ -154,12 +169,21 @@
     <ClInclude Include="src\crash\CrashReportSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\crash\CrashRuntime.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\CPDLCSettingsDialog.hpp"><Filter>Headers</Filter></ClInclude>
-	<ClInclude Include="src\datalink\CdmReminderSafety.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\DataLinkDialog.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\CdmBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\CdmBridgeData.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\PluginBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\PluginBridgeReads.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\RampAgentBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\RampAgentBridgeData.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\VsidBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\VsidBridgeData.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\ParisRunwayRules.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\insets\InsetWindow.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\insets\InsetWindow.Internal.hpp"><Filter>Headers</Filter></ClInclude>
+	<ClInclude Include="src\platform\windows\EuroScopeCommandLine.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\platform\windows\GdiColorUtils.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\platform\windows\network\HttpHelper.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\platform\windows\PrecompiledHeader.hpp"><Filter>Headers</Filter></ClInclude>
@@ -173,6 +197,7 @@
     <ClInclude Include="src\plugin\Plugin.RuntimeState.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\plugin\PluginRuntimeAudio.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\rendering\TagRenderer.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\rendering\DisplayScale.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\rendering\TargetSymbolRenderer.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarGeometry.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarScreen.hpp"><Filter>Headers</Filter></ClInclude>
@@ -193,16 +218,21 @@
     <ClInclude Include="src\shared\RapidJsonUtils.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\shared\TextUtils.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\shared\WindowsPathEncoding.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\platform\windows\network\WinHttpSupport.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\rendering\BrushCache.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\shared\FunctionRef.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\shared\JsonDocument.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\shared\Random.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\shared\RefreshLog.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\tags\CompiledTagDefinition.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\tags\TagTokenValues.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\tags\TagColorRules.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\tags\TagColorRules.Internal.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\tags\TagDataTypes.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\tags\TagDefinitionUtils.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\tags\VacdmTagHelpers.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\tags\CdmTagHelpers.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\weather\WeatherStore.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="..\lib\include\rapidjson\document.h">
-      <Filter>Third Party Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="..\lib\include\rapidjson\filestream.h">
       <Filter>Third Party Headers</Filter>
     </ClInclude>
     <ClInclude Include="..\lib\include\rapidjson\prettywriter.h">

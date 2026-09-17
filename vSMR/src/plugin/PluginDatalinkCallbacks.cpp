@@ -26,12 +26,8 @@ using VsmrDatalinkProtocol::ResolvePdcNextFrequency;
 void CSMRPlugin::ForgetDatalinkFlightPlan(const std::string& normalizedCallsign)
 {
 	std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-	AircraftCdmAutoTracked.erase(normalizedCallsign);
-	RemoveQueuedCdmReminderUnlocked(normalizedCallsign);
 	ClearDatalinkClearanceSentUnlocked(normalizedCallsign);
 	ClearDatalinkClearanceInFlightUnlocked(normalizedCallsign);
-	if (CdmReminderCooldownMinutes.load(std::memory_order_relaxed) == 0)
-		AircraftCdmTobtReminderSentAt.erase(normalizedCallsign);
 }
 
 void CSMRPlugin::HandleDatalinkFunctionCall(
@@ -133,7 +129,7 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 			}
 			dia.m_Req = msg.message.c_str();
 
-			string toReturn = "";
+			std::string toReturn = "";
 
 			if (dia.DoModal() != IDOK)
 				return;
@@ -210,7 +206,7 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 				}
 			} compositionGuard{ fpCallsign };
 
-			// Prefilling the PDC from the flight plan and current vACDM snapshot
+			// Prefilling the PDC from the flight plan and current CDM bridge data
 			CDataLinkDialog dia;
 			dia.SetDialogMode(CDataLinkDialog::DialogMode::Pdc);
 			dia.m_Callsign = fpCallsign;
@@ -221,7 +217,7 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 			dia.m_Rwy = FlightPlan.GetFlightPlanData().GetDepartureRwy();
 			dia.m_SSR = FlightPlan.GetControllerAssignedData().GetSquawk();
 			const PdcFrequencySelection frequencySelection = ResolvePdcNextFrequency(this, FlightPlan);
-			string freq = FormatPdcFrequency(frequencySelection.frequency);
+			std::string freq = FormatPdcFrequency(frequencySelection.frequency);
 			if (freq.empty())
 				freq = FormatPdcFrequency(ControllerMyself().GetPrimaryFrequency());
 			Logger::info(
@@ -238,24 +234,24 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 					msg = msgIt->second;
 			}
 			dia.m_Req = msg.message.c_str();
-			VacdmPilotData vacdmPilot;
-			if (IsVacdmSnapshotReadyForCdm() &&
-				TryGetVacdmPilotData(fpCallsign, vacdmPilot))
+			CdmPilotData cdmPilot;
+			if (IsCdmBridgeReady() &&
+				TryGetCdmPilotData(fpCallsign, cdmPilot))
 			{
-				if (vacdmPilot.hasTsat)
-					dia.m_TSAT = FormatUtcHhmm(vacdmPilot.tsatUtc).c_str();
-				if (vacdmPilot.hasCtot)
-					dia.m_CTOT = FormatUtcHhmm(vacdmPilot.ctotUtc).c_str();
+				if (cdmPilot.hasTsat)
+					dia.m_TSAT = FormatUtcHhmm(cdmPilot.tsatUtc).c_str();
+				if (cdmPilot.hasCtot)
+					dia.m_CTOT = FormatUtcHhmm(cdmPilot.ctotUtc).c_str();
 			}
 
-			string toReturn = "";
+			std::string toReturn = "";
 
 			int ClearedAltitude = FlightPlan.GetControllerAssignedData().GetClearedAltitude();
 			int Ta = GetTransitionAltitude();
 
 			if (ClearedAltitude != 0) {
 				if (ClearedAltitude > Ta && ClearedAltitude > 2) {
-					string str = std::to_string(ClearedAltitude);
+					std::string str = std::to_string(ClearedAltitude);
 					for (size_t i = 0; i < 5 - str.length(); i++)
 						str = "0" + str;
 					if (str.size() > 3)
@@ -264,7 +260,6 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 					toReturn += str;
 				}
 				else if (ClearedAltitude <= Ta && ClearedAltitude > 2) {
-
 
 					toReturn = std::to_string(ClearedAltitude);
 					toReturn += "ft";
@@ -296,7 +291,6 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 			request.messageSequence = messageId.fetch_add(1) + 1;
 			{
 				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-				AircraftCdmAutoTracked.erase(NormalizeCallsignForState(fpCallsign));
 			}
 			if (!QueueNetworkJob([request]() { sendDatalinkClearance(request); }))
 			{
@@ -316,7 +310,6 @@ void CSMRPlugin::RunDatalinkTimerCycle()
 {
 	// ----- Updating connection state -----
 	static int lastConnectionType = -999;
-	static PluginSteadyClock::time_point lastConnectionTypeChangeAt{};
 	const int currentConnectionType = GetConnectionType();
 	{
 		const CController myself = ControllerMyself();
@@ -350,25 +343,6 @@ void CSMRPlugin::RunDatalinkTimerCycle()
 	{
 		Logger::info("EuroScope connection_type=" + std::to_string(currentConnectionType));
 		lastConnectionType = currentConnectionType;
-		lastConnectionTypeChangeAt = PluginSteadyClock::now();
-	}
-
-	const unsigned long pendingVacdmSehCode = VacdmLastSehCode.exchange(0, std::memory_order_relaxed);
-	if (pendingVacdmSehCode != 0)
-		Logger::info("VACDM refresh SEH exception code=" + FormatSehCode(pendingVacdmSehCode));
-
-	{
-		std::string aselCallsign;
-		const CFlightPlan aselFlightPlan = FlightPlanSelectASEL();
-		if (aselFlightPlan.IsValid())
-		{
-			const char* callsign = aselFlightPlan.GetCallsign();
-			if (callsign != NULL)
-				aselCallsign = ToUpperAsciiCopy(callsign);
-		}
-
-		std::lock_guard<std::mutex> stateGuard(VacdmDebugStateMutex);
-		VacdmDebugAselCallsign = aselCallsign;
 	}
 
 	if (HoppieConnected.load() && ConnectionMessage.load()) {
@@ -393,7 +367,7 @@ void CSMRPlugin::RunDatalinkTimerCycle()
 		DisplayUserMessage("CPDLC", "Server", "Automatically logged off!", true, true, false, true, false);
 	}
 
-	// ----- Polling CPDLC and vACDM -----
+	// ----- Polling CPDLC -----
 	const PluginSteadyClock::time_point timerNow = PluginSteadyClock::now();
 	if (!PluginShutdownRequested.load(std::memory_order_relaxed) &&
 		timerNow - DatalinkLastPollAt > std::chrono::seconds(10) &&
@@ -401,50 +375,6 @@ void CSMRPlugin::RunDatalinkTimerCycle()
 		std::string pollError;
 		StartDatalinkPoll(false, pollError);
 		DatalinkLastPollAt = timerNow;
-	}
-
-	const bool networkConnectionActive = (currentConnectionType != CONNECTION_TYPE_NO);
-	const bool vacdmPollingEnabled = VacdmPollingEnabled.load(std::memory_order_relaxed);
-	const bool connectionStableForVacdm = networkConnectionActive &&
-		(lastConnectionTypeChangeAt == PluginSteadyClock::time_point{} ||
-			timerNow - lastConnectionTypeChangeAt >= std::chrono::seconds(20));
-
-	const PluginSteadyTick vacdmNow = CurrentSteadyTick();
-	const PluginSteadyTick lastVacdmFetchTick = VacdmLastFetchTick.load();
-	if (vacdmPollingEnabled &&
-		!PluginShutdownRequested.load(std::memory_order_relaxed) &&
-		connectionStableForVacdm &&
-		HasSteadyIntervalElapsed(
-			vacdmNow,
-			lastVacdmFetchTick,
-			std::chrono::seconds(VacdmFetchIntervalSeconds)) &&
-		!VacdmFetchInProgress.load())
-	{
-		bool expected = false;
-		if (VacdmFetchInProgress.compare_exchange_strong(expected, true))
-		{
-			if (PluginShutdownRequested.load(std::memory_order_relaxed))
-			{
-				VacdmFetchInProgress.store(false);
-				VacdmLastFetchTick = CurrentSteadyTick();
-			}
-			else
-			{
-				if (!QueueNetworkJob([]() { refreshVacdmData(); }))
-				{
-					VacdmFetchInProgress.store(false);
-					VacdmLastFetchTick = CurrentSteadyTick();
-					Logger::info("VACDM refresh could not be queued");
-				}
-			}
-		}
-	}
-
-	// ----- Processing PDC reminders -----
-	if (!PluginShutdownRequested.load(std::memory_order_relaxed))
-	{
-		ProcessCdmAutoMode(this);
-		ProcessQueuedCdmReminderMessages(this);
 	}
 
 	if (!PluginShutdownRequested.load(std::memory_order_relaxed))

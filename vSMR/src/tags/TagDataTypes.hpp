@@ -1,12 +1,15 @@
 #pragma once
 
+#include "integrations/CdmBridgeData.hpp"
+
 #include <ctime>
 #include <string>
 #include <vector>
 
-struct VacdmPilotData
+struct CdmPilotData
 {
 	std::string callsign;
+	VsmrCdm::AircraftData bridgeData;
 	std::string tobtState;
 	std::time_t tobtUtc = 0;
 	std::time_t tsatUtc = 0;
@@ -17,6 +20,7 @@ struct VacdmPilotData
 	std::time_t asrtUtc = 0;
 	std::time_t aortUtc = 0;
 	std::time_t ctotUtc = 0;
+	std::time_t tsacUtc = 0;
 	bool hasTobt = false;
 	bool hasTsat = false;
 	bool hasTtot = false;
@@ -26,6 +30,7 @@ struct VacdmPilotData
 	bool hasAsrt = false;
 	bool hasAort = false;
 	bool hasCtot = false;
+	bool hasTsac = false;
 	bool hasBooking = false;
 };
 
@@ -33,12 +38,12 @@ struct StructuredTagColorRule
 {
 	struct Criterion
 	{
-		std::string source = "vacdm";
+		std::string source = "cdm";
 		std::string token;
 		std::string condition;
 	};
 
-	std::string source = "vacdm";
+	std::string source = "cdm";
 	std::string token;
 	std::string condition;
 	std::vector<Criterion> criteria;
@@ -64,4 +69,4 @@ struct StructuredTagColorRule
 	int textA = 255;
 };
 
-bool TryGetVacdmPilotData(const std::string& callsign, VacdmPilotData& outData);
+bool TryGetCdmPilotData(const std::string& callsign, CdmPilotData& outData);

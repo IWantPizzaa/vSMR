@@ -5,14 +5,9 @@
 
 #include <algorithm>
 
-#if defined(_DEBUG)
-#define VSMR_REFRESH_LOG(message) Logger::info(message)
-#else
-#define VSMR_REFRESH_LOG(message) do { } while (0)
-#endif
+#include "shared/RefreshLog.hpp"
 
 extern CPoint mouseLocation;
-extern string TagBeingDragged;
 extern int LeaderLineDefaultlenght;
 
 namespace
@@ -57,20 +52,16 @@ namespace
 		}
 	}
 
-	CRect CenteredTagRect(const POINT& center, int width, int height)
-	{
-		return CRect(
-			center.x - width / 2,
-			center.y - height / 2,
-			center.x - width / 2 + width,
-			center.y - height / 2 + height);
-	}
+
 }
 
 void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 {
 	(void)dc;
-	VSMR_REFRESH_LOG("Tags loop");
+	const auto previouslyDetailed = std::move(DetailedTagCallsigns);
+	DetailedTagCallsigns.clear();
+	const bool hoverAllowed = CanHoverTags(mouseLocation);
+	VsmrRefreshLog("Tags loop");
 	if (CurrentConfig == nullptr || RimcasInstance == nullptr)
 	{
 		if (Logger::is_verbose_mode())
@@ -95,7 +86,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 
 	auto font = customFonts.find(currentFontSize);
 	Gdiplus::Font* regularFont = font != customFonts.end() ? font->second.get() : nullptr;
-	VsmrTagRendering::FontContext fonts(graphics, regularFont);
+	VsmrTagRendering::FontContext fonts(graphics, regularFont, 1, &TagTextCache);
 	if (!fonts.IsValid())
 	{
 		if (Logger::is_verbose_mode())
@@ -144,35 +135,19 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 		{
 			if (TagAngles.find(callsign) == TagAngles.end())
 				TagAngles[callsign] = 270.0f;
-			int leaderLength = LeaderLineDefaultlenght;
+			double leaderLength = LeaderLineDefaultlenght;
 			const auto configuredLength = TagLeaderLineLength.find(callsign);
 			if (configuredLength != TagLeaderLineLength.end())
 				leaderLength = configuredLength->second;
+			leaderLength *= GetDisplayScale();
 			tagCenter.x = long(targetPoint.x + float(leaderLength * cos(VsmrRadarUiSupport::DegToRad(TagAngles[callsign]))));
 			tagCenter.y = long(targetPoint.y + float(leaderLength * sin(VsmrRadarUiSupport::DegToRad(TagAngles[callsign]))));
 		}
 
-		const auto previousSize = previousTagSize.find(callsign);
-		const int probeWidth = previousSize != previousTagSize.end() ? previousSize->second.Width() : 0;
-		const int probeHeight = previousSize != previousTagSize.end() ? previousSize->second.Height() : 0;
-		const CRect hoverProbe = CenteredTagRect(tagCenter, probeWidth, probeHeight);
 		const bool dragged = TagBeingDragged == callsign;
-		const bool detailed = dragged || MouseWithinTag(hoverProbe);
-
-		const VsmrScene::TagVariant& variant = detailed
-			? sceneTarget.tag.detailed
-			: sceneTarget.tag.normal;
-		const VsmrScene::TagPalette& palette = detailed
-			? sceneTarget.tag.detailedPalette
-			: sceneTarget.tag.normalPalette;
-
-		VsmrTagRendering::Layout layout;
-		if (!VsmrTagRendering::MeasureLayout(fonts, variant, layout))
+		VsmrTagRendering::Layout normalLayout;
+		if (!VsmrTagRendering::MeasureLayout(fonts, sceneTarget.tag.normal, normalLayout))
 			continue;
-		VsmrTagRendering::Layout collisionLayout;
-		const VsmrTagRendering::Layout* collisionLayoutToUse = &layout;
-		if (detailed && VsmrTagRendering::MeasureLayout(fonts, sceneTarget.tag.normal, collisionLayout))
-			collisionLayoutToUse = &collisionLayout;
 
 		const bool isDeparture = sceneTarget.role == VsmrScene::TargetRole::Departure;
 		const CRimcas::RimcasAlerts movementAlert =
@@ -195,27 +170,25 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 				: cautionText;
 		}
 
-		const Color background = sceneTarget.rimcas.onRunway
-			? ToGdiColor(palette.backgroundOnRunway)
-			: ToGdiColor(palette.background);
-
 		VsmrTagRendering::PaintOptions options;
+		options.displayScale = GetDisplayScale();
 		options.targetPoint = targetPoint;
 		options.tagCenter = tagCenter;
-		options.background = background;
 		options.roundedCorners = roundedCorners;
+		options.fitBackgroundToText = GetTagFitBackgroundToText();
 		options.extendScratchpadHit = true;
 		options.scratchpadAction = TAG_CITEM_SCRATCHPAD;
 		options.topBand = !alertText.empty() ? &alertBand : nullptr;
 		options.topBandHitMode = VsmrTagRendering::TopBandHitMode::TextOnly;
-		const CRect expectedBounds =
-			VsmrTagRendering::CalculateBounds(fonts, layout, options);
-		options.highlighted = dragged || MouseWithinTag(expectedBounds);
-
-		VsmrTagRendering::PaintOptions rawBoundsOptions = options;
-		rawBoundsOptions.roundedCorners = false;
-		previousTagSize[callsign] =
-			VsmrTagRendering::CalculateBounds(fonts, layout, rawBoundsOptions);
+		VsmrTagRendering::Layout layout;
+		const bool detailed = VsmrTagRendering::SelectHoveredLayout(
+			fonts, sceneTarget.tag, options, mouseLocation, hoverAllowed, dragged,
+			previouslyDetailed.count(callsign) != 0, normalLayout, layout);
+		if (detailed) DetailedTagCallsigns.insert(callsign);
+		const auto& palette = detailed ? sceneTarget.tag.detailedPalette : sceneTarget.tag.normalPalette;
+		options.background = ToGdiColor(sceneTarget.rimcas.onRunway ? palette.backgroundOnRunway : palette.background);
+		options.highlighted = dragged || (hoverAllowed && MouseWithinTag(
+			VsmrTagRendering::CalculateBounds(fonts, layout, options)));
 
 		const VsmrTagRendering::PaintResult painted =
 			VsmrTagRendering::Paint(graphics, fonts, layout, options);
@@ -226,7 +199,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 		collisionOptions.highlighted = false;
 		tagAreas[callsign] = painted.bounds;
 		tagCollisionAreas[callsign] =
-			VsmrTagRendering::CalculateBounds(fonts, *collisionLayoutToUse, collisionOptions);
+			VsmrTagRendering::CalculateBounds(fonts, normalLayout, collisionOptions);
 		const char* bottomLine = sceneTarget.bottomLine.c_str();
 		AddScreenObject(DRAWING_TAG, callsign.c_str(), painted.bounds, true, bottomLine);
 		for (const VsmrTagRendering::HitRegion& hit : painted.hitRegions)

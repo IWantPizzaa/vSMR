@@ -40,6 +40,8 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 	bool stagedShowFps = Owner->ShowFps;
 	bool hasStagedAvisoColorPalette = false;
 	std::string stagedAvisoColorPalette = Owner->GetAvisoColorPalette();
+	bool hasStagedUiColorTheme = false;
+	std::string stagedUiColorTheme = Owner->GetUiColorTheme();
 	if (payload->HasMember("settings"))
 	{
 		const rapidjson::Value& settings = (*payload)["settings"];
@@ -62,17 +64,36 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 		{
 			if (!settings["avisoColorPalette"].IsString())
 			{
-				error = "AVISO color palette must be day or night.";
+				error = "AVISO color palette must be dark, light, or real.";
 				return false;
 			}
 			stagedAvisoColorPalette = TrimAscii(settings["avisoColorPalette"].GetString());
-			if (!EqualsNoCase(stagedAvisoColorPalette, "day") &&
+			if (!EqualsNoCase(stagedAvisoColorPalette, "dark") &&
+				!EqualsNoCase(stagedAvisoColorPalette, "light") &&
+				!EqualsNoCase(stagedAvisoColorPalette, "real") &&
+				!EqualsNoCase(stagedAvisoColorPalette, "day") &&
 				!EqualsNoCase(stagedAvisoColorPalette, "night"))
 			{
-				error = "AVISO color palette must be day or night.";
+				error = "AVISO color palette must be dark, light, or real.";
 				return false;
 			}
 			hasStagedAvisoColorPalette = true;
+		}
+		if (settings.HasMember("uiColorTheme"))
+		{
+			if (!settings["uiColorTheme"].IsString())
+			{
+				error = "UI theme must be day or night.";
+				return false;
+			}
+			stagedUiColorTheme = TrimAscii(settings["uiColorTheme"].GetString());
+			if (!EqualsNoCase(stagedUiColorTheme, "day") &&
+				!EqualsNoCase(stagedUiColorTheme, "night"))
+			{
+				error = "UI theme must be day or night.";
+				return false;
+			}
+			hasStagedUiColorTheme = true;
 		}
 	}
 	// Revision checks, both file writes, and rollback form one process-wide
@@ -367,6 +388,8 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 	}
 	if (hasStagedAvisoColorPalette)
 		Owner->SetAvisoColorPalette(stagedAvisoColorPalette, true);
+	if (hasStagedUiColorTheme)
+		Owner->SetUiColorTheme(stagedUiColorTheme, true);
 
 	bool reloadFailed = false;
 	bool avisoReloadFailed = false;
@@ -378,11 +401,12 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 			continue;
 		}
 
-		// The Control Center belongs to one RadarScreen, but AVISO can be
-		// visible on another open screen (or one of its insets). Keep the
-		// display palette synchronized for every screen using this config.
+		// Keep ASR display settings synchronized across every radar screen that
+		// shares this configuration file.
 		if (hasStagedAvisoColorPalette && radar != Owner)
 			radar->SetAvisoColorPalette(stagedAvisoColorPalette, false);
+		if (hasStagedUiColorTheme && radar != Owner)
+			radar->SetUiColorTheme(stagedUiColorTheme, false);
 
 		// The owner's document is already the validated data written by
 		// saveConfig. If profile indices did not change, reparsing that same file

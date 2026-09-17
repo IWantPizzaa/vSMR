@@ -1,4 +1,5 @@
 #include "TagColorRuleTests.hpp"
+#include "tags/TagTokenValues.hpp"
 
 #include "tags/TagColorRules.hpp"
 
@@ -23,29 +24,29 @@ std::vector<std::string> RunTagColorRuleTests()
 	using namespace VsmrTagColorRules;
 
 	std::vector<std::string> failures;
-	VacdmColorRuleDefinition vacdmRule;
+	CdmColorRuleDefinition legacyCdmRule;
 	Check(
-		TryParseVacdmColorRuleToken(
+		TryParseCdmColorRuleToken(
 			"TOBT(state_confirmed=[target, tag, color='(12,34,56)', color_text='(7,8,9)'])",
-			vacdmRule) &&
-			vacdmRule.token == "tobt" && vacdmRule.expectedState == "confirmed" &&
-			vacdmRule.hasTargetColor && vacdmRule.targetR == 12 && vacdmRule.targetG == 34 && vacdmRule.targetB == 56 &&
-			vacdmRule.hasTagColor && vacdmRule.tagR == 12 && vacdmRule.tagG == 34 && vacdmRule.tagB == 56 &&
-			vacdmRule.hasTextColor && vacdmRule.textR == 7 && vacdmRule.textG == 8 && vacdmRule.textB == 9,
-		"tag color parser preserves vACDM token, state, and channel colors",
+			legacyCdmRule) &&
+			legacyCdmRule.token == "tobt" && legacyCdmRule.expectedState == "confirmed" &&
+			legacyCdmRule.hasTargetColor && legacyCdmRule.targetR == 12 && legacyCdmRule.targetG == 34 && legacyCdmRule.targetB == 56 &&
+			legacyCdmRule.hasTagColor && legacyCdmRule.tagR == 12 && legacyCdmRule.tagG == 34 && legacyCdmRule.tagB == 56 &&
+			legacyCdmRule.hasTextColor && legacyCdmRule.textR == 7 && legacyCdmRule.textG == 8 && legacyCdmRule.textB == 9,
+		"legacy tag color parser preserves CDM token, state, and channel colors",
 		failures);
 
-	VacdmColorRuleDefinition invalidVacdmRule;
+	CdmColorRuleDefinition invalidCdmRule;
 	Check(
-		!TryParseVacdmColorRuleToken(
+		!TryParseCdmColorRuleToken(
 			"tobt(confirmed=[tag, color='(1,2,3)'])",
-			invalidVacdmRule),
-		"tag color parser rejects a vACDM rule without the state prefix",
+			invalidCdmRule),
+		"legacy tag color parser rejects a CDM rule without the state prefix",
 		failures);
 	Check(
-		!TryParseVacdmColorRuleToken(
+		!TryParseCdmColorRuleToken(
 			"tobt(state_confirmed=[tag, color='(256,2,3)'])",
-			invalidVacdmRule),
+			invalidCdmRule),
 		"tag color parser rejects an out-of-range channel component",
 		failures);
 
@@ -59,8 +60,8 @@ std::vector<std::string> RunTagColorRuleTests()
 		"tag color parser normalizes runway tokens and channel colors",
 		failures);
 
-	const std::map<std::string, std::string> matchingRunway = { { "deprwy", "RWY 08L" } };
-	const VacdmColorRuleOverrides runwayOverrides = EvaluateRunwayColorRules({ runwayRule }, matchingRunway);
+	const VsmrTags::TokenValues matchingRunway = { { "deprwy", "RWY 08L" } };
+	const TagColorRuleOverrides runwayOverrides = EvaluateRunwayColorRules({ runwayRule }, matchingRunway);
 	Check(
 		runwayOverrides.hasTextColor && runwayOverrides.textR == 20 &&
 			runwayOverrides.textG == 30 && runwayOverrides.textB == 40,
@@ -71,18 +72,18 @@ std::vector<std::string> RunTagColorRuleTests()
 		"tag color evaluator ignores a non-matching runway",
 		failures);
 
-	VacdmColorRuleDefinition missingVacdmRule;
-	missingVacdmRule.token = "tsat";
-	missingVacdmRule.expectedState = "missing";
-	missingVacdmRule.hasTargetColor = true;
-	missingVacdmRule.targetR = 90;
-	missingVacdmRule.targetG = 80;
-	missingVacdmRule.targetB = 70;
-	const VacdmColorRuleOverrides missingOverrides = EvaluateVacdmColorRules({ missingVacdmRule }, nullptr);
+	CdmColorRuleDefinition missingCdmRule;
+	missingCdmRule.token = "tsat";
+	missingCdmRule.expectedState = "missing";
+	missingCdmRule.hasTargetColor = true;
+	missingCdmRule.targetR = 90;
+	missingCdmRule.targetG = 80;
+	missingCdmRule.targetB = 70;
+	const TagColorRuleOverrides missingOverrides = EvaluateCdmColorRules({ missingCdmRule }, nullptr);
 	Check(
 		missingOverrides.hasTargetColor && missingOverrides.targetR == 90 &&
 			missingOverrides.targetG == 80 && missingOverrides.targetB == 70,
-		"tag color evaluator applies a missing-data vACDM rule",
+		"tag color evaluator applies a missing-data CDM rule",
 		failures);
 
 	StructuredTagColorRule structuredRule;
@@ -96,7 +97,7 @@ std::vector<std::string> RunTagColorRuleTests()
 	structuredRule.tagR = 101;
 	structuredRule.tagG = 102;
 	structuredRule.tagB = 103;
-	const VacdmColorRuleOverrides structuredOverrides = EvaluateStructuredTagColorRules(
+	const TagColorRuleOverrides structuredOverrides = EvaluateStructuredTagColorRules(
 		{ structuredRule },
 		"departure",
 		"taxi",
@@ -117,6 +118,60 @@ std::vector<std::string> RunTagColorRuleTests()
 			{ { "sid", "KIRNE1A" } },
 			nullptr).hasTagColor,
 		"tag color evaluator rejects a structured rule outside its status context",
+		failures);
+
+	StructuredTagColorRule vsidRule;
+	vsidRule.source = "vsid";
+	vsidRule.token = "vsid_sid";
+	vsidRule.condition = "in:LAM,OKIPA";
+	vsidRule.applyText = true;
+	vsidRule.textR = 31;
+	vsidRule.textG = 32;
+	vsidRule.textB = 33;
+	const TagColorRuleOverrides vsidOverrides = EvaluateStructuredTagColorRules(
+		{ vsidRule },
+		"departure",
+		"taxi",
+		false,
+		{ { "vsid_sid", "LAM1X" } },
+		nullptr);
+	Check(
+		vsidOverrides.hasTextColor && vsidOverrides.textR == 31 &&
+			vsidOverrides.textG == 32 && vsidOverrides.textB == 33,
+		"tag color evaluator applies matching vSID bridge criteria",
+		failures);
+	vsidRule.token = "vsid_cfl";
+	vsidRule.condition = "in:A5";
+	Check(
+		!EvaluateStructuredTagColorRules(
+			{ vsidRule },
+			"departure",
+			"taxi",
+			false,
+			{ { "vsid_cfl", "A50" } },
+			nullptr).hasTextColor,
+		"vSID cleared-level criteria require an exact list value",
+		failures);
+
+	StructuredTagColorRule cdmRule;
+	cdmRule.source = "cdm";
+	cdmRule.token = "asrt";
+	cdmRule.condition = "in:0702";
+	cdmRule.applyText = true;
+	cdmRule.textR = 41;
+	cdmRule.textG = 42;
+	cdmRule.textB = 43;
+	const TagColorRuleOverrides cdmOverrides = EvaluateStructuredTagColorRules(
+		{ cdmRule },
+		"departure",
+		"taxi",
+		false,
+		{ { "asrt", "0702" } },
+		nullptr);
+	Check(
+		cdmOverrides.hasTextColor && cdmOverrides.textR == 41 &&
+			cdmOverrides.textG == 42 && cdmOverrides.textB == 43,
+		"tag color evaluator reads unprefixed CDM values in structured rules",
 		failures);
 
 	rapidjson::Document definition;

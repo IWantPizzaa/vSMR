@@ -63,13 +63,14 @@
     },
     uncorrelated: { default: "background_on_ground_color" }
   };
-  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "uk_stand", "sqerror", "groundstatus", "systemid"];
-  const RULE_SOURCES = ["vacdm", "runway", "custom"];
-  const RULE_SOURCE_LABELS = { vacdm: "VACDM", runway: "Runway", custom: "SID / custom" };
+  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "vsid_sid", "vsid_rwy", "vsid_cfl", "ready_startup", "tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat", "uk_stand", "sqerror", "groundstatus", "systemid"];
+  const RULE_SOURCES = ["cdm", "runway", "custom", "vsid"];
+  const RULE_SOURCE_LABELS = { cdm: "CDM", runway: "Runway", custom: "SID / custom", vsid: "vSID" };
   const RULE_SOURCE_TOKENS = {
-    vacdm: ["tobt", "tsat", "ttot", "asat", "aobt", "atot", "asrt", "aort", "ctot"],
+    cdm: ["tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat"],
     runway: ["deprwy", "seprwy", "arvrwy", "srvrwy"],
-    custom: ["asid", "ssid"]
+    custom: ["asid", "ssid"],
+    vsid: ["vsid_sid", "vsid_rwy", "vsid_cfl"]
   };
   const AVISO_BACKGROUND_STYLE_ID = "__aviso_background__";
   const ALERT_TYPES = ["NO PUSH", "NO TAXI", "NO TKOF", "STAT RPA", "RWY INC", "RWY TYPE", "RWY CLSD", "HIGH SPD", "EMERG"];
@@ -482,6 +483,27 @@
     return normalized || fallback;
   }
 
+  function normalizeAvisoColorPalette(value) {
+    const palette = String(value || "").trim().toLowerCase();
+    if (palette === "day") return "light";
+    if (palette === "light" || palette === "real") return palette;
+    return "dark";
+  }
+
+  function avisoColorPalettes(aviso = state?.aviso, configured = null) {
+    const hasConfiguredPalettes = Array.isArray(configured);
+    const source = hasConfiguredPalettes
+      ? configured
+      : Array.isArray(aviso?.metadata?.color_palettes) ? aviso.metadata.color_palettes : [];
+    const palettes = [];
+    source.forEach(value => {
+      const rawPalette = String(value || "").trim().toLowerCase();
+      const palette = rawPalette === "night" ? "dark" : rawPalette === "day" ? "light" : rawPalette;
+      if (["dark", "light", "real"].includes(palette) && !palettes.includes(palette)) palettes.push(palette);
+    });
+    return palettes.length ? palettes : hasConfiguredPalettes ? [] : ["dark"];
+  }
+
   function normalizeAvisoData(sourceAviso, createDefaults = true) {
     const hasExplicitGroups = Array.isArray(sourceAviso?.vsmr_groups);
     const aviso = clone(sourceAviso || { type: "FeatureCollection", features: [], styles: {} });
@@ -489,12 +511,34 @@
     if (!aviso.styles || typeof aviso.styles !== "object" || Array.isArray(aviso.styles)) aviso.styles = {};
     if (!aviso.metadata || typeof aviso.metadata !== "object" || Array.isArray(aviso.metadata)) aviso.metadata = {};
     const sourceBackgroundColors = aviso.metadata.background_colors;
-    const nightBackground = normalizeHex(sourceBackgroundColors?.night, "#434A4F").toUpperCase();
+    const darkBackground = normalizeHex(sourceBackgroundColors?.dark ?? sourceBackgroundColors?.night, "#434A4F").toUpperCase();
+    const lightBackground = normalizeHex(sourceBackgroundColors?.light ?? sourceBackgroundColors?.day, darkBackground).toUpperCase();
     aviso.metadata.background_colors = {
-      night: nightBackground,
-      day: normalizeHex(sourceBackgroundColors?.day, nightBackground).toUpperCase()
+      dark: darkBackground,
+      light: lightBackground,
+      real: normalizeHex(sourceBackgroundColors?.real, lightBackground).toUpperCase()
     };
+    aviso.metadata.default_color_palette = normalizeAvisoColorPalette(aviso.metadata.default_color_palette);
+    aviso.metadata.color_palettes = avisoColorPalettes(aviso);
     if (!Array.isArray(aviso.vsmr_groups)) aviso.vsmr_groups = [];
+
+    // Import legacy palette-specific maps using Light geometry and labels once.
+    const supportsLight = item => !Array.isArray(item?.color_palettes) ||
+      !item.color_palettes.length || item.color_palettes.some(value =>
+        ["light", "day"].includes(String(value).trim().toLowerCase()));
+    aviso.features = aviso.features.filter(feature => supportsLight(feature?.properties));
+    const usedStyles = new Set(aviso.features.map(feature => feature?.properties?.style_id));
+    aviso.features.forEach(feature => {
+      if (feature?.properties) delete feature.properties.color_palettes;
+    });
+    Object.entries(aviso.styles).forEach(([id, style]) => {
+      if (!supportsLight(style) && !usedStyles.has(id)) delete aviso.styles[id];
+      else if (style && typeof style === "object") delete style.color_palettes;
+    });
+    aviso.vsmr_groups.forEach(group => {
+      if (group && typeof group === "object") delete group.color_palettes;
+    });
+    aviso.metadata.geometry_mode = "shared";
 
     const seen = new Set();
     const groupIdAliases = new Map();
@@ -601,7 +645,7 @@
   function getProfileRecords(sourceProfiles = DATA.profiles) {
     const records = [];
     const extras = [];
-    let metadata = { schema_version: 1, last_active_profile: "", vacdm: { server_url: "https://cdm.vatsim.fr" } };
+    let metadata = { schema_version: 1, last_active_profile: "" };
     (Array.isArray(sourceProfiles) ? sourceProfiles : []).forEach((entry, index) => {
       if (entry && typeof entry === "object" && entry.name) {
         const data = stripObsoleteProfileSettings(clone(entry));
@@ -663,12 +707,11 @@
         aliasFile: "C:\\EuroScope\\Alias\\alias.txt",
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
         showFps: true,
-        avisoColorPalette: "night",
+        uiColorTheme: "night",
+        avisoColorPalette: "dark",
+        avisoColorPalettes: ["dark", "light", "real"],
         dataHealth: {
           profilesHealthy: true,
-          profilesUsingBackup: false,
-          profilesBackupAvailable: false,
-          profilesBackupModifiedUnixSeconds: 0,
           profilesMessage: "",
           avisoHealthy: true,
           avisoMessage: ""
@@ -679,6 +722,8 @@
         profileTab: "colors",
         avisoView: "text",
         selectedColorPath: "labels.departure.background_taxi_color",
+        selectedColorPaths: ["labels.departure.background_taxi_color"],
+        colorSelectionAnchorPath: "labels.departure.background_taxi_color",
         selectedTagId: "departure:taxi",
         selectedTagIds: ["departure:taxi"],
         tagSelectionAnchorId: "departure:taxi",
@@ -715,6 +760,17 @@
   }
 
   let state = createState();
+
+  function activeUiTheme() {
+    return state.settings?.uiColorTheme === "day" ? "day" : "night";
+  }
+
+  function applyUiTheme() {
+    const theme = activeUiTheme();
+    document.documentElement.dataset.uiTheme = theme;
+    document.documentElement.style.colorScheme = theme === "day" ? "light" : "dark";
+    return theme;
+  }
   const treeState = { colors: new Set(), tags: new Set() };
   const drafts = { color: null, tag: null, rule: null, mode: null, profile: null, avisoGeometry: null, avisoTextStyle: null, avisoGroup: null, alerts: null };
   let activeTagInput = null;
@@ -1203,13 +1259,10 @@
   function renderDataHealthStatus() {
     const health = state.settings?.dataHealth || {};
     if (health.profilesHealthy === false) {
-      const actions = [];
-      if (health.profilesBackupAvailable) actions.push({ label: "Restore legacy .bak", action: "restore-profiles-backup" });
-      actions.push({ label: "Defaults", action: "restore-bundled-defaults" });
       setPersistentStatus(
         health.profilesMessage || "The profiles source is unavailable or invalid.",
         "error",
-        actions,
+		[{ label: "Defaults", action: "restore-bundled-defaults" }],
         "health"
       );
       return;
@@ -1326,6 +1379,8 @@
     const profile = activeProfile();
     const colors = collectProfileColors(profile);
     if (!colors.some(entry => entry.id === state.ui.selectedColorPath)) state.ui.selectedColorPath = colors[0]?.id || "";
+    state.ui.selectedColorPaths = state.ui.selectedColorPath ? [state.ui.selectedColorPath] : [];
+    state.ui.colorSelectionAnchorPath = state.ui.selectedColorPath;
     state.ui.selectedRuleIndex = 0;
     const modes = profile.filters?.display_modes?.items || [];
     state.ui.selectedModeIndex = Math.max(0, modes.findIndex(mode => mode.name === profile.filters?.display_modes?.active));
@@ -1469,6 +1524,8 @@
     state.aviso.vsmr_groups ||= [];
     return state.aviso.vsmr_groups;
   }
+
+
 
   function featureGroupIds(feature) {
     const properties = feature?.properties || {};
@@ -1625,6 +1682,7 @@
   }
 
   function renderRuntimeMenu() {
+    applyUiTheme();
     const menu = $("#runtimeMenu");
     if (!menu || HOST_MODE) return;
     const groups = avisoGroups();
@@ -2040,15 +2098,51 @@
     return { family, section: "", group: family };
   }
 
-  function selectedColorEntry() {
+  function colorSelectionIds(entries = collectProfileColors(activeProfile())) {
+    const valid = new Set(entries.map(entry => entry.id));
+    let ids = Array.isArray(state.ui.selectedColorPaths)
+      ? state.ui.selectedColorPaths.filter(id => valid.has(id))
+      : [];
+    if (!ids.length && valid.has(state.ui.selectedColorPath)) ids = [state.ui.selectedColorPath];
+    if (!ids.length && entries[0]) ids = [entries[0].id];
+    ids = uniqueValues(ids);
+    state.ui.selectedColorPaths = ids;
+    if (!ids.includes(state.ui.selectedColorPath)) state.ui.selectedColorPath = ids[ids.length - 1] || "";
+    if (!valid.has(state.ui.colorSelectionAnchorPath)) state.ui.colorSelectionAnchorPath = state.ui.selectedColorPath;
+    return ids;
+  }
+
+  function selectedColorEntries(entries = collectProfileColors(activeProfile())) {
+    const selected = new Set(colorSelectionIds(entries));
+    return entries.filter(entry => selected.has(entry.id));
+  }
+
+  function selectedColorEntry(entries = collectProfileColors(activeProfile())) {
+    colorSelectionIds(entries);
+    return entries.find(entry => entry.id === state.ui.selectedColorPath)
+      || entries.find(entry => state.ui.selectedColorPaths.includes(entry.id));
+  }
+
+  function selectProfileColor(colorPath, event) {
     const entries = collectProfileColors(activeProfile());
-    const selected = entries.find(entry => entry.id === state.ui.selectedColorPath) || entries[0];
-    if (selected && state.ui.selectedColorPath !== selected.id) state.ui.selectedColorPath = selected.id;
-    return selected;
+    const ordered = entries.map(entry => entry.id);
+    const next = updateMultiSelection(
+      colorSelectionIds(entries),
+      colorPath,
+      ordered,
+      event,
+      state.ui.colorSelectionAnchorPath);
+    state.ui.selectedColorPaths = next;
+    state.ui.selectedColorPath = next.includes(colorPath) ? colorPath : next[next.length - 1];
+    if (!event.shiftKey) state.ui.colorSelectionAnchorPath = colorPath;
+    drafts.color = null;
+    clearUnappliedEditorSection($("#colorHex"));
+    renderColors();
   }
 
   function renderColors() {
     const entries = collectProfileColors(activeProfile());
+    const selectedIds = new Set(colorSelectionIds(entries));
 
     const groups = new Map();
     entries.forEach(entry => {
@@ -2066,8 +2160,9 @@
       const accent = colorToHex(group.items[0]?.color, "#5096b4");
       const rows = group.items.map(entry => {
         const hex = colorToHex(entry.color).toUpperCase();
-        const selected = entry.id === state.ui.selectedColorPath;
-        return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("color", selected, false, "color-menu-row")}" data-color-path="${escapeHtml(entry.id)}" style="--node-color:${hex}" title="${escapeHtml(entry.name)}">
+        const selected = selectedIds.has(entry.id);
+        const current = entry.id === state.ui.selectedColorPath;
+        return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("color", selected, current, "color-menu-row")}" data-color-path="${escapeHtml(entry.id)}" style="--node-color:${hex}" title="${escapeHtml(entry.name)}">
           <span class="ui-list__leading menu-row-swatch tree-color-swatch" aria-hidden="true"></span>
           <span class="ui-list__label menu-row-title">${escapeHtml(entry.name)}</span>
         </button>`;
@@ -2077,7 +2172,7 @@
           <span class="ui-list__caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
           <span class="ui-list__heading-label">${escapeHtml(group.caption)}</span>
         </button>
-        <div aria-label="${escapeHtml(group.caption)} colors" class="ui-list__items" role="listbox" ${collapsed ? "hidden" : ""}>${rows}</div>
+        <div aria-label="${escapeHtml(group.caption)} colors" aria-multiselectable="true" class="ui-list__items" role="listbox" ${collapsed ? "hidden" : ""}>${rows}</div>
       </section>`;
     }).join("") || `<div class="ui-list__empty">No colors found</div>`;
     syncUiListFocus($("#colorTree"));
@@ -2344,14 +2439,17 @@
   }
 
   function renderColorEditor() {
-    const entry = selectedColorEntry();
+    const entries = collectProfileColors(activeProfile());
+    const selectedEntries = selectedColorEntries(entries);
+    const entry = selectedColorEntry(entries);
     if (!entry) return;
-    if (!drafts.color || drafts.color.path !== entry.id) {
+    const signature = selectedEntries.map(item => item.id).join("|");
+    if (!drafts.color || drafts.color.signature !== signature) {
       const hex = colorToHex(entry.color);
       const rgb = hexToColor(hex);
       const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
       drafts.color = {
-        path: entry.id,
+        signature,
         hex,
         opacity: Math.round((entry.color.a ?? 255) / 255 * 100),
         h: hsv.h,
@@ -2359,18 +2457,22 @@
         v: hsv.v
       };
     }
-    $("#selectedColorPath").textContent = entry.name;
+    $("#selectedColorPath").textContent = selectedEntries.length === 1
+      ? entry.name
+      : `${selectedEntries.length} colors`;
     syncColorEditorControls();
   }
   function applyColorDraft({ render = true } = {}) {
-    const entry = selectedColorEntry();
-    if (!entry || !drafts.color) return;
-    const hadAlpha = Object.prototype.hasOwnProperty.call(entry.color, "a");
-    const next = hexToColor(drafts.color.hex, drafts.color.opacity / 100 * 255);
-    if (!hadAlpha && Number(drafts.color.opacity) === 100) delete next.a;
-    setAtPath(activeProfile(), entry.path, next);
+    const entries = selectedColorEntries();
+    if (!entries.length || !drafts.color) return;
+    entries.forEach(entry => {
+      const hadAlpha = Object.prototype.hasOwnProperty.call(entry.color, "a");
+      const next = hexToColor(drafts.color.hex, drafts.color.opacity / 100 * 255);
+      if (!hadAlpha && Number(drafts.color.opacity) === 100) delete next.a;
+      setAtPath(activeProfile(), entry.path, next);
+    });
     clearUnappliedEditorSection($("#colorHex"));
-    markDirty(`${entry.name} updated`, ["profiles"]);
+    markDirty(entries.length === 1 ? `${entries[0].name} updated` : `${entries.length} colors updated`, ["profiles"]);
     if (render) renderColors();
   }
 
@@ -2393,7 +2495,8 @@
     }
     const entry = selectedColorEntry();
     if (!entry) return;
-    if (!drafts.color || drafts.color.path !== entry.id) renderColorEditor();
+    const signature = selectedColorEntries().map(item => item.id).join("|");
+    if (!drafts.color || drafts.color.signature !== signature) renderColorEditor();
     setColorDraftFromHex(`#${match[1]}`);
     drafts.color.opacity = match[2]
       ? Math.round(parseInt(match[2], 16) / 255 * 100)
@@ -2411,7 +2514,6 @@
     const preview = $("#iconSymbolPreview");
     if (!preview) return;
     const style = String($("#targetIconStyle")?.value || activeProfile().targets?.icon_style || "realistic").toLowerCase();
-    const symbolScale = clamp($("#targetSymbolScale")?.value ?? activeProfile().targets?.symbol_scale ?? 1, 0.5, 1.5);
     const trailEnabled = $("#targetTrailEnabled")?.checked ?? activeProfile().targets?.trail_enabled !== false;
 
     let symbol = "";
@@ -2420,7 +2522,7 @@
     if (style === "nova") {
       const shape = "M0-38-8-35-10-18-38 6-36 17-11 8-7 32 0 39 7 32 11 8 36 17 38 6 10-18 8-35Z";
       const afterglow = trailEnabled
-        ? `<path class="nova-afterglow oldest" transform="translate(-15 8)" d="${shape}"/><path class="nova-afterglow middle" transform="translate(-10 5)" d="${shape}"/><path class="nova-afterglow newest" transform="translate(-5 2)" d="${shape}"/>`
+        ? `<path class="nova-afterglow oldest" transform="translate(0 15)" d="${shape}"/><path class="nova-afterglow middle" transform="translate(0 10)" d="${shape}"/><path class="nova-afterglow newest" transform="translate(0 5)" d="${shape}"/>`
         : "";
       symbol = `<svg class="icon-preview-vector nova" viewBox="-62 -52 124 108" aria-hidden="true">${afterglow}<path class="nova-primary-return" d="${shape}"/><path class="nova-secondary-return" d="M0-7 7 0 0 7-7 0Z"/></svg>`;
       caption = "NOVA";
@@ -2442,7 +2544,7 @@
     const trail = trailEnabled
       ? `<span class="icon-preview-trail ${trailClass}" aria-hidden="true"><i></i><i></i><i></i><i></i></span>`
       : "";
-    preview.innerHTML = `<div class="icon-preview-stage"><span class="icon-preview-symbol" style="--icon-preview-scale:${symbolScale}">${symbol}</span>${trail}</div><span>${escapeHtml(caption)}</span>`;
+    preview.innerHTML = `<div class="icon-preview-stage"><span class="icon-preview-flight">${trail}<span class="icon-preview-symbol">${symbol}</span></span></div><span>${escapeHtml(caption)}</span>`;
 
     if (usesAircraftImage) {
       const aircraftImage = preview.querySelector("[data-aircraft-icon]");
@@ -2463,7 +2565,7 @@
     const profile = activeProfile();
     const targets = profile.targets ||= {};
     ensureSelectValue($("#targetIconStyle"), targets.icon_style || "realistic");
-    const symbolScale = clamp(targets.symbol_scale ?? 1, 0.5, 1.5);
+    const symbolScale = clamp(targets.symbol_scale ?? 1, 0.25, 5);
     $("#targetSymbolScale").value = symbolScale;
     $("#targetSymbolScaleOutput").value = `${symbolScale.toFixed(2)}×`;
     targets.small_icon_boost_resolution_preset ||= state.settings.resolutionPreset || "1080p";
@@ -2485,7 +2587,7 @@
   function applyIcons({ render = true } = {}) {
     const targets = activeProfile().targets ||= {};
     targets.icon_style = $("#targetIconStyle").value;
-    targets.symbol_scale = clamp($("#targetSymbolScale").value, 0.5, 1.5);
+    targets.symbol_scale = clamp($("#targetSymbolScale").value, 0.25, 5);
     targets.small_icon_boost_resolution_preset = state.settings.resolutionPreset || targets.small_icon_boost_resolution_preset || "1080p";
     targets.trail_enabled = $("#targetTrailEnabled").checked;
     targets.trail_ground_points = Math.round(clamp($("#targetTrailGroundPoints").value, 0, 16));
@@ -2646,6 +2748,7 @@
 
     const labels = activeProfile().labels ||= {};
     $("#tagRoundedCorners").checked = Boolean(labels.rounded_corners);
+    $("#tagFitBackgroundToText").checked = Boolean(labels.fit_background_to_text);
     $("#tagAutoDeconfliction").checked = Boolean(labels.auto_deconfliction);
     const labelSize = Math.round(clamp(activeProfile().font?.label_font_size ?? 1, 1, 5));
     $("#tagLabelFontSize").value = labelSize;
@@ -2690,6 +2793,7 @@
 
     const labels = activeProfile().labels ||= {};
     labels.rounded_corners = $("#tagRoundedCorners").checked;
+    labels.fit_background_to_text = $("#tagFitBackgroundToText").checked;
     labels.auto_deconfliction = $("#tagAutoDeconfliction").checked;
     activeProfile().font ||= {};
     activeProfile().font.label_font_size = Math.round(clamp($("#tagLabelFontSize").value, 1, 5));
@@ -2777,23 +2881,25 @@
   }
   function normalizeRuleSourceUi(source) {
     const normalized = String(source || "").trim().toLowerCase();
+    // Keep older profiles editable while saving new rules under the CDM source.
+    if (normalized === "cdm" || normalized === "vacdm") return "cdm";
+    if (normalized === "vsid" || normalized === "v_sid") return "vsid";
     if (normalized === "runway" || normalized === "rwy") return "runway";
     if (["custom", "sid", "list", "sidlist"].includes(normalized)) return "custom";
-    return "vacdm";
+    return "cdm";
   }
   function ruleTokensForSource(source) {
-    return RULE_SOURCE_TOKENS[normalizeRuleSourceUi(source)] || RULE_SOURCE_TOKENS.vacdm;
+    return RULE_SOURCE_TOKENS[normalizeRuleSourceUi(source)] || RULE_SOURCE_TOKENS.cdm;
   }
   function ruleConditionsFor(source, token, selected = "") {
     const normalizedSource = normalizeRuleSourceUi(source);
     const normalizedToken = String(token || "").trim().toLowerCase();
     let values;
-    if (normalizedSource === "runway" || normalizedSource === "custom")
+    const cdmTime = normalizedSource === "cdm" && ["tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat"].includes(normalizedToken);
+    if (normalizedSource === "cdm" && cdmTime)
+      values = ["any", "set", "missing", "future", "past"];
+    else if (["runway", "custom", "vsid", "cdm"].includes(normalizedSource))
       values = ["any", "set", "missing", "in", "not_in"];
-    else if (normalizedToken === "tobt")
-      values = ["any", "set", "missing", "inactive", "unconfirmed", "confirmed", "unconfirmed_delay", "confirmed_delay", "expired"];
-    else if (normalizedToken === "tsat")
-      values = ["any", "set", "missing", "inactive", "future", "valid", "expired", "future_ctot", "valid_ctot", "expired_ctot"];
     else
       values = ["any", "set", "missing", "future", "past"];
 
@@ -2803,9 +2909,8 @@
   function parseRuleCondition(source, condition) {
     const normalizedSource = normalizeRuleSourceUi(source);
     const raw = String(condition || "").trim();
-    if (normalizedSource === "vacdm") return { operator: raw || "any", values: "" };
     const simple = raw.toLowerCase();
-    if (["any", "set", "missing"].includes(simple)) return { operator: simple, values: "" };
+    if (["any", "set", "missing", "future", "past"].includes(simple)) return { operator: simple, values: "" };
     const list = raw.match(/^(not_in|notin|not|in|list|sid)\s*:\s*(.*)$/i);
     if (list) {
       const operator = ["not_in", "notin", "not"].includes(list[1].toLowerCase()) ? "not_in" : "in";
@@ -2814,22 +2919,24 @@
     return { operator: "in", values: raw };
   }
   function composeRuleCondition(source, operator, values) {
-    if (normalizeRuleSourceUi(source) === "vacdm") return String(operator || "any").trim();
     const normalizedOperator = String(operator || "any").trim().toLowerCase();
     if (!["in", "not_in"].includes(normalizedOperator)) return normalizedOperator || "any";
     const list = String(values || "").trim();
     return list ? `${normalizedOperator}: ${list}` : normalizedOperator;
   }
   function updateRuleConditionValueControl(row) {
-    const source = $("[data-field='source']", row)?.value || "vacdm";
+    const source = $("[data-field='source']", row)?.value || "cdm";
     const operator = $("[data-field='condition']", row)?.value || "any";
     const input = $("[data-field='condition-values']", row);
     if (!input) return;
-    const acceptsValues = normalizeRuleSourceUi(source) !== "vacdm" && ["in", "not_in"].includes(operator);
+    const acceptsValues = ["in", "not_in"].includes(operator);
     input.disabled = !acceptsValues;
-    input.placeholder = acceptsValues
-      ? (normalizeRuleSourceUi(source) === "runway" ? "09L, 27R" : "SID1X, SID2A")
-      : "";
+    const normalizedSource = normalizeRuleSourceUi(source);
+    const token = $("[data-field='token']", row)?.value || "";
+    let placeholder = "SID1X, SID2A";
+    if (normalizedSource === "runway" || token === "vsid_rwy") placeholder = "09L, 27R";
+    else if (token === "vsid_cfl") placeholder = "A50, 100";
+    input.placeholder = acceptsValues ? placeholder : "";
   }
   function ruleSelectOptions(values, selected, labels = null) {
     const desired = String(selected || "").toLowerCase();
@@ -2909,9 +3016,14 @@
     state.ui.selectedRuleIndex = items.length ? Math.min(items.length - 1, Math.max(0, state.ui.selectedRuleIndex)) : 0;
     const rows = items.map((rule, index) => {
       const selected = index === state.ui.selectedRuleIndex;
-      return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("manager", selected)}" data-rule-index="${index}"><span class="ui-list__label">${escapeHtml(ruleLabel(rule, index))}</span></button>`;
+      const criteriaCount = Array.isArray(rule.criteria) && rule.criteria.length ? rule.criteria.length : 1;
+      return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("status", selected)}" data-rule-index="${index}" title="${escapeHtml(ruleLabel(rule, index))}"><span class="ui-list__label">${escapeHtml(ruleLabel(rule, index))}</span><span class="ui-list__trailing rule-criteria-count" aria-label="${criteriaCount} ${criteriaCount === 1 ? "condition" : "conditions"}">${criteriaCount}</span></button>`;
     }).join("");
     $("#ruleList").innerHTML = rows ? `<div class="ui-list__items" role="presentation">${rows}</div>` : `<div class="ui-list__empty">No rules</div>`;
+    const hasSelection = items.length > 0;
+    $('[data-action="duplicate-rule"]').disabled = !hasSelection;
+    $('[data-action="delete-rule"]').disabled = !hasSelection;
+	$('[data-action="copy-rule"]').disabled = !hasSelection;
     syncUiListFocus($("#ruleList"));
     renderRuleEditor();
   }
@@ -2919,16 +3031,22 @@
     const item = rules()[state.ui.selectedRuleIndex];
     const disabled = !item;
     $("#ruleFormCaption").textContent = item ? ruleLabel(item, state.ui.selectedRuleIndex) : "Rule";
+    $("#ruleEditorEmpty").hidden = !disabled;
+    $("#ruleEditorForm").hidden = disabled;
     if (!item) {
+      drafts.rule = null;
       $("#ruleName").value = "";
       $("#criteriaList").innerHTML = "";
       renderRuleStatusSelector({ status: "any" }, true);
+      $$("#ruleEditorForm input, #ruleEditorForm select, #ruleEditorForm button").forEach(control => { control.disabled = true; });
+      clearUnappliedEditorSection($("#ruleName"));
       return;
     }
+    $$("#ruleEditorForm input, #ruleEditorForm select, #ruleEditorForm button").forEach(control => { control.disabled = false; });
     if (!drafts.rule || drafts.rule.index !== state.ui.selectedRuleIndex) drafts.rule = { index: state.ui.selectedRuleIndex, data: clone(item) };
     const rule = drafts.rule.data;
     $("#ruleName").value = rule.name || "";
-    const criteria = Array.isArray(rule.criteria) && rule.criteria.length ? rule.criteria : [{ source: rule.source || "vacdm", token: rule.token || "", condition: rule.condition || "" }];
+    const criteria = Array.isArray(rule.criteria) && rule.criteria.length ? rule.criteria : [{ source: rule.source || "cdm", token: rule.token || "", condition: rule.condition || "" }];
     $("#criteriaList").innerHTML = criteria.map((criterion, index) => {
       const parsedCondition = parseRuleCondition(criterion.source, criterion.condition);
       return `
@@ -2937,7 +3055,7 @@
         <select aria-label="Rule token" data-field="token">${ruleSelectOptions(ruleTokensForSource(criterion.source), criterion.token)}</select>
         <select aria-label="Rule condition" data-field="condition">${ruleSelectOptions(ruleConditionsFor(criterion.source, criterion.token, parsedCondition.operator), parsedCondition.operator, { not_in: "not in" })}</select>
         <input aria-label="Rule match values" data-field="condition-values" spellcheck="false" type="text" value="${escapeHtml(parsedCondition.values)}"/>
-        <button type="button" aria-label="Delete condition" class="ui-button ui-button--compact ui-button--icon ui-button--destructive" data-action="delete-condition" data-index="${index}" title="Delete condition">×</button>
+        <button type="button" aria-label="Delete condition" class="ui-button ui-button--compact ui-button--icon ui-button--destructive criterion-delete" data-action="delete-condition" data-index="${index}" title="Delete condition"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
       </div>`;
     }).join("");
     $$("#criteriaList .criterion-row").forEach(updateRuleConditionValueControl);
@@ -2978,7 +3096,7 @@
         )
       };
     }).filter(criterion => criterion.source || criterion.token || criterion.condition);
-    rule.criteria = criteria.length ? criteria : [{ source: "vacdm", token: "", condition: "" }];
+    rule.criteria = criteria.length ? criteria : [{ source: "cdm", token: "", condition: "" }];
     const first = rule.criteria[0];
     rule.source = first.source;
     rule.token = first.token;
@@ -2999,12 +3117,96 @@
   }
   function applyRule({ render = true } = {}) {
     const item = rules()[state.ui.selectedRuleIndex];
-    if (!item || !drafts.rule) return;
+    if (!item || !drafts.rule) {
+      clearUnappliedEditorSection($("#ruleName"));
+      return true;
+    }
     const rule = captureRuleDraft();
     rules()[state.ui.selectedRuleIndex] = clone(rule);
     clearUnappliedEditorSection($("#ruleName"));
     markDirty("Rule updated", ["profiles"]);
     if (render) renderRules();
+    return true;
+  }
+
+  function normalizeClipboardRule(value) {
+    const sourceRule = value?.rule ?? value;
+    if (!sourceRule || typeof sourceRule !== "object" || Array.isArray(sourceRule)) return null;
+    const rawCriteria = Array.isArray(sourceRule.criteria) && sourceRule.criteria.length
+      ? sourceRule.criteria
+      : [{ source: sourceRule.source, token: sourceRule.token, condition: sourceRule.condition }];
+    const criteria = rawCriteria.filter(item => item && typeof item === "object").map(item => {
+      const source = normalizeRuleSourceUi(item.source);
+      const tokens = ruleTokensForSource(source);
+      const requestedToken = String(item.token || "").trim().toLowerCase();
+      const token = tokens.includes(requestedToken) ? requestedToken : tokens[0];
+      const parsed = parseRuleCondition(source, item.condition);
+      const operators = ruleConditionsFor(source, token);
+      const operator = operators.includes(parsed.operator) ? parsed.operator : "any";
+      return { source, token, condition: composeRuleCondition(source, operator, parsed.values) };
+    });
+    if (!criteria.length) return null;
+
+    const tagTypes = ["any", "departure", "arrival", "airborne", "uncorrelated"];
+    const details = ["any", "normal", "detailed"];
+    const normalized = {
+      criteria,
+      source: criteria[0].source,
+      token: criteria[0].token,
+      condition: criteria[0].condition,
+      tag_type: tagTypes.includes(sourceRule.tag_type) ? sourceRule.tag_type : "any",
+      detail: details.includes(sourceRule.detail) ? sourceRule.detail : "any"
+    };
+    const name = String(sourceRule.name || "").trim();
+    if (name) normalized.name = name;
+    normalized.statuses = selectedRuleStatuses(sourceRule);
+    normalized.status = normalized.statuses.length === 1 ? normalized.statuses[0] : "any";
+    ["target_color", "tag_color", "text_color"].forEach(key => {
+      if (!isColorObject(sourceRule[key])) return;
+      normalized[key] = {
+        r: Math.round(clamp(sourceRule[key].r, 0, 255)),
+        g: Math.round(clamp(sourceRule[key].g, 0, 255)),
+        b: Math.round(clamp(sourceRule[key].b, 0, 255)),
+        a: Math.round(clamp(sourceRule[key].a ?? 255, 0, 255))
+      };
+    });
+    return normalized;
+  }
+
+  async function copyRule() {
+    const item = rules()[state.ui.selectedRuleIndex];
+    if (!item) return;
+    captureRuleDraft();
+    const rule = drafts.rule?.data || item;
+    await writeEditorClipboard(JSON.stringify({ vsmr: "rule", version: 1, rule }, null, 2), "rule");
+    showToast("Rule copied", "success");
+  }
+
+  async function pasteRule() {
+    const raw = String(await readEditorClipboard("rule", "Paste a vSMR rule") || "").trim();
+    if (!raw) return;
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch (error) {
+      showToast("Clipboard does not contain a vSMR rule", "error");
+      return;
+    }
+    const rule = normalizeClipboardRule(parsed);
+    if (!rule) {
+      showToast("Clipboard does not contain a valid vSMR rule", "error");
+      return;
+    }
+    const items = rules();
+    if (items.length) items[state.ui.selectedRuleIndex] = rule;
+    else {
+      items.push(rule);
+      state.ui.selectedRuleIndex = 0;
+    }
+    drafts.rule = null;
+    clearUnappliedEditorSection($("#ruleName"));
+    markDirty("Rule pasted", ["profiles"]);
+    renderRules();
+    showToast("Rule pasted", "success");
   }
 
   function modes() {
@@ -3041,8 +3243,9 @@
     $("#reqSquawk").checked = Boolean(data.require_assigned_squawk);
     $("#modeAcceptPilotSquawk").checked = data.accept_pilot_squawk !== false;
     $("#reqClearance").checked = Boolean(data.require_clearance);
-    $("#reqTsat").checked = Boolean(data.require_valid_tsat);
-    $("#reqTobt").checked = Boolean(data.require_active_tobt);
+	$("#reqTsat").checked = Boolean(data.require_valid_tsat);
+	$("#reqTobt").checked = Boolean(data.require_active_tobt);
+	$("#reqReady").checked = Boolean(data.require_ready);
     $("#modeTowerFilter").checked = Boolean(data.tower_filter ?? data.tower_mode);
     $("#modeStructuredRules").checked = data.structured_rules !== false && data.structured_rules_enabled !== false;
     $("#modeMaxAirborneAltitude").value = String(Math.round(clamp(data.max_airborne_altitude_ft ?? 5500, 0, 60000)));
@@ -3063,8 +3266,9 @@
     mode.require_assigned_squawk = $("#reqSquawk").checked;
     mode.accept_pilot_squawk = $("#modeAcceptPilotSquawk").checked;
     mode.require_clearance = $("#reqClearance").checked;
-    mode.require_valid_tsat = $("#reqTsat").checked;
-    mode.require_active_tobt = $("#reqTobt").checked;
+	mode.require_valid_tsat = $("#reqTsat").checked;
+	mode.require_active_tobt = $("#reqTobt").checked;
+	mode.require_ready = $("#reqReady").checked;
     mode.tower_filter = $("#modeTowerFilter").checked;
     mode.structured_rules = $("#modeStructuredRules").checked;
     mode.max_airborne_altitude_ft = Math.round(clamp(Number($("#modeMaxAirborneAltitude").value), 0, 60000));
@@ -3192,40 +3396,60 @@
   }
 
   function activeAvisoColorPalette() {
-    return state.settings.avisoColorPalette === "day" ? "day" : "night";
+    return normalizeAvisoColorPalette(state.settings.avisoColorPalette);
   }
 
   function avisoPaletteOverride(paint, palette = activeAvisoColorPalette()) {
-    if (palette !== "day" || !paint || typeof paint !== "object") return null;
+    if (palette === "dark" || !paint || typeof paint !== "object") return null;
     const overrides = paint["palette-overrides"];
-    const selected = overrides && typeof overrides === "object" ? overrides.day : null;
-    return selected && typeof selected === "object" ? selected : null;
+    if (!overrides || typeof overrides !== "object") return null;
+    const candidates = palette === "real" ? ["real", "light", "day"] : ["light", "day"];
+    return candidates.map(name => overrides[name]).find(value => value && typeof value === "object") || null;
   }
 
-  function effectiveAvisoPaintValue(sharedPaint, inlinePaint, key, fallback = undefined) {
-    if (activeAvisoColorPalette() === "day" && AVISO_PALETTE_COLOR_KEYS.has(key)) {
-      const inlineDay = avisoPaletteOverride(inlinePaint, "day");
-      if (inlineDay?.[key] != null) return inlineDay[key];
-      // Match the native renderer: an intentional feature-level Night color
-      // remains authoritative until that feature receives its own Day value.
+  function effectiveAvisoPaintValue(sharedPaint, inlinePaint, key, fallback = undefined, palette = activeAvisoColorPalette()) {
+    if (palette !== "dark" && AVISO_PALETTE_COLOR_KEYS.has(key)) {
+      const inlineOverride = avisoPaletteOverride(inlinePaint, palette);
+      if (inlineOverride?.[key] != null) return inlineOverride[key];
+      // Match the native renderer: an intentional feature-level Dark color
+      // remains authoritative until that feature receives its own override.
       if (inlinePaint?.[key] != null) return inlinePaint[key];
-      const sharedDay = avisoPaletteOverride(sharedPaint, "day");
-      if (sharedDay?.[key] != null) return sharedDay[key];
+      const sharedOverride = avisoPaletteOverride(sharedPaint, palette);
+      if (sharedOverride?.[key] != null) return sharedOverride[key];
     }
     return inlinePaint?.[key] ?? sharedPaint?.[key] ?? fallback;
   }
 
-  function applyAvisoPaintChanges(target, changes) {
+  function applyAvisoPaintChanges(target, changes, sharedPaint = null) {
     if (!target || typeof target !== "object") return;
-    const dayColors = {};
+    const paletteColors = {};
+    const palette = activeAvisoColorPalette();
+    // Snapshot before mutation: Real can inherit Light and both can inherit Dark.
+    const preserved = {};
+    const changesColor = Object.keys(changes).some(key => AVISO_PALETTE_COLOR_KEYS.has(key));
+    for (const other of changesColor ? ["dark", "light", "real"] : []) {
+      // Creating an override object also changes fallback for its other keys.
+      for (const key of AVISO_PALETTE_COLOR_KEYS) {
+        const value = effectiveAvisoPaintValue(sharedPaint, target, key, undefined, other);
+        if (value != null) (preserved[other] ||= {})[key] = value;
+      }
+    }
+    for (const [other, colors] of Object.entries(preserved)) {
+      if (other === "dark") Object.assign(target, colors);
+      else {
+        target["palette-overrides"] ||= {};
+        target["palette-overrides"][other] ||= {};
+        Object.assign(target["palette-overrides"][other], colors);
+      }
+    }
     Object.entries(changes).forEach(([key, value]) => {
-      if (activeAvisoColorPalette() === "day" && AVISO_PALETTE_COLOR_KEYS.has(key)) dayColors[key] = value;
+      if (palette !== "dark" && AVISO_PALETTE_COLOR_KEYS.has(key)) paletteColors[key] = value;
       else target[key] = value;
     });
-    if (!Object.keys(dayColors).length) return;
+    if (!Object.keys(paletteColors).length) return;
     if (!target["palette-overrides"] || typeof target["palette-overrides"] !== "object") target["palette-overrides"] = {};
-    if (!target["palette-overrides"].day || typeof target["palette-overrides"].day !== "object") target["palette-overrides"].day = {};
-    Object.assign(target["palette-overrides"].day, dayColors);
+    if (!target["palette-overrides"][palette] || typeof target["palette-overrides"][palette] !== "object") target["palette-overrides"][palette] = {};
+    Object.assign(target["palette-overrides"][palette], paletteColors);
   }
 
   function collectAvisoStyleEntries() {
@@ -3276,7 +3500,8 @@
     const entries = collectAvisoStyleEntries().filter(entry => kind === "text" ? entry.isText : !entry.isText);
     if (kind !== "geometry") return entries;
     const palette = activeAvisoColorPalette();
-    const color = normalizeHex(state.aviso?.metadata?.background_colors?.[palette], "#434A4F");
+    const colors = state.aviso?.metadata?.background_colors || {};
+    const color = normalizeHex(colors[palette] ?? colors.light ?? colors.day ?? colors.dark ?? colors.night, "#434A4F");
     return [{
       id: AVISO_BACKGROUND_STYLE_ID,
       name: "Background",
@@ -3780,7 +4005,19 @@
     geometrySelectionIds(geometryEntries);
     textStyleSelectionIds(textEntries);
 
-    const avisoColorPalette = activeAvisoColorPalette();
+    const availablePalettes = new Set(avisoColorPalettes(state.aviso, state.settings.avisoColorPalettes));
+    let avisoColorPalette = activeAvisoColorPalette();
+    if (availablePalettes.size && !availablePalettes.has(avisoColorPalette)) {
+      avisoColorPalette = [...availablePalettes][0];
+      state.settings.avisoColorPalette = avisoColorPalette;
+    }
+    $$('[data-aviso-color-palette]').forEach(button => {
+      const available = availablePalettes.has(button.dataset.avisoColorPalette);
+      button.disabled = !available;
+      button.title = available
+        ? `Use the ${button.textContent.trim()} AVISO palette`
+        : `${button.textContent.trim()} is not available for this airport`;
+    });
     syncToggleButtons('[data-aviso-color-palette]', avisoColorPalette, "avisoColorPalette");
     syncTabButtons('[data-aviso-view]', state.ui.avisoView, "avisoView");
     $$('[data-aviso-view-panel]').forEach(panel => panel.classList.toggle("active", panel.dataset.avisoViewPanel === state.ui.avisoView));
@@ -3832,7 +4069,7 @@
     const types = uniqueValues(entries.map(entry => entry.objectType));
     const backgroundOnly = entries.every(entry => entry.isBackground);
     $("#avisoGeometryCaption").textContent = entries.length === 1 ? entries[0].name : `${entries.length} geometry styles`;
-    const paletteLabel = activeAvisoColorPalette() === "day" ? "Day" : "Night";
+    const paletteLabel = `${activeAvisoColorPalette()[0].toUpperCase()}${activeAvisoColorPalette().slice(1)}`;
     const colorKind = backgroundOnly ? "Background" : types.length > 1 ? "Primary" : types[0] === "Line" ? "Line" : "Fill";
     $("#avisoGeometryColorLabel").textContent = `${colorKind} color · ${paletteLabel}`;
     $("#avisoGeometryColorOpacity")?.closest(".opacity-channel")?.toggleAttribute("hidden", backgroundOnly);
@@ -3896,12 +4133,13 @@
         return;
       }
       const style = ensureAvisoCatalogStyle(entry);
+      const previousPaint = clone(style.paint);
       applyAvisoPaintChanges(style.paint, changes);
       entry.indices.forEach(index => {
         const properties = avisoFeatures()[index]?.properties;
         if (!properties) return;
         properties.style_id ||= entry.id;
-        applyAvisoPaintChanges(properties, changes);
+        applyAvisoPaintChanges(properties, changes, previousPaint);
         updatedCount += 1;
       });
     });
@@ -3969,7 +4207,7 @@
     const values = key => items.map(item => effectiveAvisoTextValue(item.index, item.entry, key));
 
     $("#avisoTextCaption").textContent = entries.length === 1 ? entries[0].name : `${entries.length} text styles`;
-    const paletteLabel = activeAvisoColorPalette() === "day" ? "Day" : "Night";
+    const paletteLabel = `${activeAvisoColorPalette()[0].toUpperCase()}${activeAvisoColorPalette().slice(1)}`;
     const colorTarget = state.ui.avisoTextColorTarget === "halo" ? "halo" : "text";
     const colorKey = colorTarget === "halo" ? "text-halo-color" : "text-color";
     const colorFallback = colorTarget === "halo" ? "#000000" : "#808080";
@@ -4047,12 +4285,13 @@
     let updatedCount = 0;
     targets.forEach(entry => {
       const style = ensureAvisoCatalogStyle(entry);
+      const previousPaint = clone(style.paint);
       applyAvisoPaintChanges(style.paint, textPaint);
       entry.indices.forEach(index => {
         const properties = avisoFeatures()[index]?.properties;
         if (!properties) return;
         properties.style_id ||= entry.id;
-        applyAvisoPaintChanges(properties, textPaint);
+        applyAvisoPaintChanges(properties, textPaint, previousPaint);
         updatedCount += 1;
       });
     });
@@ -4077,6 +4316,128 @@
       renderAvisoTextEditor();
     }
     clearUnappliedEditorSection(state.ui.avisoView === "geometry" ? $("#avisoGeometryColorHex") : $("#avisoTextFont"));
+  }
+
+// source: app-aviso-clipboard.js
+"use strict";
+
+  async function copyAvisoGeometry() {
+    stageEditorControl(document.activeElement);
+    const entries = selectedAvisoGeometryEntries();
+    const entry = entries.find(item => item.id === state.ui.selectedAvisoGeometryStyleId) || entries[0];
+    if (!entry) return;
+    const colorKey = entry.objectType === "Line" ? "stroke" : "fill";
+    const opacityKey = entry.objectType === "Line" ? "stroke-opacity" : "fill-opacity";
+    const style = {
+      color: normalizeHex(entry.paint[colorKey], "#000000").toUpperCase(),
+      opacity: clamp(Number(entry.paint[opacityKey] ?? 1), 0, 1)
+    };
+    await writeEditorClipboard(JSON.stringify({ vsmr: "aviso-geometry-style", version: 1, style }, null, 2), "AVISO geometry style");
+    showToast("AVISO geometry style copied", "success");
+  }
+
+  async function pasteAvisoGeometry() {
+    const raw = String(await readEditorClipboard("AVISO geometry style", "Paste a vSMR AVISO geometry style") || "").trim();
+    if (!raw) return;
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch (error) {
+      showToast("Clipboard does not contain an AVISO geometry style", "error");
+      return;
+    }
+    const style = parsed?.style ?? parsed;
+    const color = String(style?.color || "").trim();
+    const opacity = Number(style?.opacity);
+    if (!/^#[0-9a-f]{6}$/i.test(color) || !Number.isFinite(opacity)) {
+      showToast("Clipboard does not contain a valid AVISO geometry style", "error");
+      return;
+    }
+    const entries = selectedAvisoGeometryEntries();
+    if (!entries.length) return;
+    entries.forEach(entry => {
+      if (entry.isBackground) {
+        state.aviso.metadata.background_colors[activeAvisoColorPalette()] = color.toUpperCase();
+        return;
+      }
+      const colorKey = entry.objectType === "Line" ? "stroke" : "fill";
+      const opacityKey = entry.objectType === "Line" ? "stroke-opacity" : "fill-opacity";
+      const changes = { [colorKey]: color.toUpperCase(), [opacityKey]: clamp(opacity, 0, 1) };
+      const paint = ensureAvisoCatalogStyle(entry).paint;
+      const previousPaint = clone(paint);
+      applyAvisoPaintChanges(paint, changes);
+      entry.indices.forEach(index => {
+        const properties = avisoFeatures()[index]?.properties;
+        if (!properties) return;
+        properties.style_id ||= entry.id;
+        applyAvisoPaintChanges(properties, changes, previousPaint);
+      });
+    });
+    drafts.avisoGeometry = null;
+    clearUnappliedEditorSection($("#avisoGeometryColorHex"));
+    markDirty(`${entries.length} geometry style${entries.length === 1 ? "" : "s"} pasted`, ["aviso"]);
+    renderAvisoGeometry();
+    showToast(`Geometry style pasted to ${entries.length} selection${entries.length === 1 ? "" : "s"}`, "success");
+  }
+
+  async function copyAvisoText() {
+    stageEditorControl(document.activeElement);
+    const entries = selectedAvisoTextEntries();
+    const entry = entries.find(item => item.id === state.ui.selectedAvisoTextStyleId) || entries[0];
+    if (!entry) return;
+    const index = entry.indices[0];
+    const read = key => index == null ? (entry.paint[key] ?? AVISO_TEXT_DEFAULTS[key]) : effectiveAvisoTextValue(index, entry, key);
+    const style = Object.fromEntries(AVISO_TEXT_PAINT_KEYS.map(key => [key, clone(read(key))]));
+    await writeEditorClipboard(JSON.stringify({ vsmr: "aviso-text-style", version: 1, style }, null, 2), "AVISO text style");
+    showToast("AVISO text style copied", "success");
+  }
+
+  async function pasteAvisoText() {
+    const raw = String(await readEditorClipboard("AVISO text style", "Paste a vSMR AVISO text style") || "").trim();
+    if (!raw) return;
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch (error) {
+      showToast("Clipboard does not contain an AVISO text style", "error");
+      return;
+    }
+    const source = parsed?.style ?? parsed;
+    const textSize = Number(source?.["text-size"]);
+    const haloWidth = Number(source?.["text-halo-width"]);
+    const zoomLevel = Number(source?.zoomLevel);
+    if (!source || typeof source !== "object" ||
+        !/^#[0-9a-f]{6}$/i.test(String(source["text-color"] || "")) ||
+        !/^#[0-9a-f]{6}$/i.test(String(source["text-halo-color"] || "")) ||
+        ![textSize, haloWidth, zoomLevel].every(Number.isFinite)) {
+      showToast("Clipboard does not contain a valid AVISO text style", "error");
+      return;
+    }
+    const style = {
+      "text-font": String(source["text-font"] || "Arial").trim().slice(0, 100) || "Arial",
+      "text-size": clamp(textSize, 6, 32),
+      "text-color": normalizeHex(source["text-color"], "#808080").toUpperCase(),
+      "text-anchor": ["start", "center", "end"].includes(source["text-anchor"]) ? source["text-anchor"] : "center",
+      "text-halo-color": normalizeHex(source["text-halo-color"], "#000000").toUpperCase(),
+      "text-halo-width": clamp(haloWidth, 0, 6),
+      zoomLevel: Math.round(clamp(zoomLevel, 0, 14))
+    };
+    const entries = selectedAvisoTextEntries();
+    if (!entries.length) return;
+    entries.forEach(entry => {
+      const paint = ensureAvisoCatalogStyle(entry).paint;
+      const previousPaint = clone(paint);
+      applyAvisoPaintChanges(paint, style);
+      entry.indices.forEach(index => {
+        const properties = avisoFeatures()[index]?.properties;
+        if (!properties) return;
+        properties.style_id ||= entry.id;
+        applyAvisoPaintChanges(properties, style, previousPaint);
+      });
+    });
+    drafts.avisoTextStyle = null;
+    clearUnappliedEditorSection($("#avisoTextFont"));
+    markDirty(`${entries.length} text style${entries.length === 1 ? "" : "s"} pasted`, ["aviso"]);
+    renderAvisoText();
+    showToast(`Text style pasted to ${entries.length} selection${entries.length === 1 ? "" : "s"}`, "success");
   }
 
 // source: app-settings.js
@@ -4104,19 +4465,9 @@
   function ensureAlertsDraft() {
     const profileId = state.activeProfileId;
     if (!drafts.alerts || drafts.alerts.profileId !== profileId) {
-      const profile = activeProfile();
-      const hasConfiguredRunways = Boolean(
-        profile?.rimcas &&
-        Object.prototype.hasOwnProperty.call(profile.rimcas, "runways") &&
-        Array.isArray(profile.rimcas.runways) &&
-        profile.rimcas.runways.length
-      );
       const rimcas = ensureProfileRimcas();
       const runtimeAlerts = state.runtime.alerts ||= { visibility: "normal", runways: clone(DEFAULT_ALERT_RUNWAYS) };
       if (!Array.isArray(runtimeAlerts.runways)) runtimeAlerts.runways = clone(DEFAULT_ALERT_RUNWAYS);
-      // Empty arrays were written by older editors even when runway monitoring
-      // was meant to follow EuroScope. Only actual rows override the runtime list.
-      const profileRunways = hasConfiguredRunways ? rimcas.runways : runtimeAlerts.runways;
       const profileVisibility = ["normal", "lvp"].includes(rimcas.visibility)
         ? rimcas.visibility
         : runtimeAlerts.visibility;
@@ -4124,7 +4475,9 @@
         profileId,
         data: {
           visibility: profileVisibility === "lvp" ? "lvp" : "normal",
-          runways: clone(profileRunways),
+          // The native runtime derives runway pairs and ARR/DEP assignments from
+          // EuroScope. The editor only owns each pair's independent closed state.
+          runways: clone(runtimeAlerts.runways),
           rimcas
         }
       };
@@ -4139,13 +4492,13 @@
 
     $("#alertVisibilityMode").value = data.visibility;
     const runwayRowsHtml = data.runways.map((runway, index) => `<div class="alert-runway-row" data-alert-runway-index="${index}">
-      <input aria-label="Runway pair" data-alert-runway-name="${index}" spellcheck="false" type="text" value="${escapeHtml(runway.id)}">
-      <label class="alert-table-check"><input data-alert-runway-arr="${index}" type="checkbox" ${runway.arrival ? "checked" : ""}><span></span></label>
-      <label class="alert-table-check"><input data-alert-runway-dep="${index}" type="checkbox" ${runway.departure ? "checked" : ""}><span></span></label>
+      <input aria-label="Runway pair" data-alert-runway-name="${index}" readonly spellcheck="false" title="Runway pair from the active EuroScope sector file" type="text" value="${escapeHtml(runway.id)}">
+      <label class="alert-table-check" title="Arrival assignment follows EuroScope"><input data-alert-runway-arr="${index}" disabled type="checkbox" ${runway.arrival ? "checked" : ""}><span></span></label>
+      <label class="alert-table-check" title="Departure assignment follows EuroScope"><input data-alert-runway-dep="${index}" disabled type="checkbox" ${runway.departure ? "checked" : ""}><span></span></label>
       <label class="alert-table-check"><input data-alert-runway-closed="${index}" type="checkbox" ${runway.closed ? "checked" : ""}><span></span></label>
-      <button aria-label="Remove runway pair ${escapeHtml(runway.id)}" class="ui-button ui-button--compact ui-button--icon ui-button--destructive alert-runway-remove" data-action="remove-alert-runway" data-index="${index}" title="Remove" type="button">×</button>
+      <span></span>
     </div>`).join("");
-    $("#alertRunwayTable").innerHTML = `<div class="alert-runway-header"><span>Runway pair</span><span>ARR</span><span>DEP</span><span>Closed</span><span></span></div>${runwayRowsHtml || `<div class="ui-list__empty">No monitored runway pairs.</div>`}`;
+    $("#alertRunwayTable").innerHTML = `<div class="alert-runway-header"><span>Runway pair</span><span>ARR</span><span>DEP</span><span>Closed</span><span></span></div>${runwayRowsHtml || `<div class="ui-list__empty">No runways found for the active airport.</div>`}`;
 
     renderAlertTimerRow("#alertTimerNormal", data.rimcas.timer);
     renderAlertTimerRow("#alertTimerLvp", data.rimcas.timer_lvp);
@@ -4202,29 +4555,9 @@
     renderAlerts();
   }
 
-  function setAllAlertRunwayField(field, value = true) {
+  function openAllAlertRunways() {
     captureAlertsDraft();
-    ensureAlertsDraft().runways.forEach(runway => { runway[field] = value; });
-    renderAlerts();
-    applyAlerts({ render: false, feedback: false });
-  }
-
-  function addAlertRunway() {
-    captureAlertsDraft();
-    const input = window.prompt("Runway pair (for example 09L / 27R)", "");
-    if (input == null) return;
-    const normalized = input.trim().toUpperCase().replace(/\s*\/\s*/g, " / ");
-    if (!/^\d{2}[LRC]? \/ \d{2}[LRC]?$/.test(normalized)) { showToast("Use a runway pair such as 09L / 27R", "error"); return; }
-    const data = ensureAlertsDraft();
-    if (data.runways.some(row => row.id === normalized)) { showToast("This runway pair is already monitored", "error"); return; }
-    data.runways.push({ id: normalized, arrival: true, departure: true, closed: false });
-    renderAlerts();
-    applyAlerts({ render: false, feedback: false });
-  }
-
-  function removeAlertRunway(index) {
-    captureAlertsDraft();
-    ensureAlertsDraft().runways.splice(index, 1);
+    ensureAlertsDraft().runways.forEach(runway => { runway.closed = false; });
     renderAlerts();
     applyAlerts({ render: false, feedback: false });
   }
@@ -4241,25 +4574,6 @@
     return timestamp.toLocaleString([], {
       year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit"
     });
-  }
-
-  function describeLegacyProfilesBackup(health) {
-    const unixSeconds = Number(health?.profilesBackupModifiedUnixSeconds);
-    if (!Number.isFinite(unixSeconds) || unixSeconds <= 0)
-      return "Validated legacy profiles .bak (modification date unavailable)";
-
-    const modified = new Date(unixSeconds * 1000);
-    if (Number.isNaN(modified.getTime()))
-      return "Validated legacy profiles .bak (modification date unavailable)";
-
-    const ageMinutes = Math.floor(Math.max(0, Date.now() - modified.getTime()) / 60000);
-    const ageValue = ageMinutes >= 1440
-      ? Math.floor(ageMinutes / 1440)
-      : ageMinutes >= 60
-        ? Math.floor(ageMinutes / 60)
-        : ageMinutes;
-    const ageUnit = ageMinutes >= 1440 ? "day" : ageMinutes >= 60 ? "hour" : "minute";
-    return `Validated legacy profiles .bak from ${modified.toLocaleString()} (${ageValue} ${ageUnit}${ageValue === 1 ? "" : "s"} old)`;
   }
 
   function expireUpdateRequest(slot, now = Date.now()) {
@@ -4486,15 +4800,10 @@
     $("#settingsAliasFile").title = aliasFile || "No alias file found";
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
-    const avisoColorPalette = settings.avisoColorPalette === "day" ? "day" : "night";
+    const uiColorTheme = settings.uiColorTheme === "day" ? "day" : "night";
+    syncToggleButtons('[data-ui-color-theme]', uiColorTheme, "uiColorTheme");
+    const avisoColorPalette = normalizeAvisoColorPalette(settings.avisoColorPalette);
     syncToggleButtons('[data-aviso-color-palette]', avisoColorPalette, "avisoColorPalette");
-    const restoreBackup = $("#restoreProfilesBackupButton");
-    if (restoreBackup) {
-      restoreBackup.disabled = !settings.dataHealth?.profilesBackupAvailable || Boolean(pending.reload || pending.save || pending.resource);
-      restoreBackup.title = restoreBackup.disabled
-        ? "No validated profiles backup is available"
-        : describeLegacyProfilesBackup(settings.dataHealth);
-    }
     if (HOST_MODE) {
       ["#settingsProfileFile", "#settingsAvisoFile", "#settingsAliasFile"].forEach(selector => {
         const control = $(selector);
@@ -4746,17 +5055,6 @@
     return startConfigurationSave();
   }
 
-  function restoreProfilesBackup() {
-	if (pending.reload || pending.save || pending.resource || runtimeCommandPending.size || splitAvisoContext || !state.settings?.dataHealth?.profilesBackupAvailable) return;
-    const backupDescription = describeLegacyProfilesBackup(state.settings.dataHealth);
-    if (!window.confirm(`${backupDescription}. Current vSMR saves do not update this legacy copy, so it may be older than expected. Restore it and discard all unsaved edits?`)) return;
-    pending.reload = postBridge("state.restore.backup", {});
-    if (!pending.reload) return;
-    armPendingTimeout("reload", pending.reload);
-    setStatus("Restoring profiles backup...", "info");
-    updateCommandState();
-  }
-
   function restoreBundledDefaults() {
 	if (pending.reload || pending.save || pending.resource || runtimeCommandPending.size || splitAvisoContext) return;
     if (!window.confirm("Load the bundled profiles and, when available, the AVISO default for the active airport? Valid changes will be saved automatically.")) return;
@@ -4779,6 +5077,123 @@
     syncSurfaceVisibility();
   }
 
+// source: app-interaction-help.js
+"use strict";
+
+  const INTERACTION_SELECTOR = [
+    "button", "[role='button']", "input:not([type='hidden'])", "select", "textarea", "[role='slider']"
+  ].join(",");
+
+  function interactionLabel(element) {
+    const label = element.closest("label")?.querySelector(":scope > span:first-child")?.textContent?.trim();
+    return label || element.getAttribute("aria-label") || element.dataset.tooltipText ||
+      element.getAttribute("title") || element.textContent?.trim().replace(/\s+/g, " ") || "control";
+  }
+
+  function interactionHelpText(element) {
+    const label = interactionLabel(element);
+    if (element.dataset.page) return `Open the ${humanize(element.dataset.page)} page`;
+    if (element.dataset.profileTab) return `Open the ${humanize(element.dataset.profileTab)} editor`;
+    if (element.dataset.avisoView) return `Show AVISO ${humanize(element.dataset.avisoView)} styles`;
+    if (element.dataset.treeToggle) return `Expand or collapse ${label}`;
+    if (element.matches("[data-color-path], [data-tag-id], [data-aviso-geometry-style], [data-aviso-text-style]"))
+      return `Select ${label}. Hold Ctrl to toggle items or Shift to select a range`;
+
+    const action = String(element.dataset.action || "");
+    if (action) {
+      const subject = humanize(action.replace(/^(copy|paste|new|delete|duplicate|rename|move-up|move-down|open|close|add|remove|restore|reset|save|select|update|dismiss|activate)-?/, "")) || "item";
+      if (action.startsWith("copy-")) return `Copy ${subject} to the clipboard`;
+      if (action.startsWith("paste-")) return `Paste ${subject} from the clipboard`;
+      if (action.startsWith("new-") || action.startsWith("add-")) return `Add ${subject}`;
+      if (action.startsWith("delete-") || action.startsWith("remove-")) return `Delete ${subject}`;
+      if (action.startsWith("duplicate-")) return `Duplicate ${subject}`;
+      if (action.startsWith("move-up-")) return `Move ${subject} up`;
+      if (action.startsWith("move-down-")) return `Move ${subject} down`;
+      if (action.startsWith("open-")) return `Open ${subject}`;
+      if (action.startsWith("close-")) return `Close ${subject}`;
+      if (action.startsWith("restore-") || action.startsWith("reset-")) return `Restore ${subject}`;
+      if (action.startsWith("save-")) return `Save ${subject}`;
+      if (action.startsWith("select-") || action.startsWith("set-")) return `Select ${subject}`;
+      if (element.dataset.tooltipText || element.title) return label;
+      return humanize(action);
+    }
+
+    if (element instanceof HTMLInputElement) {
+      if (element.type === "checkbox") return `Toggle ${label}`;
+      if (element.type === "range") return `Adjust ${label}`;
+      if (element.type === "color") return `Choose ${label}`;
+      if (element.type === "file") return `Choose a file for ${label}`;
+      return `Edit ${label}`;
+    }
+    if (element instanceof HTMLSelectElement) return `Choose ${label}`;
+    if (element instanceof HTMLTextAreaElement) return `Edit ${label}`;
+    return label;
+  }
+
+  function initializeInteractionHelp() {
+    const tooltip = document.createElement("div");
+    tooltip.id = "interactionTooltip";
+    tooltip.className = "ui-interaction-tooltip";
+    tooltip.setAttribute("role", "tooltip");
+    tooltip.hidden = true;
+    document.body.appendChild(tooltip);
+    let timer = 0;
+    let current = null;
+
+    const hide = () => {
+      window.clearTimeout(timer);
+      timer = 0;
+      current?.removeAttribute("aria-describedby");
+      current = null;
+      tooltip.classList.remove("visible");
+      tooltip.hidden = true;
+    };
+    const show = element => {
+      if (!element || !document.body.contains(element)) return;
+      const text = interactionHelpText(element);
+      if (!text) return;
+      current = element;
+      if (element.title) {
+        element.dataset.tooltipText = element.title;
+        element.removeAttribute("title");
+      }
+      tooltip.textContent = text;
+      tooltip.hidden = false;
+      tooltip.classList.add("visible");
+      element.setAttribute("aria-describedby", tooltip.id);
+      const target = element.getBoundingClientRect();
+      const box = tooltip.getBoundingClientRect();
+      const left = Math.max(6, Math.min(window.innerWidth - box.width - 6, target.left + (target.width - box.width) / 2));
+      const below = target.bottom + 7;
+      const top = below + box.height <= window.innerHeight - 6 ? below : Math.max(6, target.top - box.height - 7);
+      tooltip.style.left = `${Math.round(left)}px`;
+      tooltip.style.top = `${Math.round(top)}px`;
+    };
+    const schedule = (element, delay) => {
+      hide();
+      timer = window.setTimeout(() => show(element), delay);
+    };
+
+    document.addEventListener("pointerover", event => {
+      if (event.pointerType === "touch") return;
+      const element = event.target.closest?.(INTERACTION_SELECTOR);
+      if (!element || element.contains(event.relatedTarget)) return;
+      schedule(element, 550);
+    });
+    document.addEventListener("pointerout", event => {
+      if (!current && !timer) return;
+      const element = event.target.closest?.(INTERACTION_SELECTOR);
+      if (element && !element.contains(event.relatedTarget)) hide();
+    });
+    document.addEventListener("focusin", event => {
+      const element = event.target.closest?.(INTERACTION_SELECTOR);
+      if (element) schedule(element, 350);
+    });
+    document.addEventListener("focusout", hide);
+    document.addEventListener("keydown", event => { if (event.key === "Escape") hide(); });
+    window.addEventListener("resize", hide);
+  }
+
 // source: app-events.js
 "use strict";
 
@@ -4793,7 +5208,8 @@
     if (PROFILE_TITLES[tab]) state.ui.profileTab = tab;
     const avisoView = params.get("aviso") || params.get("view");
     if (["geometry", "text"].includes(avisoView)) state.ui.avisoView = avisoView;
-    if (["day", "night"].includes(params.get("palette"))) state.settings.avisoColorPalette = params.get("palette");
+    if (params.has("palette")) state.settings.avisoColorPalette = normalizeAvisoColorPalette(params.get("palette"));
+    if (["day", "night"].includes(params.get("theme"))) state.settings.uiColorTheme = params.get("theme");
     const ui = params.get("ui");
     if (ui === "control" || params.get("control") === "1" || PAGE_TITLES[page]) state.ui.controlCenterOpen = true;
     if (ui === "runtime") state.ui.controlCenterOpen = false;
@@ -4861,13 +5277,13 @@
 
   const deferredDerivedRefreshes = new WeakMap();
 
-  function refreshSelectedColorRow() {
-    const entry = selectedColorEntry();
-    const row = entry && $$("#colorTree [data-color-path]").find(item => item.dataset.colorPath === entry.id);
-    if (!entry || !row) return;
-    const hex = colorToHex(entry.color).toUpperCase();
-    row.style.setProperty("--node-color", hex);
-    row.title = entry.name;
+  function refreshSelectedColorRows() {
+    selectedColorEntries().forEach(entry => {
+      const row = $$("#colorTree [data-color-path]").find(item => item.dataset.colorPath === entry.id);
+      if (!row) return;
+      row.style.setProperty("--node-color", colorToHex(entry.color).toUpperCase());
+      row.title = entry.name;
+    });
   }
 
   function performDeferredDerivedRefresh(scope) {
@@ -4895,7 +5311,7 @@
   }
 
   function refreshEditorDerivedVisuals(scope, control = null) {
-    if (scope === "colors") refreshSelectedColorRow();
+    if (scope === "colors") refreshSelectedColorRows();
     else if (scope === "rules") {
       const item = rules()[state.ui.selectedRuleIndex];
       if (item) {
@@ -4911,7 +5327,7 @@
         const label = row && $(".ui-list__label", row);
         if (label) label.textContent = group.name;
       }
-    } else if (scope === "icons") renderIconSymbolPreview();
+    } else if (scope === "icons" && control?.id !== "targetSymbolScale") renderIconSymbolPreview();
     else if (scope === "settings") renderIconSymbolPreview();
     else if (["aviso-geometry", "aviso-text", "alerts"].includes(scope))
       deferDerivedRefreshUntilFocusout(scope, control);
@@ -5160,7 +5576,7 @@
         return;
       }
       const colorRow = event.target.closest("[data-color-path]");
-      if (colorRow) { if (!stageFocusedEditorValue()) return; state.ui.selectedColorPath = colorRow.dataset.colorPath; drafts.color = null; clearUnappliedEditorSection($("#colorHex")); renderColors(); return; }
+      if (colorRow) { if (!stageFocusedEditorValue()) return; selectProfileColor(colorRow.dataset.colorPath, event); return; }
       const tagRow = event.target.closest("[data-tag-id]");
       if (tagRow) { if (!stageFocusedEditorValue()) return; selectTagDefinition(tagRow.dataset.tagId, event); return; }
       const ruleRow = event.target.closest("[data-rule-index]");
@@ -5263,9 +5679,8 @@
     });
 
     $("#targetSymbolScale").addEventListener("input", event => {
-      const scale = clamp(event.target.value, 0.5, 1.5);
+      const scale = clamp(event.target.value, 0.25, 5);
       $("#targetSymbolScaleOutput").value = `${scale.toFixed(2)}×`;
-      renderIconSymbolPreview();
     });
     ["targetTrailGroundPoints", "targetTrailAirbornePoints"].forEach(id => $("#" + id).addEventListener("input", event => {
       $("#" + id + "Output").value = String(Math.round(Number(event.target.value)));
@@ -5526,6 +5941,26 @@
         renderTags();
       }
     });
+    $("#colorTree").addEventListener("keydown", event => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        const ids = collectProfileColors(activeProfile()).map(entry => entry.id);
+        if (ids.length) {
+          state.ui.selectedColorPaths = ids;
+          state.ui.selectedColorPath = ids[ids.length - 1];
+          state.ui.colorSelectionAnchorPath = ids[0];
+          drafts.color = null;
+          clearUnappliedEditorSection($("#colorHex"));
+          renderColors();
+        }
+      } else if (event.key === "Escape") {
+        const id = state.ui.selectedColorPath;
+        state.ui.selectedColorPaths = id ? [id] : [];
+        drafts.color = null;
+        clearUnappliedEditorSection($("#colorHex"));
+        renderColors();
+      }
+    });
 
     $("#updateChannel").addEventListener("change", event => {
       submitUpdateSettings({ channel: event.target.value === "stable" ? "stable" : "beta" }, "Update channel saved");
@@ -5553,13 +5988,22 @@
   function handleAction(action, button) {
     if (action === "open-control-center") openControlCenter();
     else if (action === "open-settings") { openControlCenter(); setPage("settings"); }
+    else if (action === "set-ui-theme") {
+      const theme = button.dataset.uiColorTheme === "day" ? "day" : "night";
+      if (state.settings.uiColorTheme !== theme) {
+        state.settings.uiColorTheme = theme;
+        applyUiTheme();
+        renderSettings();
+        markDirty(`${theme === "day" ? "Day" : "Night"} UI theme selected`, ["settings"]);
+      }
+    }
     else if (action === "set-aviso-palette") {
-      const palette = button.dataset.avisoColorPalette === "day" ? "day" : "night";
+      const palette = normalizeAvisoColorPalette(button.dataset.avisoColorPalette);
       if (state.settings.avisoColorPalette !== palette) {
         state.settings.avisoColorPalette = palette;
         renderSettings();
         renderAviso();
-        markDirty(`AVISO ${palette} palette selected`, ["settings"]);
+		markDirty(`AVISO ${palette} palette selected`, ["settings"]);
       }
     }
     else if (action === "dismiss-persistent-status") {
@@ -5567,7 +6011,6 @@
         dismissedPersistentStatusKey = `${persistentStatusState.type}|${persistentStatusState.message}`;
       renderPersistentStatus();
     }
-    else if (action === "restore-profiles-backup") restoreProfilesBackup();
     else if (action === "restore-bundled-defaults") restoreBundledDefaults();
     else if (action === "update-retry") requestUpdateAction("retry_update");
     else if (action === "update-reload-aviso") {
@@ -5603,11 +6046,23 @@
     else if (action === "paste-profile-color") pasteProfileColor();
     else if (action === "copy-tag-definition") copyTagDefinition();
     else if (action === "paste-tag-definition") pasteTagDefinition();
+    else if (action === "copy-rule") copyRule();
+    else if (action === "paste-rule") pasteRule();
+    else if (action === "copy-aviso-geometry") copyAvisoGeometry();
+    else if (action === "paste-aviso-geometry") pasteAvisoGeometry();
+    else if (action === "copy-aviso-text") copyAvisoText();
+    else if (action === "paste-aviso-text") pasteAvisoText();
     else if (action === "insert-tag-token") insertTagToken();
     else if (action === "new-rule") createRule();
     else if (action === "duplicate-rule") duplicateRule();
     else if (action === "delete-rule") deleteRule();
-    else if (action === "add-condition") { captureRuleDraft(); drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" }); renderRuleEditor(); applyRule({ render: false }); }
+    else if (action === "add-condition") {
+      const draft = captureRuleDraft();
+      if (!drafts.rule || !draft) return;
+      drafts.rule.data.criteria.push({ source: "cdm", token: "", condition: "" });
+      renderRuleEditor();
+      applyRule({ render: false });
+    }
     else if (action === "delete-condition") deleteRuleCondition(Number(button.dataset.index));
     else if (action === "new-mode") createMode();
     else if (action === "duplicate-mode") duplicateMode();
@@ -5655,11 +6110,7 @@
     else if (action === "clear-filtered-group-content") setFilteredAvisoGroupContent(false);
     else if (action === "toggle-aviso-group-visibility") toggleRuntimeGroup(button.dataset.groupId);
     else if (action === "remove-aviso-group-member") removeAvisoGroupMember(button);
-    else if (action === "alert-runways-all-arr") setAllAlertRunwayField("arrival", true);
-    else if (action === "alert-runways-all-dep") setAllAlertRunwayField("departure", true);
-    else if (action === "alert-runways-open-all") setAllAlertRunwayField("closed", false);
-    else if (action === "new-alert-runway") addAlertRunway();
-    else if (action === "remove-alert-runway") removeAlertRunway(Number(button.dataset.index));
+    else if (action === "alert-runways-open-all") openAllAlertRunways();
     else if (action.startsWith("browse-")) { postBridge(action.replaceAll("-", ".")); showToast("Native file picker requested"); }
 
   }
@@ -5680,7 +6131,7 @@
   }
 
   function createRule() {
-    rules().push({ source: "vacdm", token: "tsat", condition: "valid", criteria: [{ source: "vacdm", token: "tsat", condition: "valid" }], tag_type: "departure", status: "any", statuses: RULE_STATUSES.slice(), detail: "normal", text_color: hexToColor("#ffffff") });
+    rules().push({ source: "cdm", token: "tsat", condition: "set", criteria: [{ source: "cdm", token: "tsat", condition: "set" }], tag_type: "departure", status: "any", statuses: RULE_STATUSES.slice(), detail: "normal", text_color: hexToColor("#ffffff") });
     state.ui.selectedRuleIndex = rules().length - 1;
     drafts.rule = null;
     clearUnappliedEditorSection($("#ruleName"));
@@ -5712,7 +6163,7 @@
     captureRuleDraft();
     if (!drafts.rule) return;
     drafts.rule.data.criteria.splice(index, 1);
-    if (!drafts.rule.data.criteria.length) drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" });
+    if (!drafts.rule.data.criteria.length) drafts.rule.data.criteria.push({ source: "cdm", token: "", condition: "" });
     renderRuleEditor();
     applyRule({ render: false });
   }
@@ -5863,6 +6314,8 @@
     state.ui.tagSelectionAnchorId = state.ui.selectedTagId;
     const colors = collectProfileColors(preferred.data);
     state.ui.selectedColorPath = colors[0]?.id || "";
+    state.ui.selectedColorPaths = state.ui.selectedColorPath ? [state.ui.selectedColorPath] : [];
+    state.ui.colorSelectionAnchorPath = state.ui.selectedColorPath;
     state.settings.resolutionPreset = preferred.data.targets?.small_icon_boost_resolution_preset || state.settings.resolutionPreset || "1080p";
     Object.keys(drafts).forEach(key => drafts[key] = null);
     clearAllUnappliedEditorSections();
@@ -6073,7 +6526,7 @@
       ["update", "preset"].includes(reason);
     const externallyChangedDirtyEditors =
 	  (state.dirty || hasUnappliedEditorWork) &&
-	  ["resource-source", "external-save", "backup-restored", "profile", "mode"].includes(reason);
+	  ["resource-source", "external-save", "profile", "mode"].includes(reason);
     const incomingAirport = normalizeAirportCode(
       typeof incoming.airport === "string" ? incoming.airport : state.hostAirport
     );
@@ -6084,7 +6537,7 @@
     const profileModeReplacement = !preservesStagedEditors &&
       ["profile", "mode"].includes(reason) && Array.isArray(incoming.profiles);
     const resetsSavedBaseline = !preservesStagedEditors && (
-      ["external-save", "backup-restored"].includes(reason) ||
+	  reason === "external-save" ||
       profileModeReplacement || hostAirportChanged
     );
     let avisoChanged = false;
@@ -6097,15 +6550,15 @@
       state.configRevision = incoming.configRevision;
     if (!preservesStagedEditors && typeof incoming.avisoRevision === "string")
       state.avisoRevision = incoming.avisoRevision;
-    if (["initial", "reload", "backup-restored", "resource-source"].includes(reason))
+    if (["initial", "reload", "resource-source"].includes(reason))
       state.recoveryConfirmed = false;
-    if (["initial", "reload", "backup-restored", "resource-source"].includes(reason))
+    if (["initial", "reload", "resource-source"].includes(reason))
       state.avisoRecoveryConfirmed = false;
     if (!preservesStagedEditors)
       state.externalEditConflict = false;
     else if (externallyChangedDirtyEditors)
       state.externalEditConflict = true;
-    if (["initial", "reload", "backup-restored"].includes(reason) &&
+    if (["initial", "reload"].includes(reason) &&
       persistentStatusState?.origin === "native")
       setPersistentStatus("", "", [], "native");
 
@@ -6477,6 +6930,7 @@
 
   applyQueryState();
   initializeScrollCues();
+  initializeInteractionHelp();
   bindEvents();
   renderAll();
   resetSavedSnapshot();
