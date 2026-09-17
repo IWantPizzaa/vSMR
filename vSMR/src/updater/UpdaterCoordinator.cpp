@@ -303,17 +303,11 @@ namespace vsmr::updater::internal
 			context.state.availableVersion = result.availableVersion;
 			context.state.releaseUrl = remoteRelease->htmlUrl;
 			const std::string trustedSigner = verification::ResolveTrustedSignerHash(startupOptions);
-			if (trustedSigner.empty())
-			{
-				return FailedOpen(
-					context, result, "signature_required",
-					L"A signed updater loader or pinned release certificate is required before automatic updates can be installed.");
-			}
 			if (!LoadAndVerifyRemoteManifest(
 				context, *remoteRelease, trustedSigner,
 				manifest, manifestBytes, error))
 			{
-				return FailedOpen(context, result, error, L"The release manifest could not be authenticated.");
+				return FailedOpen(context, result, error, L"The release manifest could not be verified.");
 			}
 		}
 

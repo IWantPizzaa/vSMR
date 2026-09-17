@@ -3,6 +3,7 @@
 #include "updater/UpdaterReleaseModel.hpp"
 #include "updater/UpdaterTransport.hpp"
 #include "updater/UpdaterUrlPolicy.hpp"
+#include "updater/UpdaterVerification.hpp"
 
 #include <array>
 
@@ -78,6 +79,19 @@ std::vector<std::string> RunUpdaterUrlPolicyTests()
 	}
 
 	std::wstring redirect;
+	using vsmr::updater::url_policy::IsProjectReleaseAssetUrl;
+	Check(IsProjectReleaseAssetUrl(
+		L"https://github.com/IWantPizzaa/vSMR/releases/download/v2.0.0-beta.6/vSMR-2.0.0-beta.6.zip",
+		L"2.0.0-beta.6", L"vSMR-2.0.0-beta.6.zip"),
+		"release assets are bound to the project and normalized tag", failures);
+	for (const auto& url : {
+		L"https://github.com/attacker/vSMR/releases/download/v2.0.0-beta.6/vSMR-2.0.0-beta.6.zip",
+		L"https://github.com/IWantPizzaa/vSMR/releases/download/v2.0.0-beta.5/vSMR-2.0.0-beta.6.zip",
+		L"https://github.com/IWantPizzaa/vSMR/releases/download/v2.0.0-beta.6/other.zip",
+		L"https://github.com/IWantPizzaa/vSMR/releases/download/v2.0.0-beta.6/vSMR-2.0.0-beta.6.zip?redirect=evil",
+		L"https://objects.githubusercontent.com/vSMR-2.0.0-beta.6.zip" })
+		Check(!IsProjectReleaseAssetUrl(url, L"2.0.0-beta.6", L"vSMR-2.0.0-beta.6.zip"),
+			"initial assets reject foreign repositories, tags, names and CDN URLs", failures);
 	Check(
 		TryResolveAllowedRedirect(
 			L"https://api.github.com/releases",
@@ -162,5 +176,49 @@ std::vector<std::string> RunUpdaterUrlPolicyTests()
 		"updater release model compares normalized release identities",
 		failures);
 
+	using namespace vsmr::updater::internal;
+	using vsmr::updater::verification::RequiresManifestSignature;
+	Check(!RequiresManifestSignature(false, false) && RequiresManifestSignature(false, true) &&
+		RequiresManifestSignature(true, false) && RequiresManifestSignature(true, true),
+		"unsigned updates are accepted only when neither manifest nor installation requires signing", failures);
+	const std::string manifestJson = R"json({"schema_version":1,"product":"vSMR","version":"2.0.0-beta.6",
+		"publishable":true,"signature_required":false,"channel":"beta","minimum_loader_version":"1.2.0",
+		"runtime_relative_path":"vSMR_Data/Runtime/vSMR.Runtime.dll","runtime_abi":1,
+		"archive":{"name":"vSMR-2.0.0-beta.6.zip","size":123,"sha256":")json" + std::string(64, 'a') +
+		R"json("},"loader":{"name":"vSMR.dll","version":"1.2.0","size":12,"sha256":")json" + std::string(64, 'b') + "\"}}";
+	auto bytes = [](const std::string& json) { return std::vector<std::uint8_t>(json.begin(), json.end()); };
+	Manifest manifest;
+	std::string manifestError;
+	Check(ParseManifest(bytes(manifestJson), manifest, manifestError) && !manifest.signatureRequired,
+		"manifest parser accepts explicit unsigned beta releases", failures);
+	std::string legacy = manifestJson;
+	legacy.erase(legacy.find("\"signature_required\":false,"), std::string("\"signature_required\":false,").size());
+	Check(ParseManifest(bytes(legacy), manifest, manifestError) && manifest.signatureRequired,
+		"legacy manifests still require signatures", failures);
+	std::string malformed = manifestJson;
+	malformed.replace(malformed.find("\"signature_required\":false"), std::string("\"signature_required\":false").size(),
+		"\"signature_required\":\"false\"");
+	Check(!ParseManifest(bytes(malformed), manifest, manifestError), "malformed signature policy rejected", failures);
+	malformed = manifestJson;
+	malformed.replace(malformed.find("\"publishable\":true"), std::string("\"publishable\":true").size(), "\"publishable\":false");
+	Check(!ParseManifest(bytes(malformed), manifest, manifestError), "unsigned validation manifests remain rejected", failures);
+	const std::string releaseJson = R"json([{"draft":false,"tag_name":"v2.0.0-beta.6","assets":[
+		{"name":"vSMR-2.0.0-beta.6.zip","size":123,"browser_download_url":"https://github.com/IWantPizzaa/vSMR/releases/download/v2.0.0-beta.6/vSMR-2.0.0-beta.6.zip"},
+		{"name":"vSMR-2.0.0-beta.6.update.json","size":500,"browser_download_url":"https://github.com/IWantPizzaa/vSMR/releases/download/v2.0.0-beta.6/vSMR-2.0.0-beta.6.update.json"}]}])json";
+	const auto releases = ParseReleases(bytes(releaseJson));
+	Check(releases.size() == 1 && releases[0].assets.size() == 2 &&
+		SelectRelease(releases, ParseSemVer("2.0.0-beta.5"), UpdateChannel::Beta, "", {}, false).has_value() &&
+		!SelectRelease(releases, ParseSemVer("2.0.0-beta.5"), UpdateChannel::Stable, "", {}, false).has_value(),
+		"beta feed discovers unsigned two-asset releases without exposing them to stable users", failures);
+	if (!releases.empty() && !releases[0].assets.empty())
+	{
+		Check(ParseManifest(bytes(manifestJson), manifest, manifestError) &&
+			ValidateManifestForRelease(manifest, releases[0], releases[0].assets[0], manifestError),
+			"unsigned manifest must still match its release and asset", failures);
+		auto asset = releases[0].assets[0];
+		asset.digest = "sha256:" + std::string(64, 'c');
+		Check(!ValidateManifestForRelease(manifest, releases[0], asset, manifestError),
+			"GitHub digest mismatch rejected for unsigned updates", failures);
+	}
 	return failures;
 }
