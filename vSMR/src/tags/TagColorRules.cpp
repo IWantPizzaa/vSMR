@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "tags/TagTokenValues.hpp"
 #include "tags/TagColorRules.hpp"
 #include "tags/TagColorRules.Internal.hpp"
 
@@ -26,7 +27,7 @@ namespace VsmrTagColorRules
 		}
 	}
 
-	static void ApplyColorRuleChannels(VacdmColorRuleOverrides& target, const ColorRuleChannels& source)
+	static void ApplyColorRuleChannels(TagColorRuleOverrides& target, const ColorRuleChannels& source)
 	{
 		if (source.hasTargetColor)
 		{
@@ -54,7 +55,7 @@ namespace VsmrTagColorRules
 		}
 	}
 
-	static void ApplyStructuredRuleColors(VacdmColorRuleOverrides& target, const StructuredTagColorRule& rule)
+	static void ApplyStructuredRuleColors(TagColorRuleOverrides& target, const StructuredTagColorRule& rule)
 	{
 		if (rule.applyTarget)
 		{
@@ -82,12 +83,12 @@ namespace VsmrTagColorRules
 		}
 	}
 
-	void MergeColorRuleOverrides(VacdmColorRuleOverrides& target, const VacdmColorRuleOverrides& source)
+	void MergeColorRuleOverrides(TagColorRuleOverrides& target, const TagColorRuleOverrides& source)
 	{
 		ApplyColorRuleChannels(target, source);
 	}
 
-	void MergeMissingColorRuleOverrides(VacdmColorRuleOverrides& target, const VacdmColorRuleOverrides& fallback)
+	void MergeMissingColorRuleOverrides(TagColorRuleOverrides& target, const TagColorRuleOverrides& fallback)
 	{
 		if (!target.hasTargetColor && fallback.hasTargetColor)
 		{
@@ -115,7 +116,7 @@ namespace VsmrTagColorRules
 		}
 	}
 
-	static bool TryGetVacdmRuleTokenValue(const VacdmPilotData& pilot, const std::string& token, std::time_t& outTime, bool& outHas)
+	static bool TryGetCdmRuleTokenValue(const CdmPilotData& pilot, const std::string& token, std::time_t& outTime, bool& outHas)
 	{
 		const std::string lowered = ToLowerAsciiCopy(token);
 		outTime = 0;
@@ -174,18 +175,24 @@ namespace VsmrTagColorRules
 			outHas = pilot.hasCtot;
 			return true;
 		}
+		if (lowered == "tsac")
+		{
+			outTime = pilot.tsacUtc;
+			outHas = pilot.hasTsac;
+			return true;
+		}
 		return false;
 	}
 
-	// Resolve a canonical runtime state name for a vACDM token.
+	// Resolve a canonical runtime state name for a CDM time token.
 	// These states are consumed by both legacy inline rules and structured rules.
-	std::string ResolveVacdmRuleStateName(const std::string& token, const VacdmPilotData* pilotData)
+	std::string ResolveCdmRuleStateName(const std::string& token, const CdmPilotData* pilotData)
 	{
 		const std::string lowered = ToLowerAsciiCopy(token);
 		if (pilotData == nullptr)
 			return "missing";
 
-		const VacdmPilotData& pilot = *pilotData;
+		const CdmPilotData& pilot = *pilotData;
 		if (lowered == "tobt")
 		{
 			if (!pilot.hasTobt)
@@ -233,7 +240,7 @@ namespace VsmrTagColorRules
 
 		std::time_t tokenTime = 0;
 		bool hasToken = false;
-		if (!TryGetVacdmRuleTokenValue(pilot, lowered, tokenTime, hasToken) || !hasToken)
+		if (!TryGetCdmRuleTokenValue(pilot, lowered, tokenTime, hasToken) || !hasToken)
 			return "missing";
 		if (tokenTime <= 0)
 			return "missing";
@@ -243,7 +250,7 @@ namespace VsmrTagColorRules
 		return deltaSeconds >= 0 ? "future" : "past";
 	}
 
-	static std::string NormalizeVacdmStateName(const std::string& rawState)
+	static std::string NormalizeCdmStateName(const std::string& rawState)
 	{
 		std::string normalized = ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(rawState));
 		if (normalized.rfind("state_", 0) == 0)
@@ -257,9 +264,9 @@ namespace VsmrTagColorRules
 	}
 
 	// Map aliases and legacy labels to one canonical set so profile rules remain backward-compatible.
-	static std::string CanonicalVacdmStateName(const std::string& rawState)
+	static std::string CanonicalCdmStateName(const std::string& rawState)
 	{
-		const std::string state = NormalizeVacdmStateName(rawState);
+		const std::string state = NormalizeCdmStateName(rawState);
 		if (state.empty())
 			return "";
 
@@ -304,10 +311,10 @@ namespace VsmrTagColorRules
 	}
 
 	// Evaluate profile rule predicates against canonical state names.
-	static bool VacdmRuleStateMatches(const std::string& expectedStateRaw, const std::string& actualStateRaw)
+	static bool CdmRuleStateMatches(const std::string& expectedStateRaw, const std::string& actualStateRaw)
 	{
-		const std::string expected = CanonicalVacdmStateName(expectedStateRaw);
-		const std::string actual = CanonicalVacdmStateName(actualStateRaw);
+		const std::string expected = CanonicalCdmStateName(expectedStateRaw);
+		const std::string actual = CanonicalCdmStateName(actualStateRaw);
 		if (expected.empty())
 			return false;
 		if (expected == "any")
@@ -334,9 +341,9 @@ namespace VsmrTagColorRules
 	}
 
 	template <typename RuleType, typename Matcher>
-	static VacdmColorRuleOverrides EvaluateColorRules(const std::vector<RuleType>& rules, Matcher matcher)
+	static TagColorRuleOverrides EvaluateColorRules(const std::vector<RuleType>& rules, Matcher matcher)
 	{
-		VacdmColorRuleOverrides overrides;
+		TagColorRuleOverrides overrides;
 		for (const RuleType& rule : rules)
 		{
 			if (matcher(rule))
@@ -345,11 +352,11 @@ namespace VsmrTagColorRules
 		return overrides;
 	}
 
-	VacdmColorRuleOverrides EvaluateVacdmColorRules(const std::vector<VacdmColorRuleDefinition>& rules, const VacdmPilotData* pilotData)
+	TagColorRuleOverrides EvaluateCdmColorRules(const std::vector<CdmColorRuleDefinition>& rules, const CdmPilotData* pilotData)
 	{
-		return EvaluateColorRules(rules, [&](const VacdmColorRuleDefinition& rule) {
-			const std::string actualState = ResolveVacdmRuleStateName(rule.token, pilotData);
-			return VacdmRuleStateMatches(rule.expectedState, actualState);
+		return EvaluateColorRules(rules, [&](const CdmColorRuleDefinition& rule) {
+			const std::string actualState = ResolveCdmRuleStateName(rule.token, pilotData);
+			return CdmRuleStateMatches(rule.expectedState, actualState);
 			});
 	}
 
@@ -498,7 +505,10 @@ namespace VsmrTagColorRules
 			matchesField(rule.detail, detailKey);
 	}
 
-	static bool CustomRuleConditionMatches(const std::string& expectedConditionRaw, const std::string& actualValueRaw)
+	static bool CustomRuleConditionMatches(
+		const std::string& expectedConditionRaw,
+		const std::string& actualValueRaw,
+		bool allowPrefixMatch = true)
 	{
 		const std::string actualNormalized = NormalizeSidMatchText(actualValueRaw);
 		const std::string expectedTrimmed = TrimAsciiWhitespaceCopy(expectedConditionRaw);
@@ -548,7 +558,8 @@ namespace VsmrTagColorRules
 				return false;
 			if (actualNormalized == pattern)
 				return true;
-			if (actualNormalized.size() >= pattern.size() && actualNormalized.compare(0, pattern.size(), pattern) == 0)
+			if (allowPrefixMatch && actualNormalized.size() >= pattern.size() &&
+				actualNormalized.compare(0, pattern.size(), pattern) == 0)
 				return true;
 			return false;
 		};
@@ -591,8 +602,8 @@ namespace VsmrTagColorRules
 		const std::string& sourceText,
 		const std::string& token,
 		const std::string& condition,
-		const std::map<std::string, std::string>& replacingMap,
-		const VacdmPilotData* pilotData)
+		const VsmrTags::TokenValues& replacingMap,
+		const CdmPilotData* pilotData)
 	{
 		const std::string source = ToLowerAsciiCopy(sourceText);
 		if (source == "runway")
@@ -603,28 +614,52 @@ namespace VsmrTagColorRules
 				actualRunway = it->second;
 			return RunwayRuleConditionMatches(condition, actualRunway);
 		}
-		if (source == "custom")
+		if (source == "custom" || source == "vsid" || source == "cdm")
 		{
+			const bool cdmTimeToken = source == "cdm" &&
+				(token == "tobt" || token == "tsat" || token == "ttot" ||
+					token == "ctot" || token == "tsac" || token == "asrt" ||
+					token == "asat");
+			const std::string normalizedCondition =
+				ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(condition));
+			const bool valueCondition =
+				normalizedCondition.rfind("in:", 0) == 0 ||
+				normalizedCondition.rfind("not:", 0) == 0 ||
+				normalizedCondition.rfind("not_in:", 0) == 0 ||
+				normalizedCondition.rfind("notin:", 0) == 0;
+			if (cdmTimeToken && !valueCondition)
+			{
+				const std::string actualState =
+					ResolveCdmRuleStateName(token, pilotData);
+				return CdmRuleStateMatches(condition, actualState);
+			}
+
 			std::string actualValue;
-			auto it = replacingMap.find(token);
+			const std::string& mapToken = token;
+			auto it = replacingMap.find(mapToken);
 			if (it != replacingMap.end())
 				actualValue = it->second;
-			return CustomRuleConditionMatches(condition, actualValue);
+			if (source == "vsid" && token == "vsid_rwy")
+				return RunwayRuleConditionMatches(condition, actualValue);
+			return CustomRuleConditionMatches(
+				condition,
+				actualValue,
+				source == "custom" || token == "vsid_sid");
 		}
 
-		const std::string actualState = ResolveVacdmRuleStateName(token, pilotData);
-		return VacdmRuleStateMatches(condition, actualState);
+		const std::string actualState = ResolveCdmRuleStateName(token, pilotData);
+		return CdmRuleStateMatches(condition, actualState);
 	}
 
-	static VacdmColorRuleOverrides EvaluateStructuredTagColorRules(
+	static TagColorRuleOverrides EvaluateStructuredTagColorRules(
 		const std::vector<StructuredTagColorRule>& rules,
 		const std::string& tagTypeKey,
 		const std::string& statusKey,
 		const std::string& detailKey,
-		const std::map<std::string, std::string>& replacingMap,
-		const VacdmPilotData* pilotData)
+		const VsmrTags::TokenValues& replacingMap,
+		const CdmPilotData* pilotData)
 	{
-		VacdmColorRuleOverrides overrides;
+		TagColorRuleOverrides overrides;
 		for (const StructuredTagColorRule& rule : rules)
 		{
 			if (!StructuredRuleContextMatches(rule, tagTypeKey, statusKey, detailKey))
@@ -655,20 +690,20 @@ namespace VsmrTagColorRules
 		return overrides;
 	}
 
-	VacdmColorRuleOverrides EvaluateStructuredTagColorRules(
+	TagColorRuleOverrides EvaluateStructuredTagColorRules(
 		const std::vector<StructuredTagColorRule>& rules,
 		const std::string& tagTypeKey,
 		const char* statusDefinitionKey,
 		bool isTagDetailed,
-		const std::map<std::string, std::string>& replacingMap,
-		const VacdmPilotData* pilotData)
+		const VsmrTags::TokenValues& replacingMap,
+		const CdmPilotData* pilotData)
 	{
 		const std::string statusKey = statusDefinitionKey != nullptr ? statusDefinitionKey : "default";
 		const std::string detailKey = isTagDetailed ? "detailed" : "normal";
 		return EvaluateStructuredTagColorRules(rules, tagTypeKey, statusKey, detailKey, replacingMap, pilotData);
 	}
 
-	VacdmColorRuleOverrides EvaluateRunwayColorRules(const std::vector<RunwayColorRuleDefinition>& rules, const std::map<std::string, std::string>& replacingMap)
+	TagColorRuleOverrides EvaluateRunwayColorRules(const std::vector<RunwayColorRuleDefinition>& rules, const VsmrTags::TokenValues& replacingMap)
 	{
 		return EvaluateColorRules(rules, [&](const RunwayColorRuleDefinition& rule) {
 			std::string actualRunway;

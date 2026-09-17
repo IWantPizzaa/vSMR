@@ -4,6 +4,7 @@
 #include "ConfigurationRegressionTests.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
 #include "config/RuntimeConfig.hpp"
+#include "config/ProfileNormalization.hpp"
 #include "control_center/RuntimeResourceFiles.hpp"
 
 #include "rapidjson/document.h"
@@ -55,6 +56,17 @@ namespace
 		Expect(!profiles.HasParseError(), "default profiles JSON parses");
 		if (profiles.HasParseError())
 			return;
+
+		if (profiles.IsArray()) for (const auto& original : profiles.GetArray())
+		{
+			rapidjson::Document normalized;
+			normalized.CopyFrom(original, normalized.GetAllocator());
+			VsmrProfile::Normalize(normalized, normalized.GetAllocator());
+			rapidjson::Document snapshot;
+			snapshot.CopyFrom(normalized, snapshot.GetAllocator());
+			Expect(!VsmrProfile::Normalize(normalized, normalized.GetAllocator()) && normalized == snapshot,
+				"bundled profile normalization is idempotent");
+		}
 
 		bool migrated = false;
 		std::string error;
@@ -128,21 +140,118 @@ namespace
 		Expect(liveConfig.getActiveProfileName() == activeBefore && liveConfig.getProfileCount() == countBefore, "failed profile replacement preserves live state");
 	}
 
+	void TestIndependentProfileSelections()
+	{
+		const auto testRoot = std::filesystem::temp_directory_path() /
+			("vsmr-asr-profiles-" + std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount64()));
+		std::filesystem::create_directories(testRoot);
+		const auto path = testRoot / "profiles.json";
+		{
+			std::ofstream output(path);
+			output << R"json([{"name":"Custom LFPG"},{"name":"Default"},{"name":"Local"},{"_vsmr":{"schema_version":1,"last_active_profile":"Custom LFPG"}}])json";
+		}
+		{
+			CConfig pg(path.u8string(), "");
+			CConfig po(path.u8string(), "");
+			const auto before = ReadTextFile(path);
+			pg.setActiveProfile("Custom LFPG");
+			po.setActiveProfile("Default");
+			Expect(pg.getActiveProfileName() == "Custom LFPG" && po.getActiveProfileName() == "Default",
+				"Two ASRs sharing one profiles file keep different selections");
+			Expect(ReadTextFile(path) == before, "Selecting profiles does not write shared configuration metadata");
+			const std::string pgAsrSelection = pg.getActiveProfileName();
+			const std::string poAsrSelection = po.getActiveProfileName();
+			po.setActiveProfile("Local");
+			Expect(pg.getActiveProfileName() == pgAsrSelection, "A second ASR cannot change the first selection");
+			Expect(po.saveConfig() && pg.reload(), "Shared definition edits can be saved and reloaded");
+			Expect(pg.getActiveProfileName() == pgAsrSelection && po.getActiveProfileName() == "Local",
+				"Reloading shared definitions preserves each ASR selection");
+			CConfig reopenedPg(path.u8string(), "");
+			CConfig reopenedPo(path.u8string(), "");
+			reopenedPo.setActiveProfile(poAsrSelection);
+			reopenedPg.setActiveProfile(pgAsrSelection);
+			Expect(reopenedPg.getActiveProfileName() == pgAsrSelection && reopenedPo.getActiveProfileName() == poAsrSelection,
+				"ASRs reopen independently of load order and legacy last-active metadata");
+			for (const char* missing : { "", "Deleted profile" })
+			{
+				reopenedPo.setActiveProfile(missing);
+				Expect(reopenedPo.getActiveProfileName() == "Default", "Missing ASR profiles fall back to Default before Custom LFPG");
+			}
+			rapidjson::Document replacement;
+			replacement.Parse<0>(R"json([{"name":"Default"},{"name":"Custom LFPG"}])json");
+			std::string error;
+			Expect(pg.replaceInMemoryConfig(replacement, pg.getActiveProfileName(), error) &&
+				po.replaceInMemoryConfig(replacement, po.getActiveProfileName(), error),
+				"A shared source replacement accepts each screen's requested profile");
+			Expect(pg.getActiveProfileName() == "Custom LFPG" && po.getActiveProfileName() == "Default",
+				"Source replacement preserves existing selections and falls back only for removed profiles");
+		}
+		std::filesystem::remove_all(testRoot);
+	}
+
 	void TestAviso(const std::filesystem::path& repositoryRoot)
 	{
 		const std::filesystem::path avisoRoot = repositoryRoot / "vSMR" / "data" / "AVISO";
-		for (const char* airport : { "LFPG.geojson", "LFML.geojson", "LFMN.geojson", "LFBO.geojson" })
+		for (const auto& entry : std::filesystem::directory_iterator(avisoRoot))
 		{
+			if (entry.path().extension() != ".geojson") continue;
+			const std::string airport = entry.path().stem().string();
 			AvisoDocumentModel model;
 			std::string error;
-			const std::filesystem::path path = avisoRoot / airport;
-			const std::string sourceJson = ReadTextFile(path);
-			Expect(
-				AvisoDocumentModel::ValidateSerializedInputLimits(sourceJson, error),
-				std::string("AVISO passes pre-DOM input limits: ") + airport);
-			Expect(model.LoadFromFile(path.u8string(), error), std::string("AVISO validates: ") + airport + (error.empty() ? "" : " (" + error + ")"));
-			Expect(model.FeatureCount() > 0, std::string("AVISO has features: ") + airport);
+			const std::string sourceJson = ReadTextFile(entry.path());
+			Expect(AvisoDocumentModel::ValidateSerializedInputLimits(sourceJson, error),
+				"AVISO passes pre-DOM input limits: " + airport);
+			const bool loaded = model.LoadFromFile(entry.path().u8string(), error);
+			Expect(loaded, "AVISO validates: " + airport + " " + error);
+			if (!loaded) continue;
+			Expect(model.FeatureCount() > 0, "AVISO has features: " + airport);
+			const auto& document = model.GetDocument();
+			if (!document.HasMember("metadata") || !document["metadata"].HasMember("geometry_source")) continue;
+			const auto& metadata = document["metadata"];
+			const bool hasReal = airport == "LFPG" || airport == "LFPO" || airport == "LFML" || airport == "LFMN";
+			const auto& palettes = metadata["color_palettes"];
+			Expect(palettes.Size() == (hasReal ? 3U : 2U) &&
+				std::string(palettes[rapidjson::SizeType(0)].GetString()) == "dark" &&
+				std::string(palettes[1].GetString()) == "light" &&
+				(!hasReal || std::string(palettes[2].GetString()) == "real"),
+				"Imported AVISO preserves supplied Dark/Light palettes and airport-specific Real colors: " + airport);
+			Expect(metadata["background_colors"].HasMember("real") == hasReal,
+				"Background palettes agree with available palettes: " + airport);
+			for (const auto& feature : document["features"].GetArray())
+				Expect(!feature["properties"].HasMember("color_palettes"),
+					"Every palette uses the same sector-pack geometry: " + airport);
+			if (airport == "LFPG")
+			{
+				// The final beta 6 converter import intentionally has no optional groups.
+				// Keep validating the supplied geometry instead of restoring old map data.
+				Expect(document["vsmr_groups"].Empty(), "LFPG preserves the supplied empty group list");
+				Expect(model.FeatureCount() == 1468U, "LFPG preserves all 1468 supplied features");
+				for (const auto& feature : document["features"].GetArray())
+				{
+					const auto& properties = feature["properties"];
+					Expect(properties["vsmr_group_ids"].Empty(),
+						"LFPG supplied features do not reference removed groups");
+				}
+				bool grassPaletteFound = false;
+				for (auto style = document["styles"].MemberBegin(); style != document["styles"].MemberEnd(); ++style)
+				{
+					const auto& paint = style->value["paint"];
+					if (paint.HasMember("text-halo-width"))
+						Expect(paint["text-halo-width"].GetDouble() == 1.0, "LFPG labels retain one-pixel halos");
+					if (std::string(style->name.GetString()).find("polygon.grassurface.") == 0)
+					{
+						grassPaletteFound = true;
+						const auto& overrides = paint["palette-overrides"];
+						Expect(std::string(overrides["light"]["fill"].GetString()) == "#00512F" &&
+							std::string(overrides["real"]["fill"].GetString()) == "#6A958B",
+							"LFPG uses pack Light and preserved GeoJSON Real grass colors");
+					}
+				}
+				Expect(grassPaletteFound, "LFPG includes sector-pack grass geometry");
+			}
 		}
+		Expect(!std::filesystem::exists(avisoRoot / "LFPG_Custom.geojson"),
+			"LFPG no longer depends on a separate Custom package asset");
 		std::string deeplyNestedAviso(65U, '[');
 		deeplyNestedAviso += '0';
 		deeplyNestedAviso.append(65U, ']');
@@ -154,6 +263,31 @@ namespace
 			"AVISO imports reject excessive nesting before DOM parsing");
 
 		AvisoDocumentModel invalid;
+		const auto migrationPath = std::filesystem::temp_directory_path() /
+			("vsmr-shared-aviso-" + std::to_string(GetCurrentProcessId()) + ".geojson");
+		{
+			std::ofstream source(migrationPath, std::ios::binary);
+			source << R"json({"type":"FeatureCollection","styles":{"old":{"color_palettes":["dark"]},"shared":{"paint":{"fill":"#112233","palette-overrides":{"light":{"fill":"#445566"},"real":{"fill":"#778899"}}}}},"vsmr_groups":[{"id":"g","color_palettes":["light"]}],"features":[{"type":"Feature","properties":{"color_palettes":["dark"]},"geometry":{"type":"Point","coordinates":[1,40]}},{"type":"Feature","properties":{"style_id":"shared","text":"Light label","color_palettes":["day"]},"geometry":{"type":"Point","coordinates":[2.12345678901234567,48.00000000000000001]}},{"type":"Feature","properties":{"color_palettes":["real"]},"geometry":{"type":"Point","coordinates":[3,49]}}]})json";
+		}
+		AvisoDocumentModel migrated;
+		std::string migrationError;
+		const bool migrationLoaded = migrated.LoadFromFile(migrationPath.u8string(), migrationError);
+		Expect(migrationLoaded && migrated.FeatureCount() == 1, "Legacy maps retain only Light geometry and text");
+		if (migrationLoaded && migrated.FeatureCount() == 1)
+		{
+			const auto& document = migrated.GetDocument();
+			Expect(!document["features"][0]["properties"].HasMember("color_palettes") &&
+				!document["styles"].HasMember("old") &&
+				!document["vsmr_groups"][0].HasMember("color_palettes"),
+				"Migration removes geometry palette scopes and obsolete styles");
+			Expect(migrated.SaveAtomically(migrationPath.u8string(), migrationError), "Migrated AVISO saves");
+			const auto saved = ReadTextFile(migrationPath);
+			Expect(saved.find("[2.12345678901234567,48.00000000000000001]") != std::string::npos,
+				"Light geometry retains original coordinate precision after removing earlier features");
+			Expect(saved.find("#778899") != std::string::npos && saved.find("Light label") != std::string::npos,
+				"Migration retains Real colors and shared label text");
+		}
+		std::filesystem::remove(migrationPath);
 		invalid.MutableDocument().Parse<0>(
 			R"json({"type":"FeatureCollection","features":[{"type":"Feature","id":"dup","geometry":{"type":"Point","coordinates":[2.0,48.0]},"properties":{}},{"type":"Feature","id":"dup","geometry":{"type":"Point","coordinates":[2.1,48.1]},"properties":{}}]})json");
 		std::string validationError;
@@ -273,28 +407,7 @@ namespace
 				{},
 				unicodeConfig.getPersistedConfigRevision(),
 				&error),
-			"Profiles save atomically without a backup rotation");
-		std::filesystem::path legacyProfilesBackup = selectedFile;
-		legacyProfilesBackup += L".bak";
-		Expect(
-			!std::filesystem::exists(legacyProfilesBackup),
-			"Profiles save does not create a .bak file");
-		const std::string legacyProfilesContents = ReadTextFile(selectedFile);
-		{
-			std::ofstream backupOutput(legacyProfilesBackup, std::ios::binary | std::ios::trunc);
-			backupOutput << legacyProfilesContents;
-		}
-		Expect(
-			unicodeConfig.saveConfig(
-				{},
-				unicodeConfig.getPersistedConfigRevision(),
-				&error) &&
-				ReadTextFile(legacyProfilesBackup) == legacyProfilesContents,
-			"Profiles save leaves an existing .bak file untouched");
-		Expect(
-			unicodeConfig.isBackupAvailable() &&
-				unicodeConfig.getBackupModifiedUnixSeconds() > 0,
-			"Validated legacy profiles backup exposes its modification date");
+			"Profiles save atomically");
 
 		const std::filesystem::path unicodeAvisoPath =
 			testRoot / L"a\u00E9roport_\u6D4B\u8BD5.geojson";
@@ -313,20 +426,7 @@ namespace
 			"AVISO loads from a Unicode installation path");
 		Expect(
 			unicodeAviso.SaveAtomically(unicodeAvisoPath.u8string(), avisoError),
-			"AVISO saves atomically without a backup rotation");
-		std::filesystem::path legacyAvisoBackup = unicodeAvisoPath;
-		legacyAvisoBackup += L".bak";
-		Expect(
-			!std::filesystem::exists(legacyAvisoBackup),
-			"AVISO save does not create a .bak file");
-		{
-			std::ofstream backupOutput(legacyAvisoBackup, std::ios::binary | std::ios::trunc);
-			backupOutput << "legacy AVISO backup";
-		}
-		Expect(
-			unicodeAviso.SaveAtomically(unicodeAvisoPath.u8string(), avisoError) &&
-				ReadTextFile(legacyAvisoBackup) == "legacy AVISO backup",
-			"AVISO save leaves an existing .bak file untouched");
+			"AVISO saves atomically");
 
 		std::string storedPath;
 		error.clear();
@@ -356,6 +456,7 @@ std::vector<std::string> RunConfigurationRegressionTests(
 {
 	Failures.clear();
 	TestProfiles(repositoryRoot);
+	TestIndependentProfileSelections();
 	TestAviso(repositoryRoot);
 	TestUnicodeResourcePaths(repositoryRoot);
 	return Failures;

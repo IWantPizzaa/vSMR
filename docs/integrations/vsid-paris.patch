@@ -1,0 +1,169 @@
+--- a/vSIDPlugin.h
++++ b/vSIDPlugin.h
+@@ -533,6 +533,10 @@
+ 		ESB_FieldId bridgeRwyField_ = ESB_FIELD_NONE;
+ 		ESB_FieldId bridgeCflField_ = ESB_FIELD_NONE;
+ 		ESB_FieldId bridgeAutomaticModeField_ = ESB_FIELD_NONE;
++		ESB_FieldId bridgeParisField_ = ESB_FIELD_NONE;
++		void PublishParisRules();
++		bool HandleParisCommand(const vsid::Command& cmd);
++		void ReprocessCustomRules();
+ 		int bridgeMissingTicks_ = 0;
+ 		bool bridgeProviderConflict_ = false; // Another module owns "vsid"; stop retrying
+ 
+--- a/vSIDPlugin.cpp
++++ b/vSIDPlugin.cpp
+@@ -1,6 +1,7 @@
+ #include "pch.h"
+ 
+ #include "vSIDPlugin.h"
++#include "ParisRunwayRules.hpp"
+ #include "flightplan.h"
+ #include "timeHandler.h"
+ #include "messageHandler.h"
+@@ -251,7 +252,7 @@
+ 			this->activeAirports[icao].customRules.end(),
+ 			[](auto item)
+ 			{
+-				return item.second;
++				return item.second && !VsmrParis::IsControlRule(item.first);
+ 			}
+ 		);
+ 	}
+@@ -3473,6 +3474,7 @@
+ 	if (auto cmdOpt = this->parseCommand(sCommandLine); cmdOpt.has_value())
+ 	{
+ 		vsid::Command cmd = cmdOpt.value();
++		if (HandleParisCommand(cmd)) return true;
+ 
+ 		vsid::Logger::log(LogLevel::Debug, std::format("Executing command: [{}] with parameters [{}]", cmd.command, vsid::utils::join(cmd.params)), DebugLevel::Cmd);
+ 
+@@ -3625,41 +3627,7 @@
+ 				else vsid::Logger::log(LogLevel::Info, std::format("[{}] not in active airports", icao));
+ 			}
+ 
+-			if (rulesChanged)
+-			{
+-				std::erase_if(this->processed, [&](const auto& pFpln) // remove uncleared fplns if apt is in auto-mode to apply changed rules
+-					{
+-						const auto& [callsign, fplnInfo] = pFpln;
+-
+-						EuroScopePlugIn::CFlightPlan fpln = FlightPlanSelect(callsign.c_str());
+-
+-						if (!fpln.IsValid() || fpln.GetClearenceFlag()) return false;
+-
+-						EuroScopePlugIn::CFlightPlanData fplnData = fpln.GetFlightPlanData();
+-
+-						if (auto fplnAptIt = this->activeAirports.find(fplnData.GetOrigin()); fplnAptIt != this->activeAirports.end())
+-						{
+-							if (fplnAptIt->second.settings["auto"])
+-							{
+-								vsid::fplnhelper::saveFplnInfo(callsign, fplnInfo, this->savedFplnInfo);
+-								return true;
+-							}
+-						}
+-						return false;
+-					}
+-				);
+-
+-				for (const auto& [callsign, fplnInfo] : this->processed)
+-				{
+-					EuroScopePlugIn::CFlightPlan FlightPlan = FlightPlanSelect(callsign.c_str());
+-					auto atcBlock = vsid::fplnhelper::getAtcBlock(FlightPlan);
+-
+-					vsid::Logger::log(LogLevel::Debug, std::format("[{}] rechecking due to rule change.", callsign), vsid::DebugLevel::Sid);
+-
+-					if (!atcBlock.second.empty()) this->processFlightplan(FlightPlan, true, atcBlock.second);
+-					else this->processFlightplan(FlightPlan, true);
+-				}
+-			}
++			if (rulesChanged) ReprocessCustomRules();
+ 			
+ 			return true;
+ 		}
+@@ -6158,6 +6126,8 @@
+ 		}
+ 	}
+ 
++	PublishParisRules();
++
+ 	// Publish actual airport settings each timer tick, including changes made by
+ 	// commands, reloads and controller coordination. Command receipt is not state.
+ 	if (bridgeApi_ != nullptr && bridgeProvider_ != nullptr)
+@@ -6276,6 +6246,8 @@
+ 	// The doc strings are what ".esb schema rampagent" prints, and in practice the only
+ 	// documentation a consumer will read (B1.3).
+ 	static const ESB_FieldDecl fields[] = {
++		{ "paris", ESB_T_STR, ESB_SCOPE_GLOBAL, 0, 54,
++		  "Paris runway state: ICAO=WLA; PG flow W/E/?, link L/U/?, automatic A/manual M" },
+ 		{ "automode", ESB_T_STR, ESB_SCOPE_GLOBAL, 0, 4096,
+ 		  "Automatic mode by airport: ICAO=0; or ICAO=1; records; absent airports are unknown" },
+ 		{ BRIDGE_SID_FIELD, ESB_T_STR, ESB_SCOPE_AIRCRAFT, 0, BRIDGE_FIELD_MAX_BYTES,
+@@ -6290,7 +6262,7 @@
+ 	decl.struct_size = sizeof decl;
+ 	decl.provider_id = BRIDGE_PROVIDER_ID;
+ 	decl.schema_major = 1;
+-	decl.schema_minor = 1;
++	decl.schema_minor = 3;
+ 	decl.display_name = "vSID";
+ 	decl.contact = "https://github.com/AlexisBalzano/vSID";
+ 	decl.fields = fields;
+@@ -6314,13 +6286,15 @@
+ 	if (bridgeApi_->own_field(bridgeProvider_, BRIDGE_SID_FIELD, &bridgeSidField_) != ESB_OK ||
+ 		bridgeApi_->own_field(bridgeProvider_, BRIDGE_RWY_FIELD, &bridgeRwyField_) != ESB_OK ||
+ 		bridgeApi_->own_field(bridgeProvider_, BRIDGE_CFL_FIELD, &bridgeCflField_) != ESB_OK ||
+-		bridgeApi_->own_field(bridgeProvider_, "automode", &bridgeAutomaticModeField_) != ESB_OK) {
++		bridgeApi_->own_field(bridgeProvider_, "automode", &bridgeAutomaticModeField_) != ESB_OK ||
++		bridgeApi_->own_field(bridgeProvider_, "paris", &bridgeParisField_) != ESB_OK) {
+ 		bridgeApi_->unregister_provider(bridgeProvider_);
+ 		bridgeProvider_ = nullptr;
+ 		bridgeSidField_ = ESB_FIELD_NONE;
+ 		bridgeRwyField_ = ESB_FIELD_NONE;
+ 		bridgeCflField_ = ESB_FIELD_NONE;
+ 		bridgeAutomaticModeField_ = ESB_FIELD_NONE;
++		bridgeParisField_ = ESB_FIELD_NONE;
+ 		return false;
+ 	}
+ 
+@@ -6524,3 +6498,41 @@
+ 	/* no deletion of vsidPlugin needed - ownership taken over by this->shared */
+ 	vsidPlugin->exit();
+ }
++
++void vsid::VSIDPlugin::ReprocessCustomRules()
++{
++				std::erase_if(this->processed, [&](const auto& pFpln) // remove uncleared fplns if apt is in auto-mode to apply changed rules
++					{
++						const auto& [callsign, fplnInfo] = pFpln;
++
++						EuroScopePlugIn::CFlightPlan fpln = FlightPlanSelect(callsign.c_str());
++
++						if (!fpln.IsValid() || fpln.GetClearenceFlag()) return false;
++
++						EuroScopePlugIn::CFlightPlanData fplnData = fpln.GetFlightPlanData();
++
++						if (auto fplnAptIt = this->activeAirports.find(fplnData.GetOrigin()); fplnAptIt != this->activeAirports.end())
++						{
++							if (fplnAptIt->second.settings["auto"])
++							{
++								vsid::fplnhelper::saveFplnInfo(callsign, fplnInfo, this->savedFplnInfo);
++								return true;
++							}
++						}
++						return false;
++					}
++				);
++
++				for (const auto& [callsign, fplnInfo] : this->processed)
++				{
++					EuroScopePlugIn::CFlightPlan FlightPlan = FlightPlanSelect(callsign.c_str());
++					auto atcBlock = vsid::fplnhelper::getAtcBlock(FlightPlan);
++
++					vsid::Logger::log(LogLevel::Debug, std::format("[{}] rechecking due to rule change.", callsign), vsid::DebugLevel::Sid);
++
++					if (!atcBlock.second.empty()) this->processFlightplan(FlightPlan, true, atcBlock.second);
++					else this->processFlightplan(FlightPlan, true);
++				}
++			}
++
++#include "ParisIntegration.inc"

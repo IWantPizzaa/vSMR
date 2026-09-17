@@ -5,7 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://icons.vsmr; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" http-equiv="Content-Security-Policy"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
-<meta content="dark" name="color-scheme"/>
+<meta content="dark light" name="color-scheme"/>
 <title>vSMR</title>
 <link href="styles.css" rel="stylesheet"/>
 </head>
@@ -45,14 +45,14 @@
 <section aria-label="vSMR" class="control-window hidden" id="controlWindow">
 <header class="titlebar" id="dragHandle">
 <span>vSMR</span>
-<button class="ui-button ui-button--compact ui-button--icon title-close" id="closeButton" title="Close" type="button">×</button>
+<button class="ui-button ui-button--compact ui-button--icon title-close" id="closeButton" title="Close" type="button">X</button>
 </header>
 <div class="window-shell">
 <div aria-live="polite" class="host-loading-overlay" hidden id="hostLoadingOverlay" role="status">Loading vSMR data...</div>
 <div aria-live="polite" class="operation-busy-overlay" hidden id="operationBusyOverlay" role="status">Applying vSMR changes...</div>
 <nav aria-label="Sections and global actions" class="page-rail">
 <button class="ui-button ui-button--icon rail-button active" data-page="display" title="Display" type="button">
-<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 21v-6.5L3 12v-2l7 1V4a2 2 0 0 1 4 0v7l7-1v2l-7 2.5V21l-2-1z"></path></svg>
+<svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="1.5"></rect><path d="M8 21h8M12 18v3M7 8h10M7 11h6"></path></svg>
 </button>
 <button class="ui-button ui-button--icon rail-button" data-page="aviso" title="AVISO" type="button">
 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 6l4-2 6 2 4-2v14l-4 2-6-2-4 2z"></path><path d="M9 4v14M15 6v14"></path></svg>
@@ -123,14 +123,16 @@
 <section class="panel full-editor-panel">
 <div class="panel-title"><span>Target icons</span></div>
 <div class="profile-settings-scroll icon-settings-grid">
-<fieldset class="compact-group icon-symbol-group">
-<legend>Symbol</legend>
-<div class="icon-symbol-layout">
+<section class="icon-preview-column">
+<div class="icon-section-heading">Preview</div>
 <div aria-label="Target icon preview" class="icon-symbol-preview" id="iconSymbolPreview"></div>
+</section>
+<div class="icon-settings-stack">
+<fieldset class="compact-group icon-symbol-group">
+<legend>Appearance</legend>
 <div class="icon-symbol-controls">
 <label class="field"><span>Icon style</span><select id="targetIconStyle"><option value="nova">NOVA</option><option value="realistic">Icon</option><option value="triangle">Triangle</option></select></label>
-<label class="field"><span>Symbol size</span><span class="range-control"><input id="targetSymbolScale" max="1.5" min="0.5" step="0.05" type="range"/><output id="targetSymbolScaleOutput">1.00×</output></span></label>
-</div>
+<label class="field"><span>Symbol size</span><span class="range-control"><input id="targetSymbolScale" max="5" min="0.25" step="0.05" type="range"/><output id="targetSymbolScaleOutput">1.00×</output></span></label>
 </div>
 </fieldset>
 <fieldset class="compact-group icon-trail-group">
@@ -141,6 +143,7 @@
 <label class="field icon-trail-value"><span>Airborne points</span><span class="range-control"><input id="targetTrailAirbornePoints" max="16" min="0" step="1" type="range"/><output id="targetTrailAirbornePointsOutput">8</output></span></label>
 </div>
 </fieldset>
+</div>
 </div>
 </section>
 </section>
@@ -170,8 +173,9 @@
 <div class="tag-global-options-body" id="tagOptionsEditor">
 <div class="tag-options-block">
 <div class="tag-options-subtitle">Behaviour</div>
-<div class="dense-form two-cols">
+<div class="dense-form tag-behaviour-grid">
 <label class="check-field check-in-form"><input id="tagRoundedCorners" type="checkbox"/><span>Rounded corners</span></label>
+<label class="check-field check-in-form"><input id="tagFitBackgroundToText" type="checkbox"/><span>Fit background to each text line</span></label>
 <label class="check-field check-in-form"><input id="tagAutoDeconfliction" type="checkbox"/><span>Auto deconfliction</span></label>
 </div>
 </div>
@@ -200,18 +204,22 @@
 </div>
 </aside>
 <section class="panel detail-panel">
-<div class="panel-title"><span id="ruleFormCaption">Rule</span></div>
+<div class="panel-title"><span id="ruleFormCaption">Rule</span><span class="mini-tools editor-copy-tools"><button class="ui-button ui-button--compact ui-button--wide" data-action="copy-rule" type="button">Copy</button><button class="ui-button ui-button--compact ui-button--wide" data-action="paste-rule" type="button">Paste</button></span></div>
 <div class="detail-scroll rule-detail-scroll">
-<fieldset class="compact-group editor-section-card">
-<legend>Rule</legend>
+<div class="rule-editor-empty" id="ruleEditorEmpty">
+<div class="rule-editor-empty-content">
+<strong>No rule selected</strong>
+<span>Create a rule before editing its match conditions and colors.</span>
+<button class="ui-button ui-button--primary" data-action="new-rule" type="button">Create rule</button>
+</div>
+</div>
+<div class="rule-editor-form" hidden id="ruleEditorForm">
+<div class="rule-editor-summary-grid">
+<fieldset class="compact-group editor-section-card rule-identity-group">
+<legend>Identity</legend>
 <label class="field"><span>Name</span><input id="ruleName" placeholder="Optional" type="text"/></label>
 </fieldset>
-<fieldset class="compact-group conditions-group">
-<legend>Match</legend>
-<div class="criteria-list" id="criteriaList"></div>
-<button class="ui-button inline-add" data-action="add-condition" type="button">+ condition</button>
-</fieldset>
-<fieldset class="compact-group">
+<fieldset class="compact-group rule-scope-group">
 <legend>Applies to</legend>
 <div class="dense-form three-cols compact-rule-scope">
 <label class="field"><span>Tag</span><select id="ruleTagType"><option>any</option><option>departure</option><option>arrival</option><option>airborne</option><option>uncorrelated</option></select></label>
@@ -225,14 +233,22 @@
 <label class="field"><span>Detail</span><select id="ruleDetail"><option>any</option><option>normal</option><option>detailed</option></select></label>
 </div>
 </fieldset>
+</div>
+<fieldset class="compact-group conditions-group">
+<legend>Match all conditions</legend>
+<div aria-hidden="true" class="criteria-header"><span>Source</span><span>Field</span><span>Match</span><span>Values</span><span></span></div>
+<div class="criteria-list" id="criteriaList"></div>
+<button class="ui-button inline-add" data-action="add-condition" type="button">Add condition</button>
+</fieldset>
 <fieldset class="compact-group output-group">
-<legend>Colors</legend>
+<legend>Color overrides</legend>
 <div class="rule-color-grid">
-<label class="check-field"><input id="ruleUseTargetColor" type="checkbox"/><span>Target</span></label><input id="ruleTargetColor" type="text"/><label class="mini-color-swatch"><input id="ruleTargetPicker" type="color"/></label>
-<label class="check-field"><input id="ruleUseTagColor" type="checkbox"/><span>Tag</span></label><input id="ruleTagColor" type="text"/><label class="mini-color-swatch"><input id="ruleTagPicker" type="color"/></label>
-<label class="check-field"><input id="ruleUseTextColor" type="checkbox"/><span>Text</span></label><input id="ruleTextColor" type="text"/><label class="mini-color-swatch"><input id="ruleTextPicker" type="color"/></label>
+<div class="rule-color-row"><label class="check-field"><input id="ruleUseTargetColor" type="checkbox"/><span>Target</span></label><input id="ruleTargetColor" type="text"/><label class="mini-color-swatch"><input id="ruleTargetPicker" type="color"/></label></div>
+<div class="rule-color-row"><label class="check-field"><input id="ruleUseTagColor" type="checkbox"/><span>Tag</span></label><input id="ruleTagColor" type="text"/><label class="mini-color-swatch"><input id="ruleTagPicker" type="color"/></label></div>
+<div class="rule-color-row"><label class="check-field"><input id="ruleUseTextColor" type="checkbox"/><span>Text</span></label><input id="ruleTextColor" type="text"/><label class="mini-color-swatch"><input id="ruleTextPicker" type="color"/></label></div>
 </div>
 </fieldset>
+</div>
 </div>
 </section>
 </div>
@@ -266,6 +282,7 @@
 <label class="check-field"><input id="reqClearance" type="checkbox"/><span>Clearance</span></label>
 <label class="check-field"><input id="reqTsat" type="checkbox"/><span>Valid TSAT</span></label>
 <label class="check-field"><input id="reqTobt" type="checkbox"/><span>Active TOBT</span></label>
+<label class="check-field"><input id="reqReady" type="checkbox"/><span>Ready</span></label>
 <label class="check-field"><input id="modeTowerFilter" type="checkbox"/><span>Tower filter</span></label>
 <label class="check-field"><input id="modeStructuredRules" type="checkbox"/><span>Structured rules</span></label>
 </div>
@@ -314,7 +331,7 @@
 <button aria-controls="avisoPanelGeometry" class="ui-button ui-button--tab" data-aviso-view="geometry" role="tab" type="button">Geometry</button>
 <button aria-controls="avisoPanelText" class="ui-button ui-button--tab active" data-aviso-view="text" role="tab" type="button">Text</button>
 </nav>
-<div aria-label="AVISO color palette" class="ui-toggle-group aviso-palette-control aviso-toolbar-palette" role="group"><button class="ui-button ui-button--toggle" data-action="set-aviso-palette" data-aviso-color-palette="night" type="button">Night</button><button class="ui-button ui-button--toggle" data-action="set-aviso-palette" data-aviso-color-palette="day" type="button">Day</button></div>
+<div aria-label="AVISO color palette" class="ui-toggle-group aviso-palette-control aviso-toolbar-palette" role="group"><button class="ui-button ui-button--toggle" data-action="set-aviso-palette" data-aviso-color-palette="dark" type="button">Dark</button><button class="ui-button ui-button--toggle" data-action="set-aviso-palette" data-aviso-color-palette="light" type="button">Light</button><button class="ui-button ui-button--toggle" data-action="set-aviso-palette" data-aviso-color-palette="real" type="button">Real</button></div>
 </div>
 <div class="aviso-view-stack">
 <section class="aviso-view" data-aviso-view-panel="geometry" id="avisoPanelGeometry" role="tabpanel">
@@ -326,7 +343,7 @@
 <div aria-label="Geometry styles" class="ui-list ui-list--grouped ui-list--multiselect aviso-style-tree" id="avisoGeometryStyleList" role="region"></div>
 </aside>
 <section class="panel detail-panel aviso-category-editor">
-<div class="panel-title"><span id="avisoGeometryCaption">Geometry style</span></div>
+<div class="panel-title"><span id="avisoGeometryCaption">Geometry style</span><span class="mini-tools editor-copy-tools"><button class="ui-button ui-button--compact ui-button--wide" data-action="copy-aviso-geometry" type="button">Copy</button><button class="ui-button ui-button--compact ui-button--wide" data-action="paste-aviso-geometry" type="button">Paste</button></span></div>
 <div class="detail-scroll aviso-editor-scroll aviso-geometry-editor-scroll">
 <div class="aviso-flat-style-editor aviso-geometry-properties">
 <div class="color-editor-body aviso-color-editor-body" id="avisoGeometryColorEditor">
@@ -358,7 +375,7 @@
 <div aria-label="Text styles" class="ui-list ui-list--grouped ui-list--multiselect aviso-style-tree" id="avisoTextStyleList" role="region"></div>
 </aside>
 <section class="panel detail-panel aviso-text-editor">
-<div class="panel-title"><span id="avisoTextCaption">Text style</span></div>
+<div class="panel-title"><span id="avisoTextCaption">Text style</span><span class="mini-tools editor-copy-tools"><button class="ui-button ui-button--compact ui-button--wide" data-action="copy-aviso-text" type="button">Copy</button><button class="ui-button ui-button--compact ui-button--wide" data-action="paste-aviso-text" type="button">Paste</button></span></div>
 <div class="detail-scroll aviso-editor-scroll aviso-text-editor-scroll">
 <div class="aviso-flat-style-editor aviso-text-properties">
 <div class="color-editor-body aviso-color-editor-body" id="avisoTextColorEditor">
@@ -413,7 +430,7 @@
 <legend>RIMCAS runways</legend>
 <div class="alerts-runway-toolbar">
 <label class="field alert-visibility-field"><span>Visibility</span><select id="alertVisibilityMode"><option value="normal">Normal</option><option value="lvp">Low visibility (LVP)</option></select></label>
-<span class="mini-tools"><button class="ui-button ui-button--compact ui-button--wide" data-action="alert-runways-all-arr" type="button">All ARR</button><button class="ui-button ui-button--compact ui-button--wide" data-action="alert-runways-all-dep" type="button">All DEP</button><button class="ui-button ui-button--compact ui-button--wide" data-action="alert-runways-open-all" type="button">Open all</button><button class="ui-button ui-button--compact ui-button--icon" data-action="new-alert-runway" title="Add runway pair" type="button">+</button></span>
+<span class="mini-tools"><span title="Runway pairs and ARR/DEP assignments follow the active airport's EuroScope runway selection">ARR/DEP: EuroScope</span><button class="ui-button ui-button--compact ui-button--wide" data-action="alert-runways-open-all" title="Clear the manual closed state for every listed runway" type="button">Open all</button></span>
 </div>
 <div class="alert-runway-table" id="alertRunwayTable"></div>
 </fieldset>
@@ -458,6 +475,7 @@
 <div class="settings-column settings-primary-column">
 <fieldset class="compact-group settings-group display-group">
 <legend>Display</legend>
+<div class="field settings-theme-field"><span>UI theme</span><div aria-label="UI theme" class="ui-toggle-group settings-theme-control" role="group"><button class="ui-button ui-button--toggle" data-action="set-ui-theme" data-ui-color-theme="night" type="button">Night</button><button class="ui-button ui-button--toggle" data-action="set-ui-theme" data-ui-color-theme="day" type="button">Day</button></div></div>
 <label class="field"><span>Resolution</span><select id="settingsResolutionPreset"><option>1080p</option><option>2k</option><option>4k</option></select></label>
 <label class="check-field"><input id="settingsShowFps" type="checkbox"/><span>Show FPS</span></label>
 </fieldset>
@@ -505,7 +523,6 @@
 <input aria-label="EuroScope alias file" id="settingsAliasFile" readonly="" type="text"/>
 </section>
 <div class="settings-recovery-actions">
-<button class="ui-button" data-action="restore-profiles-backup" id="restoreProfilesBackupButton" type="button">Restore legacy .bak</button>
 <button class="ui-button" data-action="restore-bundled-defaults" type="button">Bundled defaults</button>
 </div>
 </div>

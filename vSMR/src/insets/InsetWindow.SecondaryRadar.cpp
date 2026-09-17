@@ -51,11 +51,301 @@ POINT CInsetWindow::projectPoint(CPosition pos)
 	}
 }
 
+void CInsetWindow::renderSecondaryRadarTargets(CDC& dc, CSMRRadar* radar_screen,
+	Gdiplus::Graphics* gdi, POINT mouseLocation, const CRect& windowAreaCRect)
+{
+	const auto previouslyDetailed = std::move(m_DetailedTagCallsigns);
+	m_DetailedTagCallsigns.clear();
+	const bool hoverAllowed = radar_screen->CanHoverTags(mouseLocation, this);
+	const Value& activeProfile = radar_screen->CurrentConfig->getActiveProfile();
+	const Value* rimcasSection = activeProfile.IsObject() && activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject()
+		? &activeProfile["rimcas"] : nullptr;
+	const auto getSectionColor = [&](const Value* section, const char* key, const Color& fallback) -> Color
+	{
+		if (section != nullptr && section->HasMember(key) && (*section)[key].IsObject())
+			return radar_screen->CurrentConfig->getConfigColor((*section)[key]);
+		return fallback;
+	};
+	const bool roundedTagCornersEnabled = radar_screen->GetTagRoundedCornersEnabledForEditor();
+	const Color rimcasStageOneColor = getSectionColor(rimcasSection, "background_color_stage_one", Color(255, 160, 90, 30));
+	const Color rimcasStageTwoColor = getSectionColor(rimcasSection, "background_color_stage_two", Color(255, 150, 0, 0));
+	const auto clipToWindowContent = [&](CRect rect) -> CRect
+	{
+		rect.NormalizeRect();
+		CRect clipped;
+		clipped.IntersectRect(rect, windowAreaCRect);
+		return clipped;
+	};
+	// ----- Drawing aircraft and tags -----
+
+	CPen WhitePen(PS_SOLID, 1, RGB(255, 255, 255));
+
+	auto fontIt = radar_screen->customFonts.find(radar_screen->currentFontSize);
+	Gdiplus::Font* tagRegularFont =
+		fontIt != radar_screen->customFonts.end() ? fontIt->second.get() : nullptr;
+	Gdiplus::Font* tagBoldFont = tagRegularFont;
+	if (tagRegularFont != nullptr)
+	{
+		Gdiplus::FontFamily family;
+		WCHAR familyName[LF_FACESIZE] = {};
+		const bool familyAvailable =
+			tagRegularFont->GetFamily(&family) == Gdiplus::Ok &&
+			family.GetFamilyName(familyName) == Gdiplus::Ok;
+		const std::wstring currentFamily = familyAvailable ? familyName : L"";
+		const Gdiplus::REAL currentSize = tagRegularFont->GetSize();
+		const INT currentStyle = tagRegularFont->GetStyle();
+		const bool fontChanged =
+			m_SrwFontSource != tagRegularFont ||
+			std::abs(static_cast<double>(m_SrwFontSize - currentSize)) > 0.001 ||
+			m_SrwFontStyle != currentStyle ||
+			m_SrwFontFamily != currentFamily;
+		if (fontChanged)
+		{
+			m_SrwFontSource = tagRegularFont;
+			m_SrwFontSize = currentSize;
+			m_SrwFontStyle = currentStyle;
+			m_SrwFontFamily = currentFamily;
+			m_SrwBoldFont.reset();
+			if (familyAvailable)
+			{
+				m_SrwBoldFont = std::make_unique<Gdiplus::Font>(
+					&family,
+					currentSize,
+					currentStyle | Gdiplus::FontStyleBold,
+					Gdiplus::UnitPixel);
+				if (m_SrwBoldFont->GetLastStatus() != Gdiplus::Ok)
+					m_SrwBoldFont.reset();
+			}
+
+			VsmrTagRendering::FontContext measured(*gdi, tagRegularFont);
+			m_SrwBlankWidth = measured.BlankWidth();
+			m_SrwLineHeight = measured.LineHeight();
+		}
+		tagBoldFont = m_SrwBoldFont != nullptr ? m_SrwBoldFont.get() : tagRegularFont;
+	}
+	VsmrTagRendering::FontContext srwTagFonts(
+		*gdi,
+		tagRegularFont,
+		tagBoldFont,
+		m_SrwBlankWidth,
+		m_SrwLineHeight,
+		&m_TagTextCache);
+	const Color whiteColor(255, 255, 255, 255);
+	const auto getRimcasEditorColor = [&](const char* key, const Color& fallback) -> Color
+	{
+		if (radar_screen->CurrentConfig == nullptr)
+			return fallback;
+		const Value& activeProfile = radar_screen->CurrentConfig->getActiveProfile();
+		if (activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
+		{
+			const Value& rimcas = activeProfile["rimcas"];
+			if (rimcas.HasMember(key) && rimcas[key].IsObject())
+				return radar_screen->CurrentConfig->getConfigColor(rimcas[key]);
+		}
+		return fallback;
+	};
+	const Color alertTextCaution =
+		getRimcasEditorColor("caution_alert_text_color", Color(255, 30, 30, 30));
+	const Color alertTextWarning =
+		getRimcasEditorColor("warning_alert_text_color", Color(255, 255, 255, 255));
+
+	const VsmrScene::RadarScene* radarScene = radar_screen->GetCurrentRadarScene();
+	const VsmrScene::TargetPresentation defaultTargetPresentation;
+	const VsmrScene::TargetPresentation& targetPresentation = radarScene != nullptr
+		? radarScene->targetPresentation
+		: defaultTargetPresentation;
+
+	VsmrTargetRendering::FrameSettings targetSettings;
+	targetSettings.presentation = targetPresentation;
+	targetSettings.pixelsPerMeter = (std::max)(0.0, m_Scale / kAvisoMetersPerNm);
+	// SRW paints tags in the same pass, so retain its caller-selected GDI+ modes.
+	targetSettings.optimizeRealisticBitmapQuality = false;
+	const auto targetSettingsProjectPoint = [&](const VsmrScene::GeoPoint& point) -> POINT
+	{
+		CPosition position;
+		position.m_Latitude = point.latitude;
+		position.m_Longitude = point.longitude;
+		return projectPoint(position);
+	};
+	const auto targetSettingsPointVisible = [&](const POINT& point, int margin) -> bool
+	{
+		return point.x >= windowAreaCRect.left - margin &&
+			point.x <= windowAreaCRect.right + margin &&
+			point.y >= windowAreaCRect.top - margin &&
+			point.y <= windowAreaCRect.bottom + margin;
+	};
+	targetSettings.iconCache = radar_screen->CreateTargetIconCacheCallbacks();
+	VsmrTargetRendering::Frame targetRenderer(*gdi, std::move(targetSettings));
+
+	if (radarScene != nullptr)
+	for (const VsmrScene::Target& sceneTarget : radarScene->targets)
+	{
+		const std::string& rtCallsign = sceneTarget.callsign;
+		if (rtCallsign.empty() || !sceneTarget.position.valid)
+			continue;
+
+		CPosition RtPos2;
+		RtPos2.m_Latitude = sceneTarget.position.latitude;
+		RtPos2.m_Longitude = sceneTarget.position.longitude;
+		if (sceneTarget.groundSpeed < 60 ||
+			!m_AirportPositionValid ||
+			sceneTarget.pressureAltitude > m_Filter)
+			continue;
+
+		if (!sceneTarget.passesDisplayMode)
+			continue;
+		const CRimcas::RimcasAlertTypes rimcasStage = static_cast<CRimcas::RimcasAlertTypes>(sceneTarget.rimcas.alertStage);
+		const auto getBottomLine = [&]() -> const char*
+		{
+			return sceneTarget.bottomLine.c_str();
+		};
+
+		POINT RtPoint;
+
+		RtPoint = projectPoint(RtPos2);
+
+		int renderedIconSize = 12;
+		if (windowAreaCRect.PtInRect(RtPoint)) {
+			const VsmrTargetRendering::DrawResult renderedTarget =
+				targetRenderer.DrawTarget(sceneTarget, targetSettingsProjectPoint, targetSettingsPointVisible);
+			if (!renderedTarget.drawn)
+				continue;
+			renderedIconSize = (std::max<LONG>)(
+				12,
+				(std::max)(
+					renderedTarget.hitBounds.right - renderedTarget.hitBounds.left,
+					renderedTarget.hitBounds.bottom - renderedTarget.hitBounds.top));
+			CRect TargetArea(renderedTarget.hitBounds);
+			TargetArea.NormalizeRect();
+			const CRect clippedTargetArea = clipToWindowContent(TargetArea);
+			if (!clippedTargetArea.IsRectEmpty())
+				radar_screen->AddScreenObject(DRAWING_AC_SYMBOL_APPWINDOW_BASE + (m_Id - APPWINDOW_BASE), rtCallsign.c_str(), clippedTargetArea, false, getBottomLine());
+		}
+
+		if (mouseWithin(mouseLocation, windowAreaCRect) &&
+			mouseWithin(mouseLocation, { RtPoint.x - renderedIconSize / 2, RtPoint.y - renderedIconSize / 2, RtPoint.x + renderedIconSize / 2, RtPoint.y + renderedIconSize / 2 })) {
+			CPen* previousHoverPen = dc.SelectObject(&WhitePen);
+			dc.MoveTo(RtPoint.x, RtPoint.y - 6);
+			dc.LineTo(RtPoint.x - 4, RtPoint.y - 10);
+			dc.MoveTo(RtPoint.x, RtPoint.y - 6);
+			dc.LineTo(RtPoint.x + 4, RtPoint.y - 10);
+
+			dc.MoveTo(RtPoint.x, RtPoint.y + 6);
+			dc.LineTo(RtPoint.x - 4, RtPoint.y + 10);
+			dc.MoveTo(RtPoint.x, RtPoint.y + 6);
+			dc.LineTo(RtPoint.x + 4, RtPoint.y + 10);
+
+			dc.MoveTo(RtPoint.x - 6, RtPoint.y);
+			dc.LineTo(RtPoint.x - 10, RtPoint.y - 4);
+			dc.MoveTo(RtPoint.x - 6, RtPoint.y);
+			dc.LineTo(RtPoint.x - 10, RtPoint.y + 4);
+
+			dc.MoveTo(RtPoint.x + 6, RtPoint.y);
+			dc.LineTo(RtPoint.x + 10, RtPoint.y - 4);
+			dc.MoveTo(RtPoint.x + 6, RtPoint.y);
+			dc.LineTo(RtPoint.x + 10, RtPoint.y + 4);
+			dc.SelectObject(previousHoverPen);
+		}
+		const double leaderLength = 50 * radar_screen->GetDisplayScale();
+		POINT tagCenter = {};
+		m_TargetPoints[rtCallsign] = RtPoint;
+		const auto customOffset = m_TagOffsets.find(rtCallsign);
+		if (customOffset != m_TagOffsets.end())
+		{
+			tagCenter.x = RtPoint.x + customOffset->second.x;
+			tagCenter.y = RtPoint.y + customOffset->second.y;
+		}
+		else
+		{
+			if (m_TagAngles.find(rtCallsign) == m_TagAngles.end())
+			{
+				// Keep the default stable until the controller moves this tag.
+				m_TagAngles[rtCallsign] = 45.0;
+			}
+			tagCenter.x = long(RtPoint.x + float(leaderLength * cos(DegToRad(m_TagAngles[rtCallsign]))));
+			tagCenter.y = long(RtPoint.y + float(leaderLength * sin(DegToRad(m_TagAngles[rtCallsign]))));
+		}
+
+		if (!srwTagFonts.IsValid())
+			continue;
+		VsmrTagRendering::Layout layout;
+		if (!VsmrTagRendering::MeasureLayout(srwTagFonts, sceneTarget.tag.normal, layout))
+			continue;
+
+		const VsmrScene::TagPalette& palette = sceneTarget.tag.normalPalette;
+		VsmrTagRendering::PaintOptions options;
+		options.displayScale = radar_screen->GetDisplayScale();
+		options.targetPoint = RtPoint;
+		options.tagCenter = tagCenter;
+		options.background = SceneColorToGdi(
+			sceneTarget.rimcas.onRunway ? palette.backgroundOnRunway : palette.background);
+		options.leaderColor = whiteColor;
+		options.roundedCorners = roundedTagCornersEnabled;
+		options.fitBackgroundToText = radar_screen->GetTagFitBackgroundToText();
+		options.symmetricBounds = true;
+		options.backgroundAlphaNumerator =
+			rimcasStage == CRimcas::NoAlert ? 160U : 255U;
+		const VsmrTagRendering::Layout normalLayout = layout;
+		const bool dragged = m_TagBeingDragged == rtCallsign;
+		const bool detailed = VsmrTagRendering::SelectHoveredLayout(
+			srwTagFonts, sceneTarget.tag, options, mouseLocation, hoverAllowed, dragged,
+			previouslyDetailed.count(rtCallsign) != 0, normalLayout, layout);
+		if (detailed) m_DetailedTagCallsigns.insert(rtCallsign);
+		const auto& selectedPalette = detailed ? sceneTarget.tag.detailedPalette : sceneTarget.tag.normalPalette;
+		options.background = SceneColorToGdi(sceneTarget.rimcas.onRunway ? selectedPalette.backgroundOnRunway : selectedPalette.background);
+		options.highlighted = dragged || (hoverAllowed &&
+			VsmrTagRendering::CalculateBounds(srwTagFonts, layout, options).PtInRect(mouseLocation));
+		const CRect expectedBounds =
+			VsmrTagRendering::CalculateBounds(srwTagFonts, layout, options);
+		CRect visibleTag;
+		if (!windowAreaCRect.PtInRect(RtPoint) ||
+			!visibleTag.IntersectRect(windowAreaCRect, expectedBounds) ||
+			visibleTag.IsRectEmpty())
+		{
+			continue;
+		}
+
+		const VsmrTagRendering::PaintResult painted =
+			VsmrTagRendering::Paint(*gdi, srwTagFonts, layout, options);
+		if (painted.bounds.IsRectEmpty())
+			continue;
+
+		m_TagAreas[rtCallsign] = painted.bounds;
+		const CRect clippedTag = clipToWindowContent(painted.bounds);
+		if (!clippedTag.IsRectEmpty())
+			radar_screen->AddScreenObject(m_Id, rtCallsign.c_str(), clippedTag, true, getBottomLine());
+		for (const VsmrTagRendering::HitRegion& hit : painted.hitRegions)
+		{
+			const CRect clippedHit = clipToWindowContent(hit.area);
+			if (!clippedHit.IsRectEmpty())
+				radar_screen->AddScreenObject(hit.action, rtCallsign.c_str(), clippedHit, true, getBottomLine());
+		}
+
+		if (rimcasStage == CRimcas::StageOne || rimcasStage == CRimcas::StageTwo)
+		{
+			VsmrTagRendering::DetachedTopBand alertBand;
+			alertBand.text = "ALERT";
+			alertBand.background = rimcasStage == CRimcas::StageOne
+				? rimcasStageOneColor
+				: rimcasStageTwoColor;
+			alertBand.textColor = rimcasStage == CRimcas::StageTwo
+				? alertTextWarning
+				: alertTextCaution;
+			VsmrTagRendering::PaintDetachedTopBand(
+				*gdi,
+				srwTagFonts,
+				painted.bounds,
+				alertBand);
+		}
+	}
+
+}
+
 void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation)
 {
 	m_LastRdfRenderMilliseconds = 0.0;
 	m_LastChromeRenderMilliseconds = 0.0;
-	if (this->m_Id == -1)
+	if (this->m_Id == -1 || radar_screen == nullptr || radar_screen->CurrentConfig == nullptr || gdi == nullptr)
 		return;
 
 	const char* insetName = "SRW1";
@@ -137,23 +427,13 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			return radar_screen->CurrentConfig->getConfigColorRef((*section)[key]);
 		return fallback;
 	};
-	const auto getSectionColor = [&](const Value* section, const char* key, const Color& fallback) -> Color
-	{
-		if (section != nullptr && section->HasMember(key) && (*section)[key].IsObject())
-			return radar_screen->CurrentConfig->getConfigColor((*section)[key]);
-		return fallback;
-	};
 
 	const Value* srwInsetSection = getProfileObjectSection("approach_insets");
-	const Value* rimcasSection = getProfileObjectSection("rimcas");
 
 	const COLORREF srwRunwayColor = getSectionColorRef(srwInsetSection, "runway_color", RGB(255, 255, 255));
 	const COLORREF srwExtendedLineColor = getSectionColorRef(srwInsetSection, "extended_lines_color", RGB(180, 180, 180));
-	const double srwExtendedLineLengthNm = max(0.1, getSectionDouble(srwInsetSection, "extended_lines_length", 15.0));
-	const int srwExtendedLineTickSpacingNm = max(1, getSectionInt(srwInsetSection, "extended_lines_ticks_spacing", 1));
-	const bool roundedTagCornersEnabled = radar_screen->GetTagRoundedCornersEnabledForEditor();
-	const Color rimcasStageOneColor = getSectionColor(rimcasSection, "background_color_stage_one", Color(255, 160, 90, 30));
-	const Color rimcasStageTwoColor = getSectionColor(rimcasSection, "background_color_stage_two", Color(255, 150, 0, 0));
+	const double srwExtendedLineLengthNm = (std::max)(0.1, getSectionDouble(srwInsetSection, "extended_lines_length", 15.0));
+	const int srwExtendedLineTickSpacingNm = (std::max)(1, getSectionInt(srwInsetSection, "extended_lines_ticks_spacing", 1));
 
 	CRect windowAreaCRect = GetWindowContentRect();
 	windowAreaCRect.NormalizeRect();
@@ -170,15 +450,6 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		::IntersectClipRect(hDC, windowAreaCRect.left, windowAreaCRect.top, windowAreaCRect.right, windowAreaCRect.bottom);
 	const Gdiplus::GraphicsState srwGraphicsState = gdi->Save();
 	gdi->SetClip(CopyRect(windowAreaCRect), Gdiplus::CombineModeIntersect);
-	const auto clipToWindowContent = [&](CRect rect) -> CRect
-	{
-		rect.NormalizeRect();
-		CRect clipped;
-		clipped.IntersectRect(rect, windowAreaCRect);
-		return clipped;
-	};
-
-	auto scale = m_Scale;
 
 	POINT refPt = windowAreaCRect.CenterPoint();
 	refPt.x += m_Offset.x;
@@ -268,255 +539,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		}
 	}
 
-	// ----- Drawing aircraft and tags -----
-
-	CPen WhitePen(PS_SOLID, 1, RGB(255, 255, 255));
-
-	auto fontIt = radar_screen->customFonts.find(radar_screen->currentFontSize);
-	Gdiplus::Font* tagRegularFont =
-		fontIt != radar_screen->customFonts.end() ? fontIt->second.get() : nullptr;
-	Gdiplus::Font* tagBoldFont = tagRegularFont;
-	if (tagRegularFont != nullptr)
-	{
-		Gdiplus::FontFamily family;
-		WCHAR familyName[LF_FACESIZE] = {};
-		const bool familyAvailable =
-			tagRegularFont->GetFamily(&family) == Gdiplus::Ok &&
-			family.GetFamilyName(familyName) == Gdiplus::Ok;
-		const std::wstring currentFamily = familyAvailable ? familyName : L"";
-		const Gdiplus::REAL currentSize = tagRegularFont->GetSize();
-		const INT currentStyle = tagRegularFont->GetStyle();
-		const bool fontChanged =
-			m_SrwFontSource != tagRegularFont ||
-			std::abs(static_cast<double>(m_SrwFontSize - currentSize)) > 0.001 ||
-			m_SrwFontStyle != currentStyle ||
-			m_SrwFontFamily != currentFamily;
-		if (fontChanged)
-		{
-			m_SrwFontSource = tagRegularFont;
-			m_SrwFontSize = currentSize;
-			m_SrwFontStyle = currentStyle;
-			m_SrwFontFamily = currentFamily;
-			m_SrwBoldFont.reset();
-			if (familyAvailable)
-			{
-				m_SrwBoldFont = std::make_unique<Gdiplus::Font>(
-					&family,
-					currentSize,
-					currentStyle | Gdiplus::FontStyleBold,
-					Gdiplus::UnitPixel);
-				if (m_SrwBoldFont->GetLastStatus() != Gdiplus::Ok)
-					m_SrwBoldFont.reset();
-			}
-
-			VsmrTagRendering::FontContext measured(*gdi, tagRegularFont);
-			m_SrwBlankWidth = measured.BlankWidth();
-			m_SrwLineHeight = measured.LineHeight();
-		}
-		tagBoldFont = m_SrwBoldFont != nullptr ? m_SrwBoldFont.get() : tagRegularFont;
-	}
-	VsmrTagRendering::FontContext srwTagFonts(
-		*gdi,
-		tagRegularFont,
-		tagBoldFont,
-		m_SrwBlankWidth,
-		m_SrwLineHeight);
-	const Color whiteColor(255, 255, 255, 255);
-	const auto getRimcasEditorColor = [&](const char* key, const Color& fallback) -> Color
-	{
-		if (radar_screen->CurrentConfig == nullptr)
-			return fallback;
-		const Value& activeProfile = radar_screen->CurrentConfig->getActiveProfile();
-		if (activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
-		{
-			const Value& rimcas = activeProfile["rimcas"];
-			if (rimcas.HasMember(key) && rimcas[key].IsObject())
-				return radar_screen->CurrentConfig->getConfigColor(rimcas[key]);
-		}
-		return fallback;
-	};
-	const Color alertTextCaution =
-		getRimcasEditorColor("caution_alert_text_color", Color(255, 30, 30, 30));
-	const Color alertTextWarning =
-		getRimcasEditorColor("warning_alert_text_color", Color(255, 255, 255, 255));
-
-	const VsmrScene::RadarScene* radarScene = radar_screen->GetCurrentRadarScene();
-	const VsmrScene::TargetPresentation defaultTargetPresentation;
-	const VsmrScene::TargetPresentation& targetPresentation = radarScene != nullptr
-		? radarScene->targetPresentation
-		: defaultTargetPresentation;
-
-	VsmrTargetRendering::FrameSettings targetSettings;
-	targetSettings.presentation = targetPresentation;
-	targetSettings.pixelsPerMeter = max(0.0, m_Scale / kAvisoMetersPerNm);
-	// SRW paints tags in the same pass, so retain its caller-selected GDI+ modes.
-	targetSettings.optimizeRealisticBitmapQuality = false;
-	targetSettings.projectPoint = [&](const VsmrScene::GeoPoint& point) -> POINT
-	{
-		CPosition position;
-		position.m_Latitude = point.latitude;
-		position.m_Longitude = point.longitude;
-		return projectPoint(position);
-	};
-	targetSettings.pointVisible = [&](const POINT& point, int margin) -> bool
-	{
-		return point.x >= windowAreaCRect.left - margin &&
-			point.x <= windowAreaCRect.right + margin &&
-			point.y >= windowAreaCRect.top - margin &&
-			point.y <= windowAreaCRect.bottom + margin;
-	};
-	targetSettings.iconCache = radar_screen->CreateTargetIconCacheCallbacks();
-	VsmrTargetRendering::Frame targetRenderer(*gdi, std::move(targetSettings));
-
-	if (radarScene != nullptr)
-	for (const VsmrScene::Target& sceneTarget : radarScene->targets)
-	{
-		const std::string& rtCallsign = sceneTarget.callsign;
-		if (rtCallsign.empty() || !sceneTarget.position.valid)
-			continue;
-
-		CPosition RtPos2;
-		RtPos2.m_Latitude = sceneTarget.position.latitude;
-		RtPos2.m_Longitude = sceneTarget.position.longitude;
-		if (sceneTarget.groundSpeed < 60 ||
-			!m_AirportPositionValid ||
-			sceneTarget.pressureAltitude > m_Filter)
-			continue;
-
-		if (!sceneTarget.passesDisplayMode)
-			continue;
-		const CRimcas::RimcasAlertTypes rimcasStage = static_cast<CRimcas::RimcasAlertTypes>(sceneTarget.rimcas.alertStage);
-		const auto getBottomLine = [&]() -> const char*
-		{
-			return sceneTarget.bottomLine.c_str();
-		};
-
-		POINT RtPoint;
-
-		RtPoint = projectPoint(RtPos2);
-
-		int renderedIconSize = 12;
-		if (windowAreaCRect.PtInRect(RtPoint)) {
-			const VsmrTargetRendering::DrawResult renderedTarget =
-				targetRenderer.DrawTarget(sceneTarget);
-			if (!renderedTarget.drawn)
-				continue;
-			renderedIconSize = max(
-				12,
-				max(
-					renderedTarget.hitBounds.right - renderedTarget.hitBounds.left,
-					renderedTarget.hitBounds.bottom - renderedTarget.hitBounds.top));
-			CRect TargetArea(renderedTarget.hitBounds);
-			TargetArea.NormalizeRect();
-			const CRect clippedTargetArea = clipToWindowContent(TargetArea);
-			if (!clippedTargetArea.IsRectEmpty())
-				radar_screen->AddScreenObject(DRAWING_AC_SYMBOL_APPWINDOW_BASE + (m_Id - APPWINDOW_BASE), rtCallsign.c_str(), clippedTargetArea, false, getBottomLine());
-		}
-
-		if (mouseWithin(mouseLocation, windowAreaCRect) &&
-			mouseWithin(mouseLocation, { RtPoint.x - renderedIconSize / 2, RtPoint.y - renderedIconSize / 2, RtPoint.x + renderedIconSize / 2, RtPoint.y + renderedIconSize / 2 })) {
-			CPen* previousHoverPen = dc.SelectObject(&WhitePen);
-			dc.MoveTo(RtPoint.x, RtPoint.y - 6);
-			dc.LineTo(RtPoint.x - 4, RtPoint.y - 10);
-			dc.MoveTo(RtPoint.x, RtPoint.y - 6);
-			dc.LineTo(RtPoint.x + 4, RtPoint.y - 10);
-
-			dc.MoveTo(RtPoint.x, RtPoint.y + 6);
-			dc.LineTo(RtPoint.x - 4, RtPoint.y + 10);
-			dc.MoveTo(RtPoint.x, RtPoint.y + 6);
-			dc.LineTo(RtPoint.x + 4, RtPoint.y + 10);
-
-			dc.MoveTo(RtPoint.x - 6, RtPoint.y);
-			dc.LineTo(RtPoint.x - 10, RtPoint.y - 4);
-			dc.MoveTo(RtPoint.x - 6, RtPoint.y);
-			dc.LineTo(RtPoint.x - 10, RtPoint.y + 4);
-
-			dc.MoveTo(RtPoint.x + 6, RtPoint.y);
-			dc.LineTo(RtPoint.x + 10, RtPoint.y - 4);
-			dc.MoveTo(RtPoint.x + 6, RtPoint.y);
-			dc.LineTo(RtPoint.x + 10, RtPoint.y + 4);
-			dc.SelectObject(previousHoverPen);
-		}
-		constexpr int leaderLength = 50;
-		POINT tagCenter = {};
-		m_TargetPoints[rtCallsign] = RtPoint;
-		const auto customOffset = m_TagOffsets.find(rtCallsign);
-		if (customOffset != m_TagOffsets.end())
-		{
-			tagCenter.x = RtPoint.x + customOffset->second.x;
-			tagCenter.y = RtPoint.y + customOffset->second.y;
-		}
-		else
-		{
-			if (m_TagAngles.find(rtCallsign) == m_TagAngles.end())
-			{
-				// Keep the default stable until the controller moves this tag.
-				m_TagAngles[rtCallsign] = 45.0;
-			}
-			tagCenter.x = long(RtPoint.x + float(leaderLength * cos(DegToRad(m_TagAngles[rtCallsign]))));
-			tagCenter.y = long(RtPoint.y + float(leaderLength * sin(DegToRad(m_TagAngles[rtCallsign]))));
-		}
-
-		if (!srwTagFonts.IsValid())
-			continue;
-		VsmrTagRendering::Layout layout;
-		if (!VsmrTagRendering::MeasureLayout(srwTagFonts, sceneTarget.tag.normal, layout))
-			continue;
-
-		const VsmrScene::TagPalette& palette = sceneTarget.tag.normalPalette;
-		VsmrTagRendering::PaintOptions options;
-		options.targetPoint = RtPoint;
-		options.tagCenter = tagCenter;
-		options.background = SceneColorToGdi(
-			sceneTarget.rimcas.onRunway ? palette.backgroundOnRunway : palette.background);
-		options.leaderColor = whiteColor;
-		options.roundedCorners = roundedTagCornersEnabled;
-		options.symmetricBounds = true;
-		options.backgroundAlphaNumerator =
-			rimcasStage == CRimcas::NoAlert ? 160U : 255U;
-		const CRect expectedBounds =
-			VsmrTagRendering::CalculateBounds(srwTagFonts, layout, options);
-		CRect visibleTag;
-		if (!windowAreaCRect.PtInRect(RtPoint) ||
-			!visibleTag.IntersectRect(windowAreaCRect, expectedBounds) ||
-			visibleTag.IsRectEmpty())
-		{
-			continue;
-		}
-
-		const VsmrTagRendering::PaintResult painted =
-			VsmrTagRendering::Paint(*gdi, srwTagFonts, layout, options);
-		if (painted.bounds.IsRectEmpty())
-			continue;
-
-		m_TagAreas[rtCallsign] = painted.bounds;
-		const CRect clippedTag = clipToWindowContent(painted.bounds);
-		if (!clippedTag.IsRectEmpty())
-			radar_screen->AddScreenObject(m_Id, rtCallsign.c_str(), clippedTag, true, getBottomLine());
-		for (const VsmrTagRendering::HitRegion& hit : painted.hitRegions)
-		{
-			const CRect clippedHit = clipToWindowContent(hit.area);
-			if (!clippedHit.IsRectEmpty())
-				radar_screen->AddScreenObject(hit.action, rtCallsign.c_str(), clippedHit, true, getBottomLine());
-		}
-
-		if (rimcasStage == CRimcas::StageOne || rimcasStage == CRimcas::StageTwo)
-		{
-			VsmrTagRendering::DetachedTopBand alertBand;
-			alertBand.text = "ALERT";
-			alertBand.background = rimcasStage == CRimcas::StageOne
-				? rimcasStageOneColor
-				: rimcasStageTwoColor;
-			alertBand.textColor = rimcasStage == CRimcas::StageTwo
-				? alertTextWarning
-				: alertTextCaution;
-			VsmrTagRendering::PaintDetachedTopBand(
-				*gdi,
-				srwTagFonts,
-				painted.bounds,
-				alertBand);
-		}
-	}
+	renderSecondaryRadarTargets(dc, radar_screen, gdi, mouseLocation, windowAreaCRect);
 
 	// Render the same transmission snapshot through the SRW airport-relative
 	// scale/offset/rotation transform before releasing its content clip.
@@ -531,7 +554,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			[this](const CPosition& position) -> POINT
 			{
 				return projectPoint(position);
-			});
+			},
+			true);
 		m_LastRdfRenderMilliseconds += std::chrono::duration<double, std::milli>(
 			std::chrono::steady_clock::now() - rdfStarted).count();
 	}
@@ -553,6 +577,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		true,
 		mouseLocation,
 		true,
+		radar_screen->GetUiColorTheme() == "day",
 		&m_LastChromeRenderMilliseconds);
 	DrawRadarInsetBorder(dc, m_AvisoLayoutMode, m_Area);
 

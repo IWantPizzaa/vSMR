@@ -58,13 +58,14 @@
     },
     uncorrelated: { default: "background_on_ground_color" }
   };
-  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "uk_stand", "sqerror", "groundstatus", "systemid"];
-  const RULE_SOURCES = ["vacdm", "runway", "custom"];
-  const RULE_SOURCE_LABELS = { vacdm: "VACDM", runway: "Runway", custom: "SID / custom" };
+  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "vsid_sid", "vsid_rwy", "vsid_cfl", "ready_startup", "tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat", "uk_stand", "sqerror", "groundstatus", "systemid"];
+  const RULE_SOURCES = ["cdm", "runway", "custom", "vsid"];
+  const RULE_SOURCE_LABELS = { cdm: "CDM", runway: "Runway", custom: "SID / custom", vsid: "vSID" };
   const RULE_SOURCE_TOKENS = {
-    vacdm: ["tobt", "tsat", "ttot", "asat", "aobt", "atot", "asrt", "aort", "ctot"],
+    cdm: ["tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat"],
     runway: ["deprwy", "seprwy", "arvrwy", "srvrwy"],
-    custom: ["asid", "ssid"]
+    custom: ["asid", "ssid"],
+    vsid: ["vsid_sid", "vsid_rwy", "vsid_cfl"]
   };
   const AVISO_BACKGROUND_STYLE_ID = "__aviso_background__";
   const ALERT_TYPES = ["NO PUSH", "NO TAXI", "NO TKOF", "STAT RPA", "RWY INC", "RWY TYPE", "RWY CLSD", "HIGH SPD", "EMERG"];
@@ -477,6 +478,27 @@
     return normalized || fallback;
   }
 
+  function normalizeAvisoColorPalette(value) {
+    const palette = String(value || "").trim().toLowerCase();
+    if (palette === "day") return "light";
+    if (palette === "light" || palette === "real") return palette;
+    return "dark";
+  }
+
+  function avisoColorPalettes(aviso = state?.aviso, configured = null) {
+    const hasConfiguredPalettes = Array.isArray(configured);
+    const source = hasConfiguredPalettes
+      ? configured
+      : Array.isArray(aviso?.metadata?.color_palettes) ? aviso.metadata.color_palettes : [];
+    const palettes = [];
+    source.forEach(value => {
+      const rawPalette = String(value || "").trim().toLowerCase();
+      const palette = rawPalette === "night" ? "dark" : rawPalette === "day" ? "light" : rawPalette;
+      if (["dark", "light", "real"].includes(palette) && !palettes.includes(palette)) palettes.push(palette);
+    });
+    return palettes.length ? palettes : hasConfiguredPalettes ? [] : ["dark"];
+  }
+
   function normalizeAvisoData(sourceAviso, createDefaults = true) {
     const hasExplicitGroups = Array.isArray(sourceAviso?.vsmr_groups);
     const aviso = clone(sourceAviso || { type: "FeatureCollection", features: [], styles: {} });
@@ -484,12 +506,34 @@
     if (!aviso.styles || typeof aviso.styles !== "object" || Array.isArray(aviso.styles)) aviso.styles = {};
     if (!aviso.metadata || typeof aviso.metadata !== "object" || Array.isArray(aviso.metadata)) aviso.metadata = {};
     const sourceBackgroundColors = aviso.metadata.background_colors;
-    const nightBackground = normalizeHex(sourceBackgroundColors?.night, "#434A4F").toUpperCase();
+    const darkBackground = normalizeHex(sourceBackgroundColors?.dark ?? sourceBackgroundColors?.night, "#434A4F").toUpperCase();
+    const lightBackground = normalizeHex(sourceBackgroundColors?.light ?? sourceBackgroundColors?.day, darkBackground).toUpperCase();
     aviso.metadata.background_colors = {
-      night: nightBackground,
-      day: normalizeHex(sourceBackgroundColors?.day, nightBackground).toUpperCase()
+      dark: darkBackground,
+      light: lightBackground,
+      real: normalizeHex(sourceBackgroundColors?.real, lightBackground).toUpperCase()
     };
+    aviso.metadata.default_color_palette = normalizeAvisoColorPalette(aviso.metadata.default_color_palette);
+    aviso.metadata.color_palettes = avisoColorPalettes(aviso);
     if (!Array.isArray(aviso.vsmr_groups)) aviso.vsmr_groups = [];
+
+    // Import legacy palette-specific maps using Light geometry and labels once.
+    const supportsLight = item => !Array.isArray(item?.color_palettes) ||
+      !item.color_palettes.length || item.color_palettes.some(value =>
+        ["light", "day"].includes(String(value).trim().toLowerCase()));
+    aviso.features = aviso.features.filter(feature => supportsLight(feature?.properties));
+    const usedStyles = new Set(aviso.features.map(feature => feature?.properties?.style_id));
+    aviso.features.forEach(feature => {
+      if (feature?.properties) delete feature.properties.color_palettes;
+    });
+    Object.entries(aviso.styles).forEach(([id, style]) => {
+      if (!supportsLight(style) && !usedStyles.has(id)) delete aviso.styles[id];
+      else if (style && typeof style === "object") delete style.color_palettes;
+    });
+    aviso.vsmr_groups.forEach(group => {
+      if (group && typeof group === "object") delete group.color_palettes;
+    });
+    aviso.metadata.geometry_mode = "shared";
 
     const seen = new Set();
     const groupIdAliases = new Map();
@@ -596,7 +640,7 @@
   function getProfileRecords(sourceProfiles = DATA.profiles) {
     const records = [];
     const extras = [];
-    let metadata = { schema_version: 1, last_active_profile: "", vacdm: { server_url: "https://cdm.vatsim.fr" } };
+    let metadata = { schema_version: 1, last_active_profile: "" };
     (Array.isArray(sourceProfiles) ? sourceProfiles : []).forEach((entry, index) => {
       if (entry && typeof entry === "object" && entry.name) {
         const data = stripObsoleteProfileSettings(clone(entry));
@@ -658,12 +702,11 @@
         aliasFile: "C:\\EuroScope\\Alias\\alias.txt",
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
         showFps: true,
-        avisoColorPalette: "night",
+        uiColorTheme: "night",
+        avisoColorPalette: "dark",
+        avisoColorPalettes: ["dark", "light", "real"],
         dataHealth: {
           profilesHealthy: true,
-          profilesUsingBackup: false,
-          profilesBackupAvailable: false,
-          profilesBackupModifiedUnixSeconds: 0,
           profilesMessage: "",
           avisoHealthy: true,
           avisoMessage: ""
@@ -674,6 +717,8 @@
         profileTab: "colors",
         avisoView: "text",
         selectedColorPath: "labels.departure.background_taxi_color",
+        selectedColorPaths: ["labels.departure.background_taxi_color"],
+        colorSelectionAnchorPath: "labels.departure.background_taxi_color",
         selectedTagId: "departure:taxi",
         selectedTagIds: ["departure:taxi"],
         tagSelectionAnchorId: "departure:taxi",
@@ -710,6 +755,17 @@
   }
 
   let state = createState();
+
+  function activeUiTheme() {
+    return state.settings?.uiColorTheme === "day" ? "day" : "night";
+  }
+
+  function applyUiTheme() {
+    const theme = activeUiTheme();
+    document.documentElement.dataset.uiTheme = theme;
+    document.documentElement.style.colorScheme = theme === "day" ? "light" : "dark";
+    return theme;
+  }
   const treeState = { colors: new Set(), tags: new Set() };
   const drafts = { color: null, tag: null, rule: null, mode: null, profile: null, avisoGeometry: null, avisoTextStyle: null, avisoGroup: null, alerts: null };
   let activeTagInput = null;

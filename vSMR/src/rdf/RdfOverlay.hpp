@@ -25,6 +25,7 @@ namespace VsmrRdf
 	void Start(CSMRPlugin* plugin, bool enabled);
 	void Stop();
 	void OnTimer();
+	// Display only: never wait for network shutdown from a command callback.
 	void SetEnabled(bool enabled);
 	Status GetStatus();
 
@@ -34,5 +35,6 @@ namespace VsmrRdf
 		HDC dc,
 		CSMRRadar* radar,
 		const RECT& viewport,
-		const Projector& projector);
+		const Projector& projector,
+		bool airborneOnly = false);
 }

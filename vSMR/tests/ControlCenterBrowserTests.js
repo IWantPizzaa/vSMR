@@ -132,7 +132,10 @@
     };
     const hostileProfileName = 'Profile <img id="vsmr-profile-injection" src=x>';
     const hostileGroupName = 'Group <img id="vsmr-group-injection" src=x>';
-    if (authoritative.profiles[0]) authoritative.profiles[0].name = hostileProfileName;
+    if (authoritative.profiles[0]) {
+      authoritative.profiles[0].name = hostileProfileName;
+      authoritative.profiles[0].rules = { version: 1, items: [] };
+    }
     authoritative.activeProfile = hostileProfileName;
     authoritative.aviso.vsmr_groups = [{
       id: "browser-hostile-group",
@@ -159,9 +162,87 @@
     const displayButton = document.querySelector('.rail-button[data-page="display"]');
     displayButton?.click();
     expect(displayButton?.classList.contains("active"), "page navigation event is bound");
+    expect(document.querySelector("#closeButton")?.textContent.trim() === "X",
+      "Control Center and native inset close buttons use the same X glyph");
+    displayButton?.blur();
+    displayButton?.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    await waitFor(() => {
+      const tooltip = document.querySelector("#interactionTooltip.visible");
+      return tooltip && /display page/i.test(tooltip.textContent);
+    }, "interactive controls expose a delayed explanatory tooltip", 1200);
+    expect(Boolean(displayButton?.querySelector("svg rect")),
+      "Display navigation uses a recognizable monitor icon");
 
     const outbound = [];
     window.addEventListener("vsmr-control-center", event => outbound.push(event.detail));
+
+    const rulesTab = document.querySelector('[data-profile-tab="rules"]');
+    rulesTab?.click();
+    const emptyRuleEditor = document.querySelector("#ruleEditorEmpty");
+    const ruleEditorForm = document.querySelector("#ruleEditorForm");
+    const ruleNameWithoutSelection = document.querySelector("#ruleName");
+    expect(Boolean(emptyRuleEditor) && !emptyRuleEditor.hidden && Boolean(ruleEditorForm?.hidden),
+      "an empty rules list shows a dedicated non-editable state");
+    expect(Array.from(ruleEditorForm?.querySelectorAll("input, select, button") || [])
+      .every(control => control.disabled),
+      "rule controls stay disabled until a rule exists");
+    if (ruleNameWithoutSelection) {
+      ruleNameWithoutSelection.value = "must not stage";
+      ruleNameWithoutSelection.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    const colorsAfterEmptyEdit = document.querySelector('[data-profile-tab="colors"]');
+    colorsAfterEmptyEdit?.click();
+    expect(colorsAfterEmptyEdit?.getAttribute("aria-selected") === "true",
+      "editing cannot trap navigation when no rule exists");
+    rulesTab?.click();
+    document.querySelector('#ruleEditorEmpty [data-action="new-rule"]')?.click();
+    const createdRuleName = document.querySelector("#ruleName");
+    expect(Boolean(createdRuleName) && !createdRuleName.disabled && !ruleEditorForm?.hidden &&
+      document.querySelectorAll("#criteriaList .criterion-row").length === 1,
+      "creating a rule enables a complete editor with one condition");
+    expect(document.querySelectorAll(".rule-editor-summary-grid > fieldset").length === 2 &&
+      document.querySelectorAll(".rule-color-grid > .rule-color-row").length === 3,
+      "Rules use dedicated identity, scope, condition, and color-override sections");
+    const firstCriterion = document.querySelector("#criteriaList .criterion-row");
+    const vSidSource = firstCriterion?.querySelector('[data-field="source"]');
+    if (vSidSource) {
+      vSidSource.value = "cdm";
+      vSidSource.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    expect(Array.from(firstCriterion?.querySelectorAll('[data-field="token"] option') || [])
+      .map(option => option.value).join(",") === "tobt,tsat,ttot,ctot,tsac,asrt,asat",
+      "Rules expose the selected CDM bridge fields through one dedicated source");
+    if (vSidSource) {
+      vSidSource.value = "vsid";
+      vSidSource.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    expect(Array.from(firstCriterion?.querySelectorAll('[data-field="token"] option') || [])
+      .map(option => option.value).join(",") === "vsid_sid,vsid_rwy,vsid_cfl",
+      "Rules expose the vSID bridge fields through one dedicated source");
+    expect(Boolean(document.querySelector('[data-action="copy-rule"]')) &&
+      Boolean(document.querySelector('[data-action="paste-rule"]')),
+      "Rules expose shared copy and paste actions");
+    if (createdRuleName) {
+      createdRuleName.value = "Browser rule";
+      createdRuleName.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    await waitFor(
+      () => outbound.some(message => message.type === "state.save" &&
+        JSON.stringify(message.payload?.profiles || []).includes("Browser rule")),
+      "a newly created rule can be edited and saved"
+    );
+    document.querySelector('[data-action="copy-rule"]')?.click();
+    await new Promise(resolve => setTimeout(resolve, 30));
+    const changedRuleName = document.querySelector("#ruleName");
+    if (changedRuleName) {
+	  changedRuleName.value = "Temporary rule name";
+	  changedRuleName.dispatchEvent(new Event("input", { bubbles: true }));
+	}
+    document.querySelector('[data-action="paste-rule"]')?.click();
+    await waitFor(() => document.querySelector("#ruleName")?.value === "Browser rule",
+	  "Rule Copy/Paste round-trips validated rule data");
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     document.querySelector('.rail-button[data-page="profiles"]')?.click();
     expect(!document.querySelector("#vsmr-profile-injection"),
       "profile names are rendered as text rather than markup");
@@ -178,6 +259,20 @@
         Array.isArray(message.payload?.profiles)),
       "profile edit emits a state.save request"
     );
+
+	const modeSaveStart = outbound.length;
+	document.querySelector('.rail-button[data-page="modes"]')?.click();
+	const readyRequirement = document.querySelector("#reqReady");
+	expect(Boolean(readyRequirement), "Modes expose the Ready requirement");
+	if (readyRequirement) {
+		readyRequirement.checked = true;
+		readyRequirement.dispatchEvent(new Event("change", { bubbles: true }));
+	}
+	await waitFor(
+		() => outbound.slice(modeSaveStart).some(message => message.type === "state.save" &&
+			JSON.stringify(message.payload?.profiles || []).includes('"require_ready":true')),
+		"Modes persist the Ready requirement"
+	);
 
     await new Promise(resolve => setTimeout(resolve, 100));
     const groupsButton = document.querySelector('.rail-button[data-page="groups"]');
@@ -215,6 +310,9 @@
       colorScrollShell.style.height = "56px";
       const lowerCue = colorScrollShell.querySelector(".scroll-edge-cue-bottom");
       if (lowerCue) lowerCue.style.transition = "none";
+      // ResizeObserver schedules the cue update on the following animation
+      // frame. Let that pipeline run before starting the virtual-time timeout.
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       await waitFor(() => colorScrollShell.classList.contains("can-scroll-down"),
         "overflowing lists expose the lower scroll cue");
       await waitFor(() => Boolean(lowerCue) && Number.parseFloat(getComputedStyle(lowerCue).opacity) > 0,
@@ -228,14 +326,36 @@
         "the lower list fade includes a small direction arrow");
       colorScrollShell.style.height = "";
     }
-    const colorKeyboardList = Array.from(document.querySelectorAll('#colorTree [role="listbox"]'))
-      .find(list => list.querySelectorAll('.ui-list__row[role="option"]').length > 1);
-    const colorKeyboardRows = Array.from(colorKeyboardList?.querySelectorAll(
-      '.ui-list__row[role="option"]') || []).filter(row => row.getBoundingClientRect().height > 0);
+    const liveColorRows = () => {
+	  const list = Array.from(document.querySelectorAll('#colorTree [role="listbox"]'))
+		.find(candidate => candidate.querySelectorAll('.ui-list__row[role="option"]').length > 1);
+	  return Array.from(list?.querySelectorAll('.ui-list__row[role="option"]') || [])
+		.filter(row => row.getBoundingClientRect().height > 0);
+	};
+    const colorKeyboardRows = liveColorRows();
     if (colorKeyboardRows.length > 1) {
-      colorKeyboardRows[0].focus();
-      pressKey(colorKeyboardRows[0], "ArrowDown");
-      expect(document.activeElement === colorKeyboardRows[1],
+	  colorKeyboardRows[0].click();
+	  const rowsAfterFirstSelection = liveColorRows();
+	  rowsAfterFirstSelection[1]?.dispatchEvent(new MouseEvent("click", {
+		bubbles: true,
+		cancelable: true,
+		ctrlKey: true
+	  }));
+	  expect(document.querySelectorAll('#colorTree .ui-list__row[aria-selected="true"]').length === 2 &&
+		document.querySelector("#selectedColorPath")?.textContent === "2 colors",
+		"Profile colors support additive multi-selection");
+	  const multiColorHex = document.querySelector("#colorHex");
+	  if (multiColorHex) {
+		multiColorHex.value = "#123456";
+		multiColorHex.dispatchEvent(new Event("input", { bubbles: true }));
+	  }
+	  const rowsAfterMultiSelection = liveColorRows();
+	  expect(rowsAfterMultiSelection.slice(0, 2).every(row =>
+		row.style.getPropertyValue("--node-color") === "#123456"),
+		"a profile-color edit applies to every selected color");
+      rowsAfterMultiSelection[0].focus();
+      pressKey(rowsAfterMultiSelection[0], "ArrowDown");
+      expect(document.activeElement === rowsAfterMultiSelection[1],
         "shared list keyboard navigation moves focus to the next row");
     } else {
       expect(false, "Profile colors provide two rows for keyboard navigation coverage");
@@ -248,10 +368,85 @@
       "shared tabs move focus and selection with ArrowRight");
     expect(colorsTab?.getAttribute("aria-selected") === "false",
       "shared tabs clear the previous ARIA selection");
+    expect(Boolean(document.querySelector(".icon-preview-column")) &&
+      Boolean(document.querySelector(".icon-settings-stack")),
+      "Icons use a dedicated preview column and shared settings cards");
+    const symbolScaleRange = document.querySelector("#targetSymbolScale");
+    expect(symbolScaleRange?.min === "0.25" && symbolScaleRange?.max === "5",
+      "target symbol scaling exposes the complete 0.25× to 5.00× range");
+    const iconPreviewStage = document.querySelector(".icon-preview-stage");
+    const initialIconPreviewBackground = iconPreviewStage
+      ? getComputedStyle(iconPreviewStage).backgroundColor
+      : "";
+    const previewFlight = document.querySelector(".icon-preview-flight");
+    const previewTrail = previewFlight?.querySelector(".icon-preview-trail");
+    const previewSymbol = previewFlight?.querySelector(".icon-preview-symbol");
+    const previewTrailRect = previewTrail?.getBoundingClientRect();
+    const previewSymbolRect = previewSymbol?.getBoundingClientRect();
+    expect(Boolean(previewFlight) && getComputedStyle(previewFlight).display === "flex" &&
+      Boolean(previewTrailRect) && Boolean(previewSymbolRect) &&
+      previewTrailRect.right <= previewSymbolRect.left + .5 &&
+      Math.abs((previewTrailRect.top + previewTrailRect.bottom) / 2 -
+        (previewSymbolRect.top + previewSymbolRect.bottom) / 2) < 1,
+      "target preview places the horizontal trail directly behind the aircraft");
+    const originalSymbolScale = symbolScaleRange?.value || "1";
+    const stablePreviewWidth = previewSymbolRect?.width;
+    if (symbolScaleRange) {
+      symbolScaleRange.value = "5";
+      symbolScaleRange.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    expect(document.querySelector("#targetSymbolScaleOutput")?.value === "5.00×" &&
+      Math.abs((previewSymbol?.getBoundingClientRect().width || 0) - stablePreviewWidth) < .5,
+      "maximum symbol scale updates its value without resizing the reference preview");
+    if (symbolScaleRange) {
+      symbolScaleRange.value = "0.25";
+      symbolScaleRange.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    expect(document.querySelector("#targetSymbolScaleOutput")?.value === "0.25×" &&
+      Math.abs((previewSymbol?.getBoundingClientRect().width || 0) - stablePreviewWidth) < .5,
+      "minimum symbol scale updates its value without resizing the reference preview");
+    if (symbolScaleRange) {
+      symbolScaleRange.value = originalSymbolScale;
+      symbolScaleRange.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    const visibleIconRanges = Array.from(document.querySelectorAll(
+      '#profilePanelIcons input[type="range"]')).filter(isVisible);
+    expect(visibleIconRanges.length === 3 && visibleIconRanges.every(range =>
+      range.getBoundingClientRect().height === visibleIconRanges[0].getBoundingClientRect().height),
+      "Icon sliders use one shared range-control geometry");
 
-    document.querySelector('[data-profile-tab="tags"]')?.click();
+	document.querySelector('[data-profile-tab="tags"]')?.click();
     sampleSharedList("#tagDefinitionList", "Tags");
+    const fitTagBackground = document.querySelector("#tagFitBackgroundToText");
+    expect(Boolean(fitTagBackground), "Tags expose the fit-background option");
+    const fitSaveStart = outbound.length;
+    if (fitTagBackground) {
+      fitTagBackground.checked = true;
+      fitTagBackground.dispatchEvent(new Event("change", { bubbles: true }));
+      await waitFor(() => outbound.slice(fitSaveStart).some(message => message.type === "state.save" &&
+        message.payload?.profiles?.some(profile => profile.labels?.fit_background_to_text === true)),
+        "Fit-background option persists in the profile");
+      document.querySelector('[data-profile-tab="colors"]')?.click();
+      document.querySelector('[data-profile-tab="tags"]')?.click();
+      expect(document.querySelector("#tagFitBackgroundToText")?.checked, "Fit-background option survives editor navigation");
+    }
+
     sampleVisiblePrimitives();
+    expect(["vsid_sid", "vsid_rwy", "vsid_cfl"].every(token =>
+      Boolean(document.querySelector(`#tagTokenSelect option[value="${token}"]`))),
+      "Tags expose every vSID bridge field");
+		expect(["ready_startup", "tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat"].every(token =>
+			Boolean(document.querySelector(`#tagTokenSelect option[value="${token}"]`))),
+			"Tags expose the selected CDM bridge fields without prefixes");
+		expect(["cdm_deice", "cdm_tobt_set_by", "cdm_flow_restriction",
+			"cdm_ecfmp_restriction", "cdm_manual_ctot"].every(token =>
+			!document.querySelector(`#tagTokenSelect option[value="${token}"]`)),
+			"Tags omit unused CDM metadata fields");
+    const tagBehaviour = document.querySelector(".tag-behaviour-grid");
+    const tagBehaviourControls = Array.from(tagBehaviour?.querySelectorAll(".check-field") || []);
+    expect(Boolean(tagBehaviour) && tagBehaviour.scrollWidth <= tagBehaviour.clientWidth &&
+      tagBehaviourControls.every(control => control.scrollWidth <= control.clientWidth),
+      "Tag Options behaviour controls remain contained without text collisions");
 
     document.querySelector('.rail-button[data-page="profiles"]')?.click();
     sampleSharedList("#profileList", "Profiles");
@@ -260,47 +455,243 @@
     document.querySelector('.rail-button[data-page="aviso"]')?.click();
     document.querySelector('[data-aviso-view="geometry"]')?.click();
     sampleSharedList("#avisoGeometryStyleList", "Geometry");
+    expect(Boolean(document.querySelector('[data-action="copy-aviso-geometry"]')) &&
+      Boolean(document.querySelector('[data-action="paste-aviso-geometry"]')),
+      "AVISO geometry exposes shared copy and paste actions");
+    const originalGeometryColor = document.querySelector("#avisoGeometryColorHex")?.value;
+    document.querySelector('[data-action="copy-aviso-geometry"]')?.click();
+    await new Promise(resolve => setTimeout(resolve, 30));
+    const changedGeometryColor = document.querySelector("#avisoGeometryColorHex");
+    if (changedGeometryColor) {
+	  changedGeometryColor.value = "#123456";
+	  changedGeometryColor.dispatchEvent(new Event("input", { bubbles: true }));
+	}
+    document.querySelector('[data-action="paste-aviso-geometry"]')?.click();
+    await waitFor(() => document.querySelector("#avisoGeometryColorHex")?.value === originalGeometryColor,
+	  "AVISO geometry Copy/Paste round-trips validated paint data");
     sampleVisiblePrimitives();
     document.querySelector('[data-aviso-view="text"]')?.click();
     sampleSharedList("#avisoTextStyleList", "Text");
+    expect(Boolean(document.querySelector('[data-action="copy-aviso-text"]')) &&
+      Boolean(document.querySelector('[data-action="paste-aviso-text"]')),
+      "AVISO text exposes shared copy and paste actions");
+    const originalTextFont = document.querySelector("#avisoTextFont")?.value;
+    document.querySelector('[data-action="copy-aviso-text"]')?.click();
+    await new Promise(resolve => setTimeout(resolve, 30));
+    const changedTextFont = document.querySelector("#avisoTextFont");
+    if (changedTextFont) {
+	  changedTextFont.value = "Courier New";
+	  changedTextFont.dispatchEvent(new Event("input", { bubbles: true }));
+	}
+    document.querySelector('[data-action="paste-aviso-text"]')?.click();
+    await waitFor(() => document.querySelector("#avisoTextFont")?.value === originalTextFont,
+	  "AVISO text Copy/Paste round-trips validated paint data");
     sampleVisiblePrimitives();
 
     const palette = document.querySelector(".aviso-palette-control.ui-toggle-group");
     const paletteButtons = Array.from(
       palette?.querySelectorAll(".ui-button.ui-button--toggle[data-aviso-color-palette]") || []
     );
-    expect(paletteButtons.length === 2, "Day/Night uses one two-option toggle component");
+    expect(paletteButtons.length === 3 &&
+      paletteButtons.map(button => button.dataset.avisoColorPalette).join(",") === "dark,light,real",
+      "AVISO uses one Dark/Light/Real toggle component");
     const paletteRects = paletteButtons.map(button => button.getBoundingClientRect());
-    expect(paletteRects.length === 2 &&
-      Math.abs(paletteRects[0].width - paletteRects[1].width) < .5 &&
-      Math.abs(paletteRects[0].height - paletteRects[1].height) < .5,
-      "Day/Night options have matching dimensions");
+    expect(paletteRects.length === 3 &&
+      paletteRects.every(rect => Math.abs(rect.width - paletteRects[0].width) < .5 &&
+        Math.abs(rect.height - paletteRects[0].height) < .5),
+      "AVISO palette options have matching dimensions");
     const paletteRect = palette?.getBoundingClientRect();
     expect(Boolean(paletteRect) && paletteRects.every(rect =>
       Math.abs(rect.top - (paletteRect.top + 1)) < .75 &&
       Math.abs(rect.bottom - (paletteRect.bottom - 1)) < .75),
-      "Day/Night options fill and align within the shared toggle boundary");
+      "AVISO palette options fill and align within the shared toggle boundary");
     expect(paletteButtons.every(button => {
       const style = getComputedStyle(button);
       return ["flex", "inline-flex"].includes(style.display) && style.alignItems === "center" &&
         style.justifyContent === "center";
-    }), "Day/Night labels use the shared centered button layout");
+    }), "AVISO palette labels use the shared centered button layout");
     const originalPaletteButton = paletteButtons.find(
       button => button.getAttribute("aria-pressed") === "true");
-    const alternatePaletteButton = paletteButtons.find(button => button !== originalPaletteButton);
+    const alternatePaletteButton = paletteButtons.find(
+      button => button.dataset.avisoColorPalette === "real");
+    const originalUiTheme = document.documentElement.dataset.uiTheme;
+    const originalPageBackground = getComputedStyle(document.documentElement)
+      .getPropertyValue("--ui-page-bg").trim();
     expect(Boolean(originalPaletteButton) && paletteButtons.filter(
       button => button.getAttribute("aria-pressed") === "true").length === 1,
-      "Day/Night exposes exactly one active option");
+      "Dark/Light/Real exposes exactly one active option");
+    const sharedFeaturesBeforePalette = JSON.stringify(api.getState().aviso.features);
+    const sharedGroupsBeforePalette = JSON.stringify(api.getState().aviso.vsmr_groups);
     alternatePaletteButton?.click();
+    expect(JSON.stringify(api.getState().aviso.features) === sharedFeaturesBeforePalette &&
+      JSON.stringify(api.getState().aviso.vsmr_groups) === sharedGroupsBeforePalette,
+      "Palette switching preserves all shared geometry, text, and groups");
     expect(alternatePaletteButton?.getAttribute("aria-pressed") === "true" &&
       originalPaletteButton?.getAttribute("aria-pressed") === "false" &&
       api.getState().settings?.avisoColorPalette === alternatePaletteButton?.dataset.avisoColorPalette,
-      "Day/Night updates visual, accessible, and application state together");
+      "Dark/Light/Real updates visual, accessible, and application state together");
+    expect(document.documentElement.dataset.uiTheme === originalUiTheme &&
+      getComputedStyle(document.documentElement).getPropertyValue("--ui-page-bg").trim() ===
+        originalPageBackground,
+      "AVISO palette changes do not alter the application UI theme");
     originalPaletteButton?.click();
 
+    // Exercise inherited and explicit palettes for every editable color kind.
+    const paintState = window.state = { settings: { avisoColorPalette: "dark" } };
+    window.normalizeAvisoColorPalette = value => value;
+    const paintApi = { apply: applyAvisoPaintChanges, read: effectiveAvisoPaintValue };
+    for (const edited of ["dark", "light", "real"]) {
+      for (const key of ["fill", "stroke", "marker-color", "text-color", "text-halo-color"]) {
+        for (const scenario of [0, 1, 2, 3]) {
+          const shared = { [key]: "#112233" };
+          if (scenario > 0) shared["palette-overrides"] = { day: { [key]: "#445566" } };
+          if (scenario === 2) shared["palette-overrides"].real = { [key]: "#778899" };
+          const inline = scenario === 3 ? { [key]: "#334455" } : {};
+          const before = Object.fromEntries(["dark", "light", "real"].map(mode =>
+            [mode, paintApi.read(shared, inline, key, undefined, mode)]));
+          const previous = JSON.parse(JSON.stringify(shared));
+          paintState.settings.avisoColorPalette = edited;
+          paintApi.apply(shared, { [key]: "#ABCDEF" });
+          paintApi.apply(inline, { [key]: "#ABCDEF" }, previous);
+          const saved = JSON.parse(JSON.stringify({ shared, inline }));
+          for (const mode of ["dark", "light", "real"]) {
+            expect(paintApi.read(saved.shared, saved.inline, key, undefined, mode) ===
+              (mode === edited ? "#ABCDEF" : before[mode]),
+              `Editing ${edited} ${key} preserves ${mode} after save (${scenario})`);
+          }
+        }
+      }
+    }
+
+    for (const edited of ["dark", "light", "real"]) {
+      const paint = { fill: "#112233", stroke: "#223344",
+        "palette-overrides": { day: { fill: "#445566", stroke: "#556677" } } };
+      paintState.settings.avisoColorPalette = edited;
+      paintApi.apply(paint, { fill: "#ABCDEF" });
+      for (const mode of ["dark", "light", "real"]) {
+        expect(paintApi.read(null, paint, "stroke", undefined, mode) ===
+          (mode === "dark" ? "#223344" : "#556677"),
+          `Editing ${edited} fill preserves unedited ${mode} stroke fallback`);
+      }
+    }
+
+    const completePaletteState = api.getState();
+    const legacyAviso = JSON.parse(JSON.stringify(completePaletteState.aviso));
+    const sharedFeature = legacyAviso.features[0];
+    legacyAviso.features = ["dark", "day", "real"].map((palette, index) => ({
+      ...JSON.parse(JSON.stringify(sharedFeature)), id: `legacy-${index}`,
+      properties: { ...sharedFeature.properties, color_palettes: [palette], text: `label-${index}` }
+    }));
+    api.receive({ type: "state.authoritative", payload: {
+      settings: completePaletteState.settings, aviso: legacyAviso,
+      airport: completePaletteState.airport, avisoFollows: false, reason: "reload"
+    } });
+    expect(api.getState().aviso.features.length === 1 &&
+      api.getState().aviso.features[0].properties.text === "label-1" &&
+      !Object.hasOwn(api.getState().aviso.features[0].properties, "color_palettes"),
+      "Legacy import keeps Light geometry and text as the shared map");
+    api.receive({
+      type: "state.authoritative",
+      payload: {
+        settings: { ...completePaletteState.settings, avisoColorPalette: "dark", avisoColorPalettes: ["dark", "light"] },
+        aviso: completePaletteState.aviso,
+        airport: completePaletteState.airport,
+        avisoFollows: false,
+        reason: "reload"
+      }
+    });
+    const unavailableRealButton = document.querySelector('[data-aviso-color-palette="real"]');
+    const paletteBeforeDisabledClick = api.getState().settings.avisoColorPalette;
+    unavailableRealButton?.click();
+    expect(unavailableRealButton?.disabled &&
+      getComputedStyle(unavailableRealButton).opacity === "1" &&
+      api.getState().settings.avisoColorPalette === paletteBeforeDisabledClick,
+      "Unavailable AVISO palettes are gray, disabled, and cannot change state");
+    api.receive({
+      type: "state.authoritative",
+      payload: {
+        settings: { ...completePaletteState.settings, avisoColorPalette: "dark", avisoColorPalettes: ["real"] },
+        aviso: completePaletteState.aviso,
+        airport: "TEST",
+        avisoFollows: false,
+        reason: "reload"
+      }
+    });
+    expect(api.getState().settings.avisoColorPalette === "real" &&
+      document.querySelector('[data-aviso-color-palette="dark"]')?.disabled &&
+      document.querySelector('[data-aviso-color-palette="light"]')?.disabled &&
+      !document.querySelector('[data-aviso-color-palette="real"]')?.disabled,
+      "An airport palette change selects its first valid state and disables missing alternatives");
+    api.receive({
+      type: "state.authoritative",
+      payload: {
+        settings: { ...completePaletteState.settings, avisoColorPalette: originalPaletteButton?.dataset.avisoColorPalette, avisoColorPalettes: ["dark", "light", "real"] },
+        aviso: completePaletteState.aviso,
+        airport: completePaletteState.airport,
+        avisoFollows: false,
+        reason: "reload"
+      }
+    });
+
+    document.querySelector('.rail-button[data-page="settings"]')?.click();
+    expect(!document.querySelector('[data-action="restore-profiles-backup"]'),
+      "legacy profiles backup recovery is absent from the UI");
+    const uiThemeButtons = Array.from(document.querySelectorAll(
+      '.settings-theme-control .ui-button--toggle[data-ui-color-theme]'));
+    const originalUiThemeButton = uiThemeButtons.find(
+      button => button.getAttribute("aria-pressed") === "true");
+    const alternateUiThemeButton = uiThemeButtons.find(button => button !== originalUiThemeButton);
+    expect(uiThemeButtons.length === 2 && Boolean(originalUiThemeButton),
+      "Settings provides one accessible Day/Night UI theme control");
+    expect(document.querySelector("#runtimeThemeButton") === null,
+      "Runtime Menu does not duplicate the UI theme control");
+    alternateUiThemeButton?.click();
+    expect(document.documentElement.dataset.uiTheme === alternateUiThemeButton?.dataset.uiColorTheme &&
+      getComputedStyle(document.documentElement).colorScheme ===
+        (alternateUiThemeButton?.dataset.uiColorTheme === "day" ? "light" : "dark") &&
+      api.getState().settings?.uiColorTheme === alternateUiThemeButton?.dataset.uiColorTheme,
+      "Settings Day/Night applies visual, accessible, and application UI theme state together");
+    expect(getComputedStyle(document.documentElement).getPropertyValue("--ui-page-bg").trim() !==
+      originalPageBackground &&
+      api.getState().settings?.avisoColorPalette === originalPaletteButton?.dataset.avisoColorPalette,
+      "UI theme changes shared design colors without changing the AVISO palette");
+    expect(Boolean(iconPreviewStage) &&
+      getComputedStyle(iconPreviewStage).backgroundColor !== initialIconPreviewBackground,
+      "target icon preview follows the selected Day/Night UI background");
+    originalUiThemeButton?.click();
+    expect(document.documentElement.dataset.uiTheme === originalUiTheme,
+      "switching back restores the original UI theme");
+
+    const settingsLeft = document.querySelector(".settings-page .display-group")
+      ?.getBoundingClientRect().left;
+    groupsButton?.click();
+    const groupsLeft = document.querySelector(".groups-page .master-panel")
+      ?.getBoundingClientRect().left;
+    document.querySelector('.rail-button[data-page="profiles"]')?.click();
+    const profilesLeft = document.querySelector(".profiles-page .master-panel")
+      ?.getBoundingClientRect().left;
+    expect([settingsLeft, groupsLeft, profilesLeft].every(Number.isFinite) &&
+      Math.max(settingsLeft, groupsLeft, profilesLeft) -
+        Math.min(settingsLeft, groupsLeft, profilesLeft) < .5,
+      "Groups and Settings share the standard page-left offset");
     groupsButton?.click();
     sampleSharedList("#avisoGroupList", "Groups");
     sampleVisiblePrimitives();
+
+    document.querySelector('.rail-button[data-page="alerts"]')?.click();
+    const alertRunwayRows = Array.from(document.querySelectorAll(
+      "#alertRunwayTable [data-alert-runway-index]"));
+    expect(alertRunwayRows.length > 0 && alertRunwayRows.every(row =>
+      row.querySelector("[data-alert-runway-name]")?.readOnly &&
+      row.querySelector("[data-alert-runway-arr]")?.disabled &&
+      row.querySelector("[data-alert-runway-dep]")?.disabled &&
+      !row.querySelector("[data-alert-runway-closed]")?.disabled),
+      "RIMCAS runway pairs and ARR/DEP assignments are read-only while Closed remains editable");
+    expect(!document.querySelector('[data-action="alert-runways-all-arr"]') &&
+      !document.querySelector('[data-action="alert-runways-all-dep"]') &&
+      !document.querySelector('[data-action="new-alert-runway"]') &&
+      !document.querySelector('[data-action="remove-alert-runway"]'),
+      "RIMCAS does not expose manual controls for EuroScope-owned runway assignments");
 
     const referenceListSample = sharedListSamples[0];
     const rowHeightToken = Number.parseFloat(getComputedStyle(document.documentElement)
