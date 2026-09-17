@@ -75,6 +75,9 @@
     <ClCompile Include="..\src\integrations\PluginBridgeReads.cpp" />
     <ClCompile Include="..\src\platform\windows\network\HttpHelper.cpp" />
     <ClCompile Include="..\src\updater\UpdaterVerification.cpp" />
+    <ClCompile Include="..\src\updater\UpdaterManifest.cpp" />
+    <ClCompile Include="..\src\updater\UpdaterState.cpp" />
+    <ClCompile Include="..\src\updater\UpdaterTransport.cpp" />
     <ClCompile Include="SharedRenderingTests.cpp" />
     <ClCompile Include="TagColorRuleTests.cpp" />
     <ClCompile Include="UpdaterUrlPolicyTests.cpp" />

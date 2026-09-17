@@ -85,6 +85,20 @@ namespace vsmr::updater::url_policy
 		return true;
 	}
 
+	bool IsProjectReleaseAssetUrl(const std::wstring& url,
+		const std::wstring& version, const std::wstring& assetName)
+	{
+		ParsedHttpsUrl parsed;
+		if (!TryParseAllowedHttpsUrl(url, parsed) || ToLowerWide(parsed.host) != L"github.com" ||
+			version.empty() || assetName.empty() ||
+			version.find_first_of(L"/\\%?#") != std::wstring::npos ||
+			assetName.find_first_of(L"/\\%?#") != std::wstring::npos)
+			return false;
+		const std::wstring prefix = L"/IWantPizzaa/vSMR/releases/download/";
+		return parsed.resource == prefix + version + L"/" + assetName ||
+			parsed.resource == prefix + L"v" + version + L"/" + assetName;
+	}
+
 	bool TryResolveAllowedRedirect(
 		const std::wstring& currentUrl,
 		const std::wstring& location,

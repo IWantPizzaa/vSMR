@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added three-way updates for bundled AVISO maps and profiles using retained upstream defaults. Non-conflicting defaults update automatically, custom items and user edits are retained, and conflicts are recorded with incoming copies and complete rollback backups. Without a reliable baseline, edited files are preserved.
+- Added optional unsigned GitHub updates with loader 1.2.0; existing loaders need a one-time manual upgrade. Repository-bound HTTPS downloads, SHA-256, package validation and rollback remain enforced. Explicitly signed/pinned installations retain signature enforcement.
+
 - Restored LFPG's Minimum Taxiing and Ground Crossing buttons in the vSID CONFIG menu.
 
 - Added explicit WL/EL/IPGW/IPOW vSID popup selections for LFPN, LFPV, LFPT and LFOB, with manual selection only. LFPG/LFPO retain Linked/Unlinked controls. Removed Auto runways and automatic runway-driven rule changes; the companion only publishes manually selected rules.

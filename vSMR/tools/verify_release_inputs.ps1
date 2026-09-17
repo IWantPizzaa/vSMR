@@ -40,9 +40,13 @@ foreach ($path in @('vSMR/resources/vSMR.rc', 'vSMR/src/crash/handler/vSMRCrashH
 $loader = Read-Source 'vSMR/src/bootstrap/loader/LoaderResources.rc'
 Assert-Contains $loader "PRODUCTVERSION $numericVersion" 'Loader product version'
 Assert-Contains $loader ('VALUE "ProductVersion", "' + $Version + '"') 'Loader product version'
-# Loader FileVersion is independently versioned; beta 6 does not change its ABI.
+# Loader 1.2 supports optional signing; runtime ABI is still 1.
+Assert-Contains $loader 'FILEVERSION 1,2,0,0' 'Loader file version'
+Assert-Contains $loader 'VALUE "FileVersion", "1.2.0.0"' 'Loader file version'
 $packager = Read-Source 'vSMR/tools/create_release_package.ps1'
 Assert-Contains $packager ('[string]$Version = "' + $Version + '"') 'Packager default'
+Assert-Contains $packager '[string]$LoaderVersion = "1.2.0"' 'Packager loader version'
+Assert-Contains $packager '[string]$MinimumLoaderVersion = "1.2.0"' 'Packager minimum loader version'
 $ci = Read-Source 'appveyor.yml'
 Assert-Contains $ci "version: $Version.{build}" 'CI version'
 Assert-Contains $ci "VSMR_RELEASE_VERSION: $Version" 'CI release version'

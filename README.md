@@ -62,6 +62,18 @@ Detailed procedures are maintained in the Wiki:
 
 ## First run
 
+### Updater compatibility and custom data
+
+The new loader is **1.2.0** (runtime ABI remains 1). Existing signature-enforcing loaders need one complete manual installation before they can accept unsigned releases. After that, the Beta channel can discover beta releases containing `vSMR-<version>.zip` and `vSMR-<version>.update.json`; a detached `.p7s` is optional for unsigned releases. A Git push alone does not publish these release assets.
+
+Unsigned updates rely on the fixed GitHub repository, HTTPS, and SHA-256 integrity checks, not independent publisher authentication. Protect the repository and release credentials. Signing remains available; a pinned/signed loader or a manifest requiring signatures still rejects missing or invalid signatures.
+
+Updates now compare the previous bundled defaults, the user's files, and incoming defaults. With AVISO edit protection enabled, non-conflicting changes merge into bundled maps; profile updates also retain user edits and custom profiles. Conflicts keep user values. Arrays without reliable identities (including ordered rules) are retained as a whole when both sides change. Schema conflicts preserve the edited object for manual review. Profiles are identified by name; map features and groups by ID. Renames or regenerated IDs may require manual reconciliation. External profile/map paths are not modified.
+
+Older installations without full default snapshots keep their edited files on the first upgrade. The installer saves new defaults under `vSMR_Data/UpdateBaselines` for subsequent merges. Do not edit that folder. Check `DATA-UPDATE-REPORT.json` and `Data_Updates/<version>/` for conflicts or preserved files; AVISO incoming copies also remain under `AVISO_Updates/<version>/`. Complete pre-install backups include the user's files and merge baselines. Review conflicts before using changed operational data.
+
+### Initial configuration
+
 1. Open an SMR radar screen and select the four-letter active-airport ICAO from the Runtime Menu. Right-click the ICAO field to access the five most recent airports for that screen's session.
 2. Select a profile and display mode.
 3. Open the Control Center with the Runtime Menu or `.smr`.
@@ -115,7 +127,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tests\run_tests.ps1
 
 Release-input checks enforce matching beta 6 versions, the exact 160-map import, and an update policy that never deletes a bundled airport. LFPG regression expectations match the supplied map's 1,468 features and empty group list; the older East/West arrow groups are not part of this import.
 
-Release packaging is fail-closed: publishable artifacts require a clean source commit, verified bundled-asset provenance, Authenticode-signed binaries, and the matching pinned update signer. The packager, binary product versions, and AppVeyor settings target beta 6. Five asset groups still need provenance verification; local validation packages are not distributable releases. See the [release documentation](https://github.com/IWantPizzaa/vSMR/wiki/Development-and-Releases), and [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.md).
+Publishable artifacts require a clean source commit and verified bundled-asset provenance. Signing is optional; configuring a signing certificate/pin or `-RequireSignature` enforces signed binaries and the matching detached update signature. The packager, binary product versions, and AppVeyor settings target beta 6. Five asset groups still need provenance verification; local validation packages are not distributable releases. See the [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.md).
 
 ## License
 

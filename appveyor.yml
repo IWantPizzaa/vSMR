@@ -47,7 +47,7 @@ before_build:
       $isReleaseTag = $isExpectedReleaseTag -and $isProtectedBranchCommit;
       $hasSigningMaterial = -not [string]::IsNullOrWhiteSpace($env:VSMR_SIGNING_CERT_THUMBPRINT) -and
         -not [string]::IsNullOrWhiteSpace($env:VSMR_UPDATE_SIGNER_CERT_SHA256);
-      if ($isReleaseTag -and -not $hasSigningMaterial) {
+      if ($isReleaseTag -and $env:VSMR_REQUIRE_SIGNATURE -eq '1' -and -not $hasSigningMaterial) {
         throw "Release tag $($env:APPVEYOR_REPO_TAG_NAME) requires VSMR_SIGNING_CERT_THUMBPRINT and VSMR_UPDATE_SIGNER_CERT_SHA256.";
       }
       Set-AppveyorBuildVariable -Name VSMR_CI_PUBLISHABLE_RELEASE -Value $(if ($isReleaseTag) { '1' } else { '0' })
@@ -111,7 +111,6 @@ after_test:
       -CrashHandlerPdbPath "$env:APPVEYOR_BUILD_FOLDER\vSMR\src\crash\handler\obj\Release\vSMRCrashHandler.pdb"
       -UpdateSignerCertSha256 ([string]$env:VSMR_UPDATE_SIGNER_CERT_SHA256)
       -SkipBuild:$validationOnly
-      -RequireSignature:(-not $validationOnly)
       -ForceNonPublishable:$validationOnly
   - ps: >-
       if ($env:VSMR_CI_PUBLISHABLE_RELEASE -ne '1') {
