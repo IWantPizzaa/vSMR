@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added a Native RDF checkbox to Control Center Settings. It enables or disables the vSMR RDF overlay and writes the same EuroScope setting as `.smr rdf on` / `.smr rdf off`, so both stay in sync.
 - Added a per-profile "Fit background to each text line" tag option for the main radar, AVISO insets, and SRW insets.
 
 - Added a right-click airport history to the Runtime Menu ICAO field, listing the five most recently opened airports in the current radar-screen session for quick switching.

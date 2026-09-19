@@ -108,6 +108,7 @@ public:
 		bool& healthy,
 		std::string& message) const;
 	CSMRPlugin* OwnerPlugin() const;
+	void ApplyRdfEnabled(bool enabled);
 	void BuildSettings(
 		rapidjson::Value& settings,
 		VsmrControlCenterBridgeInternal::Allocator& allocator) const;
