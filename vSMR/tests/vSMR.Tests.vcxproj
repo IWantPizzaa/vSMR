@@ -68,9 +68,16 @@
     <ClCompile Include="RegressionTests.cpp" />
     <ClCompile Include="AuditRegressionTests.cpp" />
     <ClCompile Include="PluginBridgeTests.cpp" />
+    <ClCompile Include="PluginBridgePollingTests.cpp" />
+    <ClCompile Include="..\src\integrations\CdmBridgeClient.cpp" />
+    <ClCompile Include="..\src\integrations\VsidBridgeClient.cpp" />
+    <ClCompile Include="..\src\integrations\RampAgentBridgeClient.cpp" />
     <ClCompile Include="..\src\integrations\PluginBridgeReads.cpp" />
     <ClCompile Include="..\src\platform\windows\network\HttpHelper.cpp" />
     <ClCompile Include="..\src\updater\UpdaterVerification.cpp" />
+    <ClCompile Include="..\src\updater\UpdaterManifest.cpp" />
+    <ClCompile Include="..\src\updater\UpdaterState.cpp" />
+    <ClCompile Include="..\src\updater\UpdaterTransport.cpp" />
     <ClCompile Include="SharedRenderingTests.cpp" />
     <ClCompile Include="TagColorRuleTests.cpp" />
     <ClCompile Include="UpdaterUrlPolicyTests.cpp" />
@@ -121,6 +128,7 @@
     <ClInclude Include="..\src\integrations\PluginBridgeReads.hpp" />
     <ClInclude Include="..\src\integrations\RampAgentBridgeData.hpp" />
     <ClInclude Include="..\src\integrations\VsidBridgeData.hpp" />
+    <ClInclude Include="..\src\integrations\ParisRunwayRules.hpp" />
     <ClInclude Include="..\src\radar\RadarGeometry.hpp" />
     <ClInclude Include="..\src\rendering\TagRenderer.hpp" />
     <ClInclude Include="..\src\rendering\TargetSymbolRenderer.hpp" />

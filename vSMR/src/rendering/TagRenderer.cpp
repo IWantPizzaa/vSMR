@@ -1,5 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "rendering/TagRenderer.hpp"
+#include "rendering/DisplayScale.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -75,9 +76,9 @@ namespace
 		return true;
 	}
 
-	void BuildRoundedPath(const Gdiplus::Rect& rect, Gdiplus::GraphicsPath& path)
+	void BuildRoundedPath(const Gdiplus::Rect& rect, Gdiplus::GraphicsPath& path, double scale)
 	{
-		const int diameter = (std::max)(1, (std::min)({ 8, rect.Width, rect.Height }));
+		const int diameter = (std::max)(1, (std::min)({ VsmrRendering::ScalePixels(8, scale), rect.Width, rect.Height }));
 		path.Reset();
 		path.AddArc(rect.X, rect.Y, diameter, diameter, 180, 90);
 		path.AddArc(rect.GetRight() - diameter, rect.Y, diameter, diameter, 270, 90);
@@ -93,17 +94,17 @@ namespace
 		bool roundedCorners,
 		bool highlighted,
 		Gdiplus::GraphicsPath* roundedPath,
-		const VsmrTagRendering::FontContext& fonts)
+		const VsmrTagRendering::FontContext& fonts, double scale)
 	{
 		const Gdiplus::Rect rect = ToGdiRect(bounds);
 		Gdiplus::SolidBrush& brush = fonts.Brush(color);
 		if (roundedCorners && roundedPath != nullptr)
 		{
-			BuildRoundedPath(rect, *roundedPath);
+			BuildRoundedPath(rect, *roundedPath, scale);
 			graphics.FillPath(&brush, roundedPath);
 			if (highlighted)
 			{
-				Gdiplus::Pen outline(Gdiplus::Color(255, 255, 255, 255));
+				Gdiplus::Pen outline(Gdiplus::Color(255, 255, 255, 255), static_cast<Gdiplus::REAL>(scale));
 				graphics.DrawPath(&outline, roundedPath);
 			}
 			return;
@@ -112,7 +113,7 @@ namespace
 		graphics.FillRectangle(&brush, rect);
 		if (highlighted)
 		{
-			Gdiplus::Pen outline(Gdiplus::Color(255, 255, 255, 255));
+			Gdiplus::Pen outline(Gdiplus::Color(255, 255, 255, 255), static_cast<Gdiplus::REAL>(scale));
 			graphics.DrawRectangle(&outline, rect);
 		}
 	}
@@ -378,7 +379,7 @@ namespace VsmrTagRendering
 			: Gdiplus::Size();
 		const int topBandHeight = options.topBand != nullptr ? fonts.LineHeight() : 0;
 		const int contentWidth = (std::max)(layout.width, topBandSize.Width);
-		const int padding = options.roundedCorners ? 1 : 0;
+		const int padding = options.roundedCorners ? VsmrRendering::ScalePixels(1, options.displayScale) : 0;
 		const int totalWidth = contentWidth + padding * 2;
 		const int bodyHeight = (std::max)(1, layout.height);
 		const int totalHeight = bodyHeight + topBandHeight + padding * 2;
@@ -430,7 +431,7 @@ namespace VsmrTagRendering
 			? fonts.Measure(options.topBand->text)
 			: Gdiplus::Size();
 		const int topBandHeight = options.topBand != nullptr ? fonts.LineHeight() : 0;
-		const int padding = options.roundedCorners ? 1 : 0;
+		const int padding = options.roundedCorners ? VsmrRendering::ScalePixels(1, options.displayScale) : 0;
 		result.bounds = CalculateBounds(fonts, layout, options);
 		if (result.bounds.IsRectEmpty())
 			return result;
@@ -442,7 +443,7 @@ namespace VsmrTagRendering
 			ScaleAlpha(options.background, options.backgroundAlphaNumerator),
 			options.roundedCorners,
 			options.highlighted,
-			&roundedPath, fonts);
+			&roundedPath, fonts, options.displayScale);
 
 		if (options.drawLeader)
 		{
@@ -456,7 +457,7 @@ namespace VsmrTagRendering
 				clippedFrom,
 				clippedTo))
 			{
-				Gdiplus::Pen leader(options.leaderColor);
+				Gdiplus::Pen leader(options.leaderColor, static_cast<Gdiplus::REAL>(options.displayScale));
 				graphics.DrawLine(
 					&leader,
 					Gdiplus::PointF(static_cast<Gdiplus::REAL>(options.targetPoint.x), static_cast<Gdiplus::REAL>(options.targetPoint.y)),
@@ -524,7 +525,7 @@ namespace VsmrTagRendering
 					x + line.width + padding, textTop + fonts.LineHeight() + bottomPadding);
 				Gdiplus::GraphicsPath linePath;
 				FillBackground(graphics, lineBounds, ScaleAlpha(options.background, options.backgroundAlphaNumerator),
-					options.roundedCorners, options.highlighted, &linePath, fonts);
+					options.roundedCorners, options.highlighted, &linePath, fonts, options.displayScale);
 			}
 			for (const ElementLayout& element : line.elements)
 			{

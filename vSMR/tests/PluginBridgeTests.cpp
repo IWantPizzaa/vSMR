@@ -406,6 +406,7 @@ std::vector<std::string> RunPluginBridgeTests()
 	TestProviderBinding(api, failures);
 	TestReads(api, failures);
 	TestRampAgentData(failures);
+	RunPluginBridgePollingTests(failures);
 	Fake = FakeBridgeState{};
 	return failures;
 }

@@ -6,6 +6,7 @@
 #include "aviso/AvisoRasterBlitter.hpp"
 #include "rendering/TagRenderer.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
+#include "rendering/DisplayScale.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -73,6 +74,33 @@ namespace
 		HBITMAP bitmap_ = nullptr;
 		std::uint32_t* pixels_ = nullptr;
 	};
+
+	void TestResolutionScaling(std::vector<std::string>& failures)
+	{
+		Gdiplus::Bitmap bitmap(160, 100, PixelFormat32bppARGB);
+		Gdiplus::Graphics graphics(&bitmap);
+		for (const char* preset : { "1080p", "2k", "4k" })
+		{
+			const double scale = VsmrRendering::ResolutionScale(preset);
+			Gdiplus::Font font(L"Arial", static_cast<Gdiplus::REAL>(10 * scale), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+			VsmrTagRendering::FontContext fonts(graphics, &font);
+			// Tag text and its mouse bounds scale without transforming the UI canvas.
+			VsmrTagRendering::Layout layout;
+			layout.width = fonts.Measure("AFR123").Width;
+			layout.height = fonts.LineHeight();
+			layout.lines.emplace_back();
+			layout.lines.back().width = layout.width;
+			VsmrTagRendering::PaintOptions options;
+			options.displayScale = scale;
+			options.tagCenter = {80, 50};
+			const CRect bounds = VsmrTagRendering::CalculateBounds(fonts, layout, options);
+			Check(bounds.Width() == layout.width + 2 * VsmrRendering::ScalePixels(1, scale),
+				"tag bounds include scaled padding around scaled text", failures);
+			Gdiplus::Matrix transform;
+			graphics.GetTransform(&transform);
+			Check(transform.IsIdentity(), "aircraft text scaling leaves the UI canvas unchanged", failures);
+		}
+	}
 
 	void TestAvisoRasterBlending(std::vector<std::string>& failures)
 	{
@@ -255,6 +283,39 @@ namespace
 		target.style.icon = icon;
 		target.style.color = { 255, 255, 255, 255 };
 		return target;
+	}
+
+	void TestTargetResolutionScaling(Gdiplus::Graphics& graphics, std::vector<std::string>& failures)
+	{
+		Gdiplus::Bitmap source(8, 8, PixelFormat32bppARGB);
+		for (const auto icon : { VsmrScene::IconStyle::Nova, VsmrScene::IconStyle::Diamond,
+			VsmrScene::IconStyle::Triangle, VsmrScene::IconStyle::Realistic })
+		{
+			auto target = MakeTarget(icon);
+			target.transponderModeC = true;
+			target.style.lengthMeters = 40.0;
+			target.style.wingspanMeters = 36.0;
+			auto draw = [&](double scale)
+			{
+				VsmrTargetRendering::FrameSettings settings;
+				settings.presentation.icon = icon;
+				settings.presentation.symbolScale = scale;
+				settings.pixelsPerMeter = 1.0;
+				settings.iconCache.getSourceBitmap = [&](const std::string&) { return &source; };
+				VsmrTargetRendering::Frame frame(graphics, std::move(settings));
+				return frame.DrawTarget(target, [](const VsmrScene::GeoPoint& point) -> POINT {
+					return {48, point.latitude > 48.0 ? 20 : 36};
+				});
+			};
+			const auto baseline = draw(1.0);
+			const auto scaled = draw(2.0);
+			Check(scaled.drawn && scaled.center.x == baseline.center.x && scaled.center.y == baseline.center.y,
+				"resolution scaling preserves the geographic aircraft anchor for every icon style", failures);
+			Check(Width(scaled.symbolBounds) > Width(baseline.symbolBounds) &&
+				Height(scaled.symbolBounds) > Height(baseline.symbolBounds) &&
+				Width(scaled.hitBounds) >= Width(baseline.hitBounds),
+				"every aircraft icon style and its hit bounds grow with resolution", failures);
+		}
 	}
 
 	void TestCollapsedProjectionArrow(
@@ -522,11 +583,13 @@ std::vector<std::string> RunSharedRenderingBehaviorTests()
 
 	{
 		TestAvisoRasterBlending(failures);
+		TestResolutionScaling(failures);
 		TestTagBackgroundFitsLines(failures);
 		Gdiplus::Bitmap canvas(96, 72, PixelFormat32bppARGB);
 		Gdiplus::Graphics graphics(&canvas);
 		graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
 		TestCollapsedProjectionArrow(graphics, failures);
+		TestTargetResolutionScaling(graphics, failures);
 		TestGraphicsStateRestoration(graphics, failures);
 		TestSharedTagGeometry(graphics, failures);
 	}

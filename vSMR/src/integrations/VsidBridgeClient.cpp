@@ -30,7 +30,8 @@ namespace
 
 	// vSID's provider declaration (vSIDPlugin.h): schema 1.0 publishes sid, rwy and
 	// cfl as aircraft STR fields of at most 32 bytes. automode is the optional
-	// schema 1.1 global described in docs/integrations/vsid-automode.md.
+	// schema 1.1 global described in the Wiki Integrations page. The
+	// companion schema 1.2/1.3 also publishes the manual Paris rules snapshot.
 	constexpr char ProviderId[] = "vsid";
 	constexpr std::uint32_t SupportedSchemaMajor = 1U;
 
@@ -40,6 +41,7 @@ namespace
 		RunwayField,
 		ClearedFlightLevelField,
 		AutomaticModeField,
+		ParisStateField,
 		FieldCount
 	};
 
@@ -47,7 +49,8 @@ namespace
 		{ "sid", ESB_T_STR, static_cast<std::uint32_t>(VsmrVsid::MaximumFieldBytes) },
 		{ "rwy", ESB_T_STR, static_cast<std::uint32_t>(VsmrVsid::MaximumFieldBytes) },
 		{ "cfl", ESB_T_STR, static_cast<std::uint32_t>(VsmrVsid::MaximumFieldBytes) },
-		{ "automode", ESB_T_STR, static_cast<std::uint32_t>(VsmrVsid::MaximumAutomaticModeBytes) }
+		{ "automode", ESB_T_STR, static_cast<std::uint32_t>(VsmrVsid::MaximumAutomaticModeBytes) },
+		{ "paris", ESB_T_STR, static_cast<std::uint32_t>(VsmrParis::Airports.size() * 9U) }
 	} };
 
 	constexpr std::uint64_t NoRevision = (std::numeric_limits<std::uint64_t>::max)();
@@ -62,12 +65,10 @@ namespace
 	// Snapshot shared with rendering, the Runtime Menu and command submission.
 	std::mutex StateMutex;
 	std::map<std::string, bool> AutomaticModes;
+	std::map<std::string, VsmrParis::State> ParisStates;
 	std::unordered_map<std::string, VsmrVsid::AircraftData> AircraftByCallsign;
-	VsmrVsid::LfpgOperatingMode CurrentLfpgMode =
-		VsmrVsid::LfpgOperatingMode::MinimumTaxiing;
-	VsmrVsid::LfpgLinkMode CurrentLfpgLinkMode =
-		VsmrVsid::LfpgLinkMode::Linked;
-	std::optional<VsmrVsid::CommandAction> PendingCommandAction;
+	std::atomic<bool> ParisCommandsAvailable{ false };
+	std::atomic<bool> RegionalCommandsAvailable{ false };
 	std::atomic<bool> ProviderReady{ false };
 
 	// Timer-only polling state.
@@ -81,13 +82,16 @@ namespace
 	{
 		Provider.Reset();
 		ProviderReady.store(false, std::memory_order_relaxed);
+		ParisCommandsAvailable.store(false, std::memory_order_relaxed);
+		RegionalCommandsAvailable.store(false, std::memory_order_relaxed);
 		LastProviderRevision = NoRevision;
 		LastScannedCallsigns.clear();
 		std::lock_guard<std::mutex> guard(StateMutex);
-		if (AircraftByCallsign.empty() && AutomaticModes.empty())
+		if (AircraftByCallsign.empty() && AutomaticModes.empty() && ParisStates.empty())
 			return false;
 		AircraftByCallsign.clear();
 		AutomaticModes.clear();
+		ParisStates.clear();
 		return true;
 	}
 
@@ -106,13 +110,15 @@ namespace
 
 	bool ReplaceSnapshot(
 		std::unordered_map<std::string, VsmrVsid::AircraftData> aircraft,
-		std::map<std::string, bool> automaticModes)
+		std::map<std::string, bool> automaticModes,
+		std::map<std::string, VsmrParis::State> parisStates)
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
-		if (AircraftByCallsign == aircraft && AutomaticModes == automaticModes)
+		if (AircraftByCallsign == aircraft && AutomaticModes == automaticModes && ParisStates == parisStates)
 			return false;
 		AircraftByCallsign = std::move(aircraft);
 		AutomaticModes = std::move(automaticModes);
+		ParisStates = std::move(parisStates);
 		return true;
 	}
 }
@@ -124,32 +130,10 @@ bool VsmrVsid::Poll(const VsmrPluginBridge::Tick& tick)
 		VsmrEuroScopeCommandLine::Owner::Vsid))
 	{
 	case VsmrEuroScopeCommandLine::SubmissionStatus::Confirmed:
-		{
-			std::lock_guard<std::mutex> guard(StateMutex);
-			if (PendingCommandAction == CommandAction::LfpgMinimumTaxiing)
-				CurrentLfpgMode = LfpgOperatingMode::MinimumTaxiing;
-			else if (PendingCommandAction == CommandAction::LfpgGroundCrossing)
-				CurrentLfpgMode = LfpgOperatingMode::GroundCrossing;
-			else if (PendingCommandAction == CommandAction::LfpgLinked)
-				CurrentLfpgLinkMode = LfpgLinkMode::Linked;
-			else if (PendingCommandAction == CommandAction::LfpgUnlinked)
-				CurrentLfpgLinkMode = LfpgLinkMode::Unlinked;
-			else if (PendingCommandAction == CommandAction::ReloadConfiguration)
-			{
-				// LFPG custom rules use false for their default, non-opposing states.
-				CurrentLfpgMode = LfpgOperatingMode::MinimumTaxiing;
-				CurrentLfpgLinkMode = LfpgLinkMode::Linked;
-			}
-			PendingCommandAction.reset();
-		}
 		Logger::info("vSID command consumed by EuroScope");
 		commandStateChanged = true;
 		break;
 	case VsmrEuroScopeCommandLine::SubmissionStatus::Ambiguous:
-		{
-			std::lock_guard<std::mutex> guard(StateMutex);
-			PendingCommandAction.reset();
-		}
 		Logger::info("vSID command submission could not be confirmed");
 		commandStateChanged = true;
 		break;
@@ -174,6 +158,10 @@ bool VsmrVsid::Poll(const VsmrPluginBridge::Tick& tick)
 		if (state != ProviderState::Ready)
 			return finish(DisconnectProvider());
 		ProviderReady.store(true, std::memory_order_relaxed);
+		const bool parisCommands = SupportsParisCommands(Provider.SchemaMajor(), Provider.SchemaMinor());
+		const bool regionalCommands = SupportsRegionalCommands(Provider.SchemaMajor(), Provider.SchemaMinor());
+		commandStateChanged = (ParisCommandsAvailable.exchange(parisCommands, std::memory_order_relaxed) != parisCommands) || commandStateChanged;
+		commandStateChanged = (RegionalCommandsAvailable.exchange(regionalCommands, std::memory_order_relaxed) != regionalCommands) || commandStateChanged;
 
 		// Coarse gate (B2.5): every vSID write or clear, global or per aircraft,
 		// advances the provider revision.
@@ -201,6 +189,21 @@ bool VsmrVsid::Poll(const VsmrPluginBridge::Tick& tick)
 			// Unset or malformed snapshots stay Unknown, never an inferred Off state.
 			if (automaticStatus == ReadStatus::Value)
 				automaticModes = ParseAutomaticModes(snapshot);
+		}
+
+		std::map<std::string, VsmrParis::State> parisStates;
+		if (Provider.Field(ParisStateField) != ESB_FIELD_NONE)
+		{
+			std::string snapshot;
+			const ReadStatus parisStatus = VsmrPluginBridge::ReadGlobalString(
+				api, Provider.Field(ParisStateField), Fields[ParisStateField].expectedBytes, snapshot);
+			if (parisStatus == ReadStatus::ProviderLost)
+				return finish(DisconnectProvider());
+			if (parisStatus == ReadStatus::Failed)
+				snapshotComplete = false;
+			// Only vSID's published manual rules establish the selected button state.
+			if (parisStatus == ReadStatus::Value)
+				parisStates = VsmrParis::Parse(snapshot);
 		}
 
 		std::unordered_map<std::string, AircraftData> next;
@@ -255,7 +258,7 @@ bool VsmrVsid::Poll(const VsmrPluginBridge::Tick& tick)
 		// Retry incomplete reads even when the provider revision did not advance.
 		LastProviderRevision = snapshotComplete ? providerRevision : NoRevision;
 		LastScannedCallsigns = tick.callsigns;
-		return finish(ReplaceSnapshot(std::move(next), std::move(automaticModes)));
+		return finish(ReplaceSnapshot(std::move(next), std::move(automaticModes), std::move(parisStates)));
 	}
 	catch (const std::exception& exception)
 	{
@@ -276,6 +279,8 @@ VsmrVsid::InterfaceState VsmrVsid::GetInterfaceState(const std::string& airport)
 	state.bridgeCompatible = attachState == AttachState::Attached;
 	state.providerReady = state.bridgeCompatible &&
 		ProviderReady.load(std::memory_order_relaxed);
+	state.parisCommandsAvailable = state.providerReady && ParisCommandsAvailable.load(std::memory_order_relaxed);
+	state.regionalCommandsAvailable = state.providerReady && RegionalCommandsAvailable.load(std::memory_order_relaxed);
 	state.commandLineBusy = VsmrEuroScopeCommandLine::IsBusy();
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
@@ -283,8 +288,8 @@ VsmrVsid::InterfaceState VsmrVsid::GetInterfaceState(const std::string& airport)
 		const auto automatic = AutomaticModes.find(NormalizeAirport(airport));
 		if (state.providerReady && automatic != AutomaticModes.end())
 			state.automaticMode = automatic->second;
-		state.lfpgMode = CurrentLfpgMode;
-		state.lfpgLinkMode = CurrentLfpgLinkMode;
+		const auto paris = ParisStates.find(NormalizeAirport(airport));
+		if (state.providerReady && paris != ParisStates.end()) state.paris = paris->second;
 	}
 	return state;
 }
@@ -295,7 +300,7 @@ bool VsmrVsid::SubmitCommand(
 	std::string& error)
 {
 	error.clear();
-	const InterfaceState state = GetInterfaceState();
+	const InterfaceState state = GetInterfaceState(activeAirport);
 	if (!state.bridgeLoaded)
 	{
 		error = VsmrPluginBridge::MissingBridgeMessage();
@@ -318,16 +323,22 @@ bool VsmrVsid::SubmitCommand(
 		error = "Select a valid four-character airport before using this vSID action.";
 		return false;
 	}
+	if (IsParisAction(action) && !state.parisCommandsAvailable)
+	{
+		error = "Paris runway controls require the companion vSID build and airport configuration.";
+		return false;
+	}
+	if (IsRegionalAction(action) && !state.regionalCommandsAvailable)
+	{
+		error = "Regional configuration buttons require the companion vSID build with bridge schema 1.3.";
+		return false;
+	}
 	if (!VsmrEuroScopeCommandLine::Begin(
 		VsmrEuroScopeCommandLine::Owner::Vsid,
 		command,
 		&error))
 	{
 		return false;
-	}
-	{
-		std::lock_guard<std::mutex> guard(StateMutex);
-		PendingCommandAction = action;
 	}
 	return true;
 }
@@ -355,13 +366,13 @@ void VsmrVsid::Shutdown() noexcept
 		std::lock_guard<std::mutex> guard(StateMutex);
 		AircraftByCallsign.clear();
 		AutomaticModes.clear();
-		PendingCommandAction.reset();
-		CurrentLfpgMode = LfpgOperatingMode::MinimumTaxiing;
-		CurrentLfpgLinkMode = LfpgLinkMode::Linked;
+		ParisStates.clear();
 	}
 	Provider.Reset();
 	Diagnostics.Reset();
 	ProviderReady.store(false, std::memory_order_relaxed);
+	ParisCommandsAvailable.store(false, std::memory_order_relaxed);
+	RegionalCommandsAvailable.store(false, std::memory_order_relaxed);
 	LastProviderRevision = NoRevision;
 	LastScannedCallsigns.clear();
 	InterfaceStateInitialized = false;

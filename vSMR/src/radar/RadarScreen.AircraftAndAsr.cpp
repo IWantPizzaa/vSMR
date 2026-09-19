@@ -1191,29 +1191,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 			ConfigPath.c_str());
 	}
 
-	std::string loadedProfileName;
-	const std::string persistedProfile = ReadLastActiveProfileFromConfig();
-	if (!persistedProfile.empty())
-	{
-		this->LoadProfile(persistedProfile);
-		loadedProfileName = CurrentConfig != nullptr ? CurrentConfig->getActiveProfileName() : persistedProfile;
-	}
-	else if ((p_value = GetDataFromAsr("ActiveProfile")) != NULL)
-	{
-		this->LoadProfile(std::string(p_value));
-		loadedProfileName = CurrentConfig != nullptr ? CurrentConfig->getActiveProfileName() : std::string(p_value);
-	}
-	else if (CurrentConfig != nullptr)
-	{
-		loadedProfileName = CurrentConfig->getActiveProfileName();
-	}
-
-	if (!loadedProfileName.empty())
-	{
-		RememberSessionActiveProfile(loadedProfileName);
-		WriteLastActiveProfileToConfig(loadedProfileName);
-		SaveDataToAsr("ActiveProfile", "vSMR active profile", loadedProfileName.c_str());
-	}
+	RestoreActiveProfileFromAsr();
 
 	// Label font size is persisted per profile in vSMR_Profiles.json.
 	// Keep ASR value untouched to avoid overriding the active profile setting.
@@ -1275,10 +1253,7 @@ void CSMRRadar::OnAsrContentToBeSaved()
 
 	SaveDataToAsr("Airport", "Active airport for RIMCAS", getActiveAirport().c_str());
 
-	const std::string activeProfileFallback = (CurrentConfig != nullptr) ? CurrentConfig->getActiveProfileName() : "Default";
-	const std::string activeProfileToPersist = GetSessionActiveProfile(activeProfileFallback);
-	SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfileToPersist.c_str());
-	WriteLastActiveProfileToConfig(activeProfileToPersist);
+	SaveActiveProfileToAsr();
 	SaveDataToAsr("ProfilesFile", "Active vSMR profiles file", ConfigPath.c_str());
 
 	SaveDataToAsr("FontSize", "vSMR font size", std::to_string(currentFontSize).c_str());
