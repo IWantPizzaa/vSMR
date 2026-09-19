@@ -1,12 +1,12 @@
 # vSMR dependency manifest
 
 This file is an inventory, not a replacement for the license texts shipped in
-this directory. It describes the dependencies used by vSMR 2.0.0-beta.5 so a
+this directory. It describes the dependencies used by vSMR 2.0.0-beta.6 so a
 release can be reviewed without inspecting the Visual Studio project.
 
 | Component | Version | Use | Distribution in the vSMR package | License material |
 | --- | --- | --- | --- | --- |
-| vSMR | 2.0.0-beta.5 | EuroScope plugin and bundled UI/data | `vSMR.dll`, `vSMR_Data` | `vSMR.txt` (GPL-3.0) |
+| vSMR | 2.0.0-beta.6 | EuroScope plugin and bundled UI/data | `vSMR.dll`, `vSMR_Data` | `vSMR.txt` (GPL-3.0) |
 | Microsoft WebView2 SDK/Loader | 1.0.4078.44 | Hosts the local Control Center UI; loader is linked statically | Code included in `vSMR_Data\Runtime\vSMR.Runtime.dll` | `Microsoft.WebView2-LICENSE.txt`, `Microsoft.WebView2-NOTICE.txt` |
 | RapidJSON | 1.1.0 API, upstream commit `24b5e7a8b27f42fa16b96fc70aade9106cf7102f` | JSON parsing and writing | Code included in `vSMR_Data\Runtime\vSMR.Runtime.dll` | `RapidJSON.txt` (MIT) |
 | EuroScope Plugin Bridge client header | `esbridge.h` ABI v1, upstream commit `be6e0de6d3358e63c7cea0308ffcc16c87a61f8c` | Optional vSID, Ramp Agent and CDM data from a separately installed `EuroScopeBridge.dll` | Header code included in `vSMR_Data\Runtime\vSMR.Runtime.dll`; the bridge DLL is not bundled | None published upstream (the repository has no license file) |

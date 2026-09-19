@@ -6,7 +6,7 @@ param(
     [string]$BuildOutputDirectory = "",
     [string]$ArtifactsDirectory = "",
     [ValidatePattern("^\d+\.\d+\.\d+(?:-beta\.\d+)?$")]
-    [string]$Version = "2.0.0-beta.5",
+    [string]$Version = "2.0.0-beta.6",
     [string]$Configuration = "Release",
     [string]$Platform = "Win32",
     [ValidatePattern("^(auto|v\d+)$")]
@@ -18,9 +18,9 @@ param(
     [ValidatePattern("^(|[0-9a-fA-F]{64})$")]
     [string]$UpdateSignerCertSha256 = "",
     [ValidatePattern("^\d+\.\d+\.\d+$")]
-    [string]$LoaderVersion = "1.1.0",
+    [string]$LoaderVersion = "1.2.0",
     [ValidatePattern("^\d+\.\d+\.\d+$")]
-    [string]$MinimumLoaderVersion = "1.1.0",
+    [string]$MinimumLoaderVersion = "1.2.0",
     [ValidateRange(1, 65535)]
     [int]$RuntimeAbi = 1,
     [string]$TimestampUrl = "http://timestamp.digicert.com",
@@ -59,11 +59,10 @@ if ($env:VSMR_REQUIRE_SIGNATURE -eq '1' -or $env:VSMR_REQUIRE_SIGNATURE -eq 'tru
     $RequireSignature = $true
 }
 
-# The low-level packager is production-safe by default.  Creating an unsigned
-# validation artifact must be an explicit choice so a clean source tree cannot
-# accidentally produce release-looking assets without the trust chain.
+# Signing is optional. A configured certificate/pin or explicit signature
+# requirement keeps the signed-release path fail-closed.
 $explicitNonPublishable = $ForceNonPublishable -or $env:VSMR_FORCE_NONPUBLISHABLE -eq '1'
-if (-not $explicitNonPublishable) {
+if ($CertificateThumbprint -or $UpdateSignerCertSha256) {
     $RequireSignature = $true
 }
 if ($SkipBuild -and -not $explicitNonPublishable) {
@@ -300,6 +299,7 @@ if ($RequireSignature -and ($null -eq $signingCertificate -or [string]::IsNullOr
 }
 
 $solutionPath = Join-Path $RepositoryRoot "vSMR.sln"
+& (Join-Path $RepositoryRoot "vSMR\tools\verify_release_inputs.ps1") -RepositoryRoot $RepositoryRoot -Version $Version
 $webBundleChecks = @(
     (Join-Path $RepositoryRoot "vSMR\tools\build_control_center_bundle.ps1"),
     (Join-Path $RepositoryRoot "vSMR\tools\build_control_center_styles.ps1")
@@ -580,8 +580,8 @@ $allBinarySignaturesValid =
     $signature.Status -eq [System.Management.Automation.SignatureStatus]::Valid -and
     $runtimeSignature.Status -eq [System.Management.Automation.SignatureStatus]::Valid -and
     $crashHandlerSignature.Status -eq [System.Management.Automation.SignatureStatus]::Valid
-$updatePublishable = $publishable -and $allBinarySignaturesValid -and
-    -not [string]::IsNullOrWhiteSpace($UpdateSignerCertSha256)
+$updatePublishable = $publishable -and (-not $RequireSignature -or
+    ($allBinarySignaturesValid -and -not [string]::IsNullOrWhiteSpace($UpdateSignerCertSha256)))
 if ($RequireSignature -and -not $updatePublishable) {
     throw "A signature-required release must be clean, publishable, Authenticode-signed, and pinned to its detached-manifest signer."
 }
@@ -616,6 +616,7 @@ $metadata = [ordered]@{
         manifest_schema_version = 1
         minimum_loader_version = $MinimumLoaderVersion
         signer_cert_der_sha256 = $UpdateSignerCertSha256
+        signature_required = [bool]$RequireSignature
         publishable = [bool]$updatePublishable
     }
     authenticode = [ordered]@{
@@ -671,6 +672,7 @@ $updateManifest = [ordered]@{
     version = $Version
     channel = $updateChannel
     publishable = [bool]$updatePublishable
+    signature_required = [bool]$RequireSignature
     archive = [ordered]@{
         name = [System.IO.Path]::GetFileName($archivePath)
         size = [int64](Get-Item -LiteralPath $archivePath).Length
@@ -720,7 +722,9 @@ Write-Host "Created user package: $archivePath"
 Write-Host "Created update manifest: $updateManifestPath"
 if (Test-Path -LiteralPath $updateSignaturePath -PathType Leaf) {
     Write-Host "Created detached update signature: $updateSignaturePath"
+} elseif ($updatePublishable) {
+    Write-Host "Unsigned update package: upload the ZIP and update.json together. Requires loader 1.2.0 or later without a signer pin."
 } else {
-    Write-Warning "No detached update signature was created; automatic updating will ignore this local artifact."
+    Write-Warning "Non-publishable validation artifact; automatic updating will ignore it."
 }
 Write-Host "Created private symbols: $symbolArchivePath"

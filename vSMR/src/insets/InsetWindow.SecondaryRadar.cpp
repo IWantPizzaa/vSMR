@@ -246,7 +246,7 @@ void CInsetWindow::renderSecondaryRadarTargets(CDC& dc, CSMRRadar* radar_screen,
 			dc.LineTo(RtPoint.x + 10, RtPoint.y + 4);
 			dc.SelectObject(previousHoverPen);
 		}
-		constexpr int leaderLength = 50;
+		const double leaderLength = 50 * radar_screen->GetDisplayScale();
 		POINT tagCenter = {};
 		m_TargetPoints[rtCallsign] = RtPoint;
 		const auto customOffset = m_TagOffsets.find(rtCallsign);
@@ -274,6 +274,7 @@ void CInsetWindow::renderSecondaryRadarTargets(CDC& dc, CSMRRadar* radar_screen,
 
 		const VsmrScene::TagPalette& palette = sceneTarget.tag.normalPalette;
 		VsmrTagRendering::PaintOptions options;
+		options.displayScale = radar_screen->GetDisplayScale();
 		options.targetPoint = RtPoint;
 		options.tagCenter = tagCenter;
 		options.background = SceneColorToGdi(

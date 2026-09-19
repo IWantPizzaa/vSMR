@@ -314,6 +314,83 @@ namespace
 
 	void TestVsidBridgeData()
 	{
+		using namespace VsmrParis;
+		Expect(VsmrVsid::SupportsRegionalCommands(1U, 3U) &&
+			!VsmrVsid::SupportsRegionalCommands(1U, 2U), "Regional commands require compatible providers");
+		VsmrVsid::CommandAction removed{};
+		Expect(!VsmrVsid::TryParseRuntimeActionId("runtime.vsid.paris-auto", removed),
+			"Automatic runway control is no longer exposed");
+		for (const auto airport : Airports)
+		{
+			std::map<std::string, bool> rules = {
+				{ "paris_auto", true }, { "paris_manual_config", false },
+				{ "pgeast", false }, { "opposing", false }, { "unrelated", true }
+			};
+			Expect(VsmrVsid::CanSubmitParisCommand(true, false, true, airport),
+				"Manual controls do not require runway telemetry");
+			if (IsRegional(airport))
+			{
+				for (std::size_t index = 0; index < RegionalRules.size(); ++index)
+				{
+					const auto rule = RegionalRules[index];
+					const auto& action = VsmrVsid::RegionalActions[index];
+					VsmrVsid::CommandAction parsed{};
+					Expect(VsmrVsid::TryParseRuntimeActionId(action.objectId, parsed) &&
+						VsmrVsid::BuildCommand(parsed, airport) == ".vsid paris " + std::string(airport) + " " + std::string(rule),
+						"Regional popup builds the selected command");
+					Expect(Select(rules, airport, rule), "Manual regional choice is accepted");
+					const auto before = rules;
+					const auto state = Resolve(rules, airport);
+					Expect(RegionalRule(state) == rule && rules == before && rules["unrelated"] &&
+						rules["pgeast"] == (rule.front() == 'e'),
+						"Manual state is read without mutation, even with obsolete automatic flags enabled");
+					for (const auto candidate : RegionalRules)
+						Expect(rules[std::string(candidate)] == (candidate == rule), "Regional choices remain exclusive");
+					Expect(Parse(Serialize(airport, state)).at(std::string(airport)) == state,
+						"Published regional state roundtrips through the bridge");
+					Select(rules, airport, rule);
+					Expect(rules == before, "Repeating a manual selection does not reprocess unchanged rules");
+				}
+				const auto before = rules;
+				Expect(!Select(rules, airport, "linked") && rules == before,
+					"Regional link-only commands cannot infer a runway direction");
+				rules["wlpg"] = true;
+				rules["eipg"] = true;
+				const auto ambiguous = rules;
+				Expect(RegionalRule(Resolve(rules, airport)).empty() && rules == ambiguous,
+					"Conflicting regional flags are reported unknown without correcting them automatically");
+			}
+			else
+			{
+				for (const auto linked : { true, false })
+				{
+					const auto choice = linked ? "linked" : "unlinked";
+					Expect(Select(rules, airport, choice) && rules["linked"] == linked &&
+						rules["unlinked"] != linked && rules["opposing"] != linked,
+						"PG and PO manual choices update their SID rule explicitly");
+					const auto before = rules;
+					const auto state = Resolve(rules, airport);
+					Expect(state.linked == linked && rules == before &&
+						Parse(Serialize(airport, state)).at(std::string(airport)) == state,
+						"Link state is published without automatic changes");
+				}
+				const auto before = rules;
+				Expect(!Select(rules, airport, "wlpg") && rules == before, "Regional rules cannot change PG or PO");
+			}
+			const auto before = rules;
+			Expect(!Select(rules, airport, "auto") && rules == before, "Removed automatic command has no effect");
+		}
+		Expect(IsControlRule("PARIS_AUTO") && IsControlRule("PARIS_MANUAL_CONFIG") &&
+			IsControlRule("LINKED") && IsControlRule("UNLINKED") && !IsControlRule("WLPG"),
+			"Obsolete mode metadata remains excluded from SID filtering for old configuration files");
+		Expect(!VsmrVsid::CanSubmitParisCommand(false, false, true, "LFPG") &&
+			!VsmrVsid::CanSubmitParisCommand(true, true, true, "LFPG") &&
+			!VsmrVsid::CanSubmitParisCommand(true, false, false, "LFPG") &&
+			!VsmrVsid::CanSubmitParisCommand(true, false, true, "LFLL"),
+			"Manual controls require an available provider and supported airport");
+		for (const auto invalid : { "LFPG=WLA", "LFPG=WXA;", "LFXX=WLA;", "LFPG=WLA;LFPG=EUM;", "LFPG=WLA;garbage" })
+			Expect(Parse(invalid).empty(), "Paris bridge rejects malformed or duplicate state records");
+		Expect(Parse(std::string(63, 'A')).empty(), "Paris bridge enforces its bounded snapshot size");
 		const auto modes = VsmrVsid::ParseAutomaticModes("LFPG=1;LFPO=0;");
 		Expect(modes.size() == 2 && modes.at("LFPG") && !modes.at("LFPO"),
 			"vSID automatic mode preserves independent authoritative airport states");
@@ -380,25 +457,25 @@ namespace
 		Expect(
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgMinimumTaxiing,
-				"LFPG") == ".vsid rule LFPG opposing" &&
+				"LFPG") == ".vsid paris LFPG linked" &&
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgGroundCrossing,
-				"LFPG") == ".vsid rule LFPG opposing" &&
+				"LFPG") == ".vsid paris LFPG unlinked" &&
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgGroundCrossing,
 				"LFPO").empty(),
-			"LFPG modes only toggle the configured opposing rule at LFPG");
+			"Legacy LFPG actions set explicit states");
 		Expect(
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgLinked,
-				"LFPG") == ".vsid rule LFPG opposing" &&
+				"LFPG") == ".vsid paris LFPG linked" &&
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgUnlinked,
-				"LFPG") == ".vsid rule LFPG opposing" &&
+				"LFPG") == ".vsid paris LFPG unlinked" &&
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgLinked,
-				"LFPO").empty(),
-			"LFPG link labels toggle the configured opposing rule at LFPG");
+				"LFPO") == ".vsid paris LFPO linked",
+			"Link controls set explicit states at LFPG and LFPO");
 		Expect(
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::ReloadConfiguration,

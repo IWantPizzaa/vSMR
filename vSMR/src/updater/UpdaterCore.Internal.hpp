@@ -174,6 +174,7 @@ namespace vsmr::updater::internal
 		std::uint64_t loaderSize = 0;
 		std::string loaderSha256;
 		bool publishable = false;
+		bool signatureRequired = true; // Legacy manifests required signatures.
 		std::uint32_t runtimeAbi = 0;
 	};
 

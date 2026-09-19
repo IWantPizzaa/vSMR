@@ -1,11 +1,11 @@
-version: 2.0.0-beta.5.{build}
+version: 2.0.0-beta.6.{build}
 
 branches:
   only:
     - main
     - master
     - dev
-    - /^v?2[.]0[.]0-beta[.]5$/
+    - /^v?2[.]0[.]0-beta[.]6$/
   except:
     - gh-pages
 
@@ -14,7 +14,7 @@ clone_depth: 20
 image: Visual Studio 2022
 
 environment:
-  VSMR_RELEASE_VERSION: 2.0.0-beta.5
+  VSMR_RELEASE_VERSION: 2.0.0-beta.6
 
 configuration: Release
 platform: Win32
@@ -47,7 +47,7 @@ before_build:
       $isReleaseTag = $isExpectedReleaseTag -and $isProtectedBranchCommit;
       $hasSigningMaterial = -not [string]::IsNullOrWhiteSpace($env:VSMR_SIGNING_CERT_THUMBPRINT) -and
         -not [string]::IsNullOrWhiteSpace($env:VSMR_UPDATE_SIGNER_CERT_SHA256);
-      if ($isReleaseTag -and -not $hasSigningMaterial) {
+      if ($isReleaseTag -and $env:VSMR_REQUIRE_SIGNATURE -eq '1' -and -not $hasSigningMaterial) {
         throw "Release tag $($env:APPVEYOR_REPO_TAG_NAME) requires VSMR_SIGNING_CERT_THUMBPRINT and VSMR_UPDATE_SIGNER_CERT_SHA256.";
       }
       Set-AppveyorBuildVariable -Name VSMR_CI_PUBLISHABLE_RELEASE -Value $(if ($isReleaseTag) { '1' } else { '0' })
@@ -111,7 +111,6 @@ after_test:
       -CrashHandlerPdbPath "$env:APPVEYOR_BUILD_FOLDER\vSMR\src\crash\handler\obj\Release\vSMRCrashHandler.pdb"
       -UpdateSignerCertSha256 ([string]$env:VSMR_UPDATE_SIGNER_CERT_SHA256)
       -SkipBuild:$validationOnly
-      -RequireSignature:(-not $validationOnly)
       -ForceNonPublishable:$validationOnly
   - ps: >-
       if ($env:VSMR_CI_PUBLISHABLE_RELEASE -ne '1') {
@@ -135,13 +134,13 @@ after_test:
       }
 
 artifacts:
-  - path: artifacts\vSMR-2.0.0-beta.5.zip
-    name: vSMR-2.0.0-beta.5
-  - path: artifacts\vSMR-2.0.0-beta.5.update.json
-    name: vSMR-2.0.0-beta.5-update-manifest
-  - path: artifacts\vSMR-2.0.0-beta.5-symbols.zip
-    name: vSMR-2.0.0-beta.5-symbols
-  - path: artifacts\vSMR-2.0.0-beta.5-*-validation-only.zip
+  - path: artifacts\vSMR-2.0.0-beta.6.zip
+    name: vSMR-2.0.0-beta.6
+  - path: artifacts\vSMR-2.0.0-beta.6.update.json
+    name: vSMR-2.0.0-beta.6-update-manifest
+  - path: artifacts\vSMR-2.0.0-beta.6-symbols.zip
+    name: vSMR-2.0.0-beta.6-symbols
+  - path: artifacts\vSMR-2.0.0-beta.6-*-validation-only.zip
     name: vSMR-validation-only
-  - path: artifacts\vSMR-2.0.0-beta.5-*-validation-only-symbols.zip
+  - path: artifacts\vSMR-2.0.0-beta.6-*-validation-only-symbols.zip
     name: vSMR-validation-only-symbols

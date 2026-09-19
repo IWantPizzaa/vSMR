@@ -25,20 +25,10 @@ namespace
 	using VsmrPluginBridge::ProviderState;
 	using VsmrPluginBridge::ReadStatus;
 
-	// ========================================================================
-	// PLACEHOLDER CDM BRIDGE CONTRACT - NOT PUBLISHED BY THE CDM PLUG-IN YET
-	// ------------------------------------------------------------------------
-	// The CDM plug-in does not register a bridge provider yet. The provider id,
-	// schema major, field names, types and sizes in this block are vSMR-side
-	// placeholders, not a declared schema. When the CDM plug-in declares its
-	// fields, replace this block with its declaration (".esb schema <provider>"
-	// prints it in EuroScope) and delete this banner. Until a provider with this
-	// id is loaded, vSMR gets ESB_E_NO_PROVIDER and runs with CDM data off.
-	// ========================================================================
-	constexpr char PlaceholderProviderId[] = "com.viffsys.cdm";
-	constexpr std::uint32_t PlaceholderSchemaMajor = 1U;
-	constexpr std::uint32_t PlaceholderStringBytes =
-		static_cast<std::uint32_t>(VsmrCdm::MaximumStringFieldBytes);
+	// CDM schema 1.0, declared by kCdmBridgeFields in CDMSingle.cpp
+	// (IWantPizzaa/CDM commit 1df65062). All fields are aircraft-scoped.
+	constexpr char ProviderId[] = "com.viffsys.cdm";
+	constexpr std::uint32_t SupportedSchemaMajor = 1U;
 
 	enum Field : std::size_t
 	{
@@ -57,9 +47,9 @@ namespace
 		FieldCount
 	};
 
-	// PLACEHOLDER: times are assumed to be I64 minutes since midnight UTC, the unit
+	// Times are I64 minutes since midnight UTC, the unit
 	// VsmrCdm::FormatTimeToken renders.
-	constexpr std::array<FieldSpec, FieldCount> PlaceholderFields = { {
+	constexpr std::array<FieldSpec, FieldCount> Fields = { {
 		{ "tobt", ESB_T_I64, 0U },
 		{ "tsat", ESB_T_I64, 0U },
 		{ "ttot", ESB_T_I64, 0U },
@@ -67,21 +57,20 @@ namespace
 		{ "tsac", ESB_T_I64, 0U },
 		{ "asrt", ESB_T_I64, 0U },
 		{ "asat", ESB_T_I64, 0U },
-		{ "deice", ESB_T_STR, PlaceholderStringBytes },
-		{ "tobt_set_by", ESB_T_STR, PlaceholderStringBytes },
-		{ "flow_restriction", ESB_T_STR, PlaceholderStringBytes },
-		{ "ecfmp_restriction", ESB_T_STR, PlaceholderStringBytes },
+		{ "deice", ESB_T_STR, 32U },
+		{ "tobt_set_by", ESB_T_STR, 16U },
+		{ "flow_restriction", ESB_T_STR, 512U },
+		{ "ecfmp_restriction", ESB_T_STR, 64U },
 		{ "manual_ctot", ESB_T_BOOL, 0U }
 	} };
-	// ================= END OF PLACEHOLDER CDM BRIDGE CONTRACT =================
 
 	constexpr std::uint64_t NoRevision = (std::numeric_limits<std::uint64_t>::max)();
 
 	VsmrPluginBridge::ProviderBinding Provider(
-		PlaceholderProviderId,
-		PlaceholderSchemaMajor,
-		PlaceholderFields.data(),
-		PlaceholderFields.size());
+		ProviderId,
+		SupportedSchemaMajor,
+		Fields.data(),
+		Fields.size());
 	VsmrPluginBridge::ProviderDiagnostics Diagnostics("CDM");
 
 	// Snapshot shared with rendering and the datalink workflows.
@@ -133,7 +122,7 @@ bool VsmrCdm::Poll(const VsmrPluginBridge::Tick& tick)
 		ProviderReady.store(true, std::memory_order_relaxed);
 
 		// Coarse gate (B2.5): every CDM write or clear advances the provider revision.
-		const std::uint64_t providerRevision = api.provider_revision(PlaceholderProviderId);
+		const std::uint64_t providerRevision = api.provider_revision(ProviderId);
 		if (providerRevision == LastProviderRevision &&
 			tick.callsigns == LastScannedCallsigns)
 		{
@@ -179,7 +168,7 @@ bool VsmrCdm::Poll(const VsmrPluginBridge::Tick& tick)
 				std::string raw;
 				if (readable(field) && accept(VsmrPluginBridge::ReadAircraftString(
 					api, callsign, aircraft, Provider.Field(field),
-					PlaceholderFields[field].expectedBytes, raw)))
+					Fields[field].expectedBytes, raw)))
 				{
 					value = NormalizeStringField(raw);
 				}

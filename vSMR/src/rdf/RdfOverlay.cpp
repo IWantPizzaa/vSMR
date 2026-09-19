@@ -143,8 +143,9 @@ namespace
 				MarkChanged();
 			if (enabled)
 				EnsureWorkerLocked();
-			else
-				StopWorkerLocked();
+			// This is a display switch. Keep the connection and transmission state
+			// alive so a pending synchronous receive cannot block EuroScope here,
+			// and re-enabling during a transmission restores its indication.
 		}
 
 		VsmrRdf::Status GetStatus() const
@@ -160,6 +161,8 @@ namespace
 		std::vector<std::string> TransmissionSnapshot() const
 		{
 			std::vector<std::string> result;
+			if (!Enabled.load(std::memory_order_acquire))
+				return result;
 			std::lock_guard<std::mutex> transmissionGuard(TransmissionMutex);
 			result.reserve(Transmissions.size());
 			for (const auto& entry : Transmissions)
@@ -316,8 +319,7 @@ namespace
 
 		bool ShouldStop() const
 		{
-			return StopRequested.load(std::memory_order_acquire) ||
-				!Enabled.load(std::memory_order_acquire);
+			return StopRequested.load(std::memory_order_acquire);
 		}
 
 		bool RunConnection()

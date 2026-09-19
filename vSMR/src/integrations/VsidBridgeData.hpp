@@ -1,9 +1,12 @@
 #pragma once
 
+#include "integrations/ParisRunwayRules.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <string_view>
@@ -41,20 +44,12 @@ namespace VsmrVsid
 		LfpgGroundCrossing,
 		LfpgLinked,
 		LfpgUnlinked,
+		ParisWLPG,
+		ParisELPG,
+		ParisWIPG,
+		ParisEIPG,
 		Synchronize,
 		ReloadConfiguration
-	};
-
-	enum class LfpgOperatingMode
-	{
-		MinimumTaxiing,
-		GroundCrossing
-	};
-
-	enum class LfpgLinkMode
-	{
-		Linked,
-		Unlinked
 	};
 
 	struct AircraftData
@@ -110,13 +105,44 @@ namespace VsmrVsid
 		tokens["vsid_cfl"] = data != nullptr ? data->clearedFlightLevel : "";
 	}
 
+	inline bool IsRegionalAction(CommandAction action) noexcept
+	{
+		return action == CommandAction::ParisWLPG || action == CommandAction::ParisELPG ||
+			action == CommandAction::ParisWIPG || action == CommandAction::ParisEIPG;
+	}
+
+	inline bool SupportsRegionalCommands(std::uint32_t major, std::uint32_t minor) noexcept
+	{
+		return major == 1U && minor >= 3U;
+	}
+
 	inline bool CommandRequiresAirport(CommandAction action) noexcept
 	{
-		return action == CommandAction::AutomaticModeToggle ||
+		return IsRegionalAction(action) || action == CommandAction::AutomaticModeToggle ||
 			action == CommandAction::LfpgMinimumTaxiing ||
 			action == CommandAction::LfpgGroundCrossing ||
 			action == CommandAction::LfpgLinked ||
 			action == CommandAction::LfpgUnlinked;
+	}
+
+	inline bool IsParisAction(CommandAction action) noexcept
+	{
+		return IsRegionalAction(action) || action == CommandAction::LfpgLinked || action == CommandAction::LfpgUnlinked ||
+			action == CommandAction::LfpgMinimumTaxiing ||
+			action == CommandAction::LfpgGroundCrossing;
+	}
+
+	// Schema 1.2 introduced the Paris commands. Their availability does not
+	// depend on receiving an airport's first runway-state snapshot.
+	inline bool SupportsParisCommands(std::uint32_t major, std::uint32_t minor) noexcept
+	{
+		return major == 1U && minor >= 2U;
+	}
+
+	inline bool CanSubmitParisCommand(bool providerReady, bool commandLineBusy,
+		bool commandsAvailable, std::string_view airport) noexcept
+	{
+		return providerReady && !commandLineBusy && commandsAvailable && VsmrParis::Supports(airport);
 	}
 
 	inline std::string NormalizeAirport(std::string_view airport)
@@ -165,15 +191,23 @@ namespace VsmrVsid
 		case CommandAction::LfpgMinimumTaxiing:
 		case CommandAction::LfpgGroundCrossing:
 			return normalizedAirport == "LFPG"
-				? ".vsid rule LFPG opposing"
+				? std::string(".vsid paris LFPG ") + (action == CommandAction::LfpgMinimumTaxiing ? "linked" : "unlinked")
 				: std::string();
 		case CommandAction::LfpgLinked:
 		case CommandAction::LfpgUnlinked:
-			return normalizedAirport == "LFPG"
-				? ".vsid rule LFPG opposing"
+			return (normalizedAirport == "LFPG" || normalizedAirport == "LFPO")
+				? ".vsid paris " + normalizedAirport + " " + (action == CommandAction::LfpgLinked ? "linked" : "unlinked")
 				: std::string();
 		case CommandAction::Synchronize:
 			return ".vsid sync";
+		case CommandAction::ParisWLPG:
+		case CommandAction::ParisELPG:
+		case CommandAction::ParisWIPG:
+		case CommandAction::ParisEIPG:
+			return VsmrParis::IsRegional(normalizedAirport)
+				? ".vsid paris " + normalizedAirport + " " + (action == CommandAction::ParisWLPG ? "wlpg" :
+					action == CommandAction::ParisELPG ? "elpg" : action == CommandAction::ParisWIPG ? "wipg" : "eipg")
+				: std::string();
 		case CommandAction::ReloadConfiguration:
 			return ".vsid reload";
 		default:
@@ -214,10 +248,17 @@ namespace VsmrVsid
 	inline constexpr std::array<RuntimeActionDefinition, 2> LfpgLinkActions = { {
 		{ CommandAction::LfpgLinked,
 			"runtime.vsid.lfpg-linked", "Linked",
-			"LFPG Linked mode (Lie; opposing off)" },
+			"Set linked rules for this airport; changed only by manual selection" },
 		{ CommandAction::LfpgUnlinked,
 			"runtime.vsid.lfpg-unlinked", "Unlinked",
-			"LFPG Unlinked mode (Non lie; opposing on)" }
+			"Set unlinked rules for this airport; changed only by manual selection" }
+	} };
+
+	inline constexpr std::array<RuntimeActionDefinition, 4> RegionalActions = { {
+		{ CommandAction::ParisWLPG, "runtime.vsid.wlpg", "WL", "West Lie (LFPG perspective); manual configuration" },
+		{ CommandAction::ParisELPG, "runtime.vsid.elpg", "EL", "East Lie (LFPG perspective); manual configuration" },
+		{ CommandAction::ParisWIPG, "runtime.vsid.wipg", "IPGW", "West Inverse (LFPG perspective); manual configuration" },
+		{ CommandAction::ParisEIPG, "runtime.vsid.eipg", "IPOW", "East Inverse (LFPG perspective); manual configuration" }
 	} };
 
 	inline constexpr std::array<RuntimeActionDefinition, 3> GeneralRuntimeActions = { {
@@ -251,6 +292,7 @@ namespace VsmrVsid
 		return findAction(AirportRuntimeActions) ||
 			findAction(LfpgModeActions) ||
 			findAction(LfpgLinkActions) ||
+			findAction(RegionalActions) ||
 			findAction(GeneralRuntimeActions);
 	}
 

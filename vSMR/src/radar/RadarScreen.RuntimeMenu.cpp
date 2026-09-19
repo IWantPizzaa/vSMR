@@ -33,7 +33,7 @@ namespace
 	constexpr int kInsetPopupWidth = 196;
 	constexpr int kVsidPopupWidth = 220;
 	constexpr int kVsidPopupHeight = 79;
-	constexpr int kVsidLfpgPopupHeight = 151;
+	constexpr int kVsidLfpgPopupHeight = 124;
 	constexpr int kStandardPopupWidth = 170;
 	constexpr int kCpdlcPopupHeight = 104;
 	constexpr int kIntegrationPopupGap = 6;
@@ -402,9 +402,11 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		insetPopupTooShort = false;
 		if (vsidPopup)
 		{
-			popupHeight = vsidAirport == "LFPG"
+			popupHeight = VsmrParis::Supports(vsidAirport)
 				? kVsidLfpgPopupHeight
 				: kVsidPopupHeight;
+			if (VsmrParis::IsRegional(vsidAirport)) popupHeight += kPopupActionHeight + 3;
+			if (vsidAirport == "LFPG") popupHeight += kPopupActionHeight + 3;
 		}
 		else if (!insetPopup)
 		{
@@ -620,40 +622,55 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		drawRuntimeButton(reload.objectId, reloadArea, reload.label, canSubmit, false, false, reload.tooltip);
 		drawRuntimeButton(sync.objectId, syncArea, sync.label, canSubmit, false, false, sync.tooltip);
 		contentTop += kPopupActionHeight + 3;
-		if (normalizedAirport == "LFPG")
+		if (VsmrParis::Supports(normalizedAirport))
 		{
-			contentTop += 3;
-			FillRectColor(hdc, CRect(radar.RuntimeMenuPopupArea.left + 10, contentTop,
-				radar.RuntimeMenuPopupArea.right - 10, contentTop + 1), palette.divider);
-			contentTop += 3;
-			drawSectionLabel("vSID SETTINGS");
-			CRect leftArea;
-			CRect rightArea;
-			twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
-			const auto& minimum = VsmrVsid::LfpgModeActions[0];
-			const auto& crossing = VsmrVsid::LfpgModeActions[1];
-			const bool minimumActive =
-				vsidState.lfpgMode == VsmrVsid::LfpgOperatingMode::MinimumTaxiing;
-			drawRuntimeButton(
-				minimum.objectId, leftArea, minimum.label, canSubmitAirport,
-				minimumActive, false, minimum.tooltip, !minimumActive);
-			drawRuntimeButton(
-				crossing.objectId, rightArea, crossing.label, canSubmitAirport,
-				!minimumActive, false, crossing.tooltip, minimumActive);
-			contentTop += kPopupActionHeight + 3;
-
-			twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
-			const auto& linked = VsmrVsid::LfpgLinkActions[0];
-			const auto& unlinked = VsmrVsid::LfpgLinkActions[1];
-			const bool linkedActive =
-				vsidState.lfpgLinkMode == VsmrVsid::LfpgLinkMode::Linked;
-			drawRuntimeButton(
-				linked.objectId, leftArea, linked.label, canSubmitAirport,
-				linkedActive, false, linked.tooltip, !linkedActive);
-			drawRuntimeButton(
-				unlinked.objectId, rightArea, unlinked.label, canSubmitAirport,
-				!linkedActive, false, unlinked.tooltip, linkedActive);
-			contentTop += kPopupActionHeight + 3;
+			contentTop += 6;
+			drawSectionLabel("CONFIG");
+			const bool available = VsmrVsid::CanSubmitParisCommand(vsidState.providerReady,
+				vsidState.commandLineBusy, vsidState.parisCommandsAvailable, normalizedAirport);
+			const auto state = vsidState.paris.value_or(VsmrParis::State{});
+			const auto selectedRule = VsmrParis::RegionalRule(state);
+			CRect leftArea, rightArea;
+			if (VsmrParis::IsRegional(normalizedAirport))
+			{
+				for (std::size_t row = 0; row < 2; ++row)
+				{
+					twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
+					for (std::size_t column = 0; column < 2; ++column)
+					{
+						const auto index = row * 2 + column;
+						const auto& choice = VsmrVsid::RegionalActions[index];
+						drawRuntimeButton(choice.objectId, column == 0 ? leftArea : rightArea,
+							choice.label, available && vsidState.regionalCommandsAvailable,
+							selectedRule == VsmrParis::RegionalRules[index], false, choice.tooltip);
+					}
+					contentTop += kPopupActionHeight + 3;
+				}
+			}
+			else
+			{
+				twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
+				const auto& linked = VsmrVsid::LfpgLinkActions[0];
+				const auto& unlinked = VsmrVsid::LfpgLinkActions[1];
+				drawRuntimeButton(linked.objectId, leftArea, linked.label, available,
+					state.linked == true, false, linked.tooltip);
+				drawRuntimeButton(unlinked.objectId, rightArea, unlinked.label, available,
+					state.linked == false, false, unlinked.tooltip);
+				contentTop += kPopupActionHeight + 3;
+				if (normalizedAirport == "LFPG")
+				{
+					twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
+					for (const auto& mode : VsmrVsid::LfpgModeActions)
+					{
+						const bool minimumTaxiing = mode.action == VsmrVsid::CommandAction::LfpgMinimumTaxiing;
+						const bool selected = minimumTaxiing
+							? state.linked == true : state.linked == false;
+						drawRuntimeButton(mode.objectId, minimumTaxiing ? leftArea : rightArea, mode.label, available,
+							selected, false, mode.tooltip);
+					}
+					contentTop += kPopupActionHeight + 3;
+				}
+			}
 		}
 
 	}
