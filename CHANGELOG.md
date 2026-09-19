@@ -27,7 +27,7 @@
 
 ### Changed
 
-- Replaced the bundled AVISO set with exactly 160 converter-supplied airport maps, byte-for-byte. Added LFRJ and removed 33 maps from the previous import. Dark/Light are available everywhere; Real is available at LFML, LFMN, LFPG, and LFPO. The final LFPG map has no East/West arrow groups.
+- Replaced the bundled AVISO set with 160 converter-supplied airport maps. Added LFRJ and removed 33 maps from the previous import. Dark/Light are available everywhere; Real is available at LFML, LFMN, LFPG, and LFPO. Restored LFPG's 89 East arrows and 97 West arrows in two independently selectable groups without changing the imported airport layout or palette styles; the other 159 maps retain their supplied bytes.
 - Applied the Settings resolution scale to AVISO geometry/text and aircraft icons/tags in the radar views, without resizing menus, Control Center, or inset controls.
 - Aligned package defaults, binary product versions, and AppVeyor configuration for beta 6. Added release-input validation of versions, map hashes, and update-policy consistency.
 - Reworked the EuroScope Plugin Bridge consumer to follow the bridge integration checklist: a single `esbridge.h` client shim attached from the timer, per-field resolution with type and schema checks, buffer resizing, stale-handle re-resolution, and one shared flight-plan scan per tick for vSID, Ramp Agent, and CDM. A missing plug-in or bridge now only disables the data it provides.
@@ -65,6 +65,7 @@
 
 ### Fixed
 
+- Fixed LFPG's vSID CONFIG rows sharing commands and selection state. Linked/Unlinked uses the existing `opposing` rule; Minimum Taxiing enables NORTH and SOUTH areas and Ground Crossing disables areas. No new vSID schema is required. Taxi highlights record the last completed command sequence sent by vSMR, independently of the published link state, and do not claim live area telemetry.
 - Made active profile selection independent for each ASR. Opening, selecting, saving or closing one ASR no longer applies its profile to other screens; shared configuration reloads preserve each screen's selection.
 
 - Fixed AVISO color edits and pasted colors changing other themes through inherited palette colors.
