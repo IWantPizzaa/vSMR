@@ -655,6 +655,18 @@
       originalPageBackground &&
       api.getState().settings?.avisoColorPalette === originalPaletteButton?.dataset.avisoColorPalette,
       "UI theme changes shared design colors without changing the AVISO palette");
+
+    const rdfToggle = document.querySelector("#settingsRdfEnabled");
+    expect(Boolean(rdfToggle) && rdfToggle.checked,
+      "Settings exposes the native RDF toggle, enabled by default");
+    rdfToggle.checked = false;
+    rdfToggle.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(api.getState().settings?.rdfEnabled === false,
+      "clearing the native RDF toggle stages the disabled state");
+    rdfToggle.checked = true;
+    rdfToggle.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(api.getState().settings?.rdfEnabled === true,
+      "re-checking the native RDF toggle stages the enabled state");
     expect(Boolean(iconPreviewStage) &&
       getComputedStyle(iconPreviewStage).backgroundColor !== initialIconPreviewBackground,
       "target icon preview follows the selected Day/Night UI background");

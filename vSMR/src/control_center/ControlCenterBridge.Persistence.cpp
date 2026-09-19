@@ -4,6 +4,7 @@
 #include "aviso/AvisoDocumentModel.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
+#include "rdf/RdfOverlay.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "shared/logging/Logger.hpp"
 
@@ -38,6 +39,8 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 
 	bool hasStagedShowFps = false;
 	bool stagedShowFps = Owner->ShowFps;
+	bool hasStagedRdfEnabled = false;
+	bool stagedRdfEnabled = VsmrRdf::GetStatus().enabled;
 	bool hasStagedAvisoColorPalette = false;
 	std::string stagedAvisoColorPalette = Owner->GetAvisoColorPalette();
 	bool hasStagedUiColorTheme = false;
@@ -59,6 +62,16 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 			}
 			hasStagedShowFps = true;
 			stagedShowFps = settings["showFps"].GetBool();
+		}
+		if (settings.HasMember("rdfEnabled"))
+		{
+			if (!settings["rdfEnabled"].IsBool())
+			{
+				error = "Native RDF must be a boolean setting.";
+				return false;
+			}
+			hasStagedRdfEnabled = true;
+			stagedRdfEnabled = settings["rdfEnabled"].GetBool();
 		}
 		if (settings.HasMember("avisoColorPalette"))
 		{
@@ -386,6 +399,8 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 			"Show FPS counter",
 			Owner->ShowFps ? "1" : "0");
 	}
+	if (hasStagedRdfEnabled)
+		ApplyRdfEnabled(stagedRdfEnabled);
 	if (hasStagedAvisoColorPalette)
 		Owner->SetAvisoColorPalette(stagedAvisoColorPalette, true);
 	if (hasStagedUiColorTheme)

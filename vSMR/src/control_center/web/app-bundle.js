@@ -707,6 +707,7 @@
         aliasFile: "C:\\EuroScope\\Alias\\alias.txt",
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
         showFps: true,
+        rdfEnabled: true,
         uiColorTheme: "night",
         avisoColorPalette: "dark",
         avisoColorPalettes: ["dark", "light", "real"],
@@ -4800,6 +4801,7 @@
     $("#settingsAliasFile").title = aliasFile || "No alias file found";
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
+    $("#settingsRdfEnabled").checked = settings.rdfEnabled !== false;
     const uiColorTheme = settings.uiColorTheme === "day" ? "day" : "night";
     syncToggleButtons('[data-ui-color-theme]', uiColorTheme, "uiColorTheme");
     const avisoColorPalette = normalizeAvisoColorPalette(settings.avisoColorPalette);
@@ -4818,7 +4820,8 @@
       profileFile: $("#settingsProfileFile").value,
       avisoFile: $("#settingsAvisoFile").value,
       resolutionPreset: $("#settingsResolutionPreset").value || "1080p",
-      showFps: $("#settingsShowFps").checked
+      showFps: $("#settingsShowFps").checked,
+      rdfEnabled: $("#settingsRdfEnabled").checked
     });
     state.profiles.forEach(record => {
       record.data.targets ||= {};
