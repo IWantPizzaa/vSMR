@@ -580,7 +580,7 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		if (featureStrokeColor.GetAlpha() == 0 || feature.strokeWidth <= 0.0f)
 			continue;
 
-		Pen linePen(featureStrokeColor, feature.strokeWidth * static_cast<float>(request.rasterScale));
+		Pen linePen(featureStrokeColor, feature.strokeWidth * static_cast<float>(request.rasterScale * request.displayScale));
 		linePen.SetLineJoin(LineJoinRound);
 		linePen.SetStartCap(LineCapRound);
 		linePen.SetEndCap(LineCapRound);
@@ -645,7 +645,7 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		labelFormat.SetFormatFlags(StringFormatFlagsNoWrap);
 		auto getLabelEmSize = [&](float textSize) -> REAL
 		{
-			const float scaledSize = static_cast<float>(std::clamp(static_cast<double>(textSize * static_cast<float>(request.rasterScale)), 6.0, 40.0));
+			const float scaledSize = static_cast<float>(std::clamp(static_cast<double>(textSize * static_cast<float>(request.rasterScale)), 6.0, 40.0) * request.displayScale);
 			const int fontKey = static_cast<int>(std::lround(static_cast<double>(scaledSize) * 10.0));
 			return static_cast<REAL>(fontKey) / 10.0f;
 		};
@@ -672,8 +672,8 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			const REAL labelEmSize = getLabelEmSize(label.textSize);
 			const PointF labelPoint = projectRasterPoint(label.position);
 			const REAL textLength = static_cast<REAL>(renderedText->length());
-			const REAL scaledTextSize = static_cast<REAL>(label.textSize * static_cast<float>(request.rasterScale));
-			const REAL haloPadding = static_cast<REAL>(AvisoMax(static_cast<double>(label.haloWidth * request.rasterScale), 0.0) * 3.0);
+			const REAL scaledTextSize = static_cast<REAL>(label.textSize * request.rasterScale * request.displayScale);
+			const REAL haloPadding = static_cast<REAL>(AvisoMax(static_cast<double>(label.haloWidth * request.rasterScale * request.displayScale), 0.0) * 3.0);
 			const REAL layoutWidth = static_cast<REAL>(AvisoMax(static_cast<double>(scaledTextSize * AvisoMax(static_cast<double>(textLength), 1.0) * 0.9f + haloPadding * 2.0f), 14.0));
 			const REAL layoutHeight = static_cast<REAL>(AvisoMax(static_cast<double>(scaledTextSize * 1.65f + haloPadding * 2.0f), 10.0));
 			const RectF layoutRect = labelRectForAnchor(labelPoint, layoutWidth, layoutHeight, label.textAnchor);
@@ -701,7 +701,7 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 				: request.colorPalette == "light" ? label.lightTextColor : label.textColor;
 			if (label.haloWidth > 0.0f && labelHaloColor.GetAlpha() > 0)
 			{
-				Pen haloPen(labelHaloColor, static_cast<REAL>(AvisoMax(static_cast<double>(label.haloWidth * request.rasterScale * 2.0f), 1.0)));
+				Pen haloPen(labelHaloColor, static_cast<REAL>(AvisoMax(static_cast<double>(label.haloWidth * request.rasterScale * request.displayScale * 2.0f), 1.0)));
 				haloPen.SetLineJoin(LineJoinRound);
 				rasterGraphics.DrawPath(&haloPen, &textPath);
 			}
@@ -1467,6 +1467,7 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	request.rasterWidth = rasterWidth;
 	request.rasterHeight = rasterHeight;
 	request.rasterScale = rasterScale;
+	request.displayScale = GetDisplayScale();
 	request.displayMinLongitude = displayMinLon;
 	request.displayMinLatitude = displayMinLat;
 	request.displayMaxLongitude = displayMaxLon;

@@ -1,6 +1,8 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "radar/RadarScreen.hpp"
 #include "config/ProfileNormalization.hpp"
+#include "rendering/DisplayScale.hpp"
+#include "insets/InsetWindow.hpp"
 
 std::string CSMRRadar::GetUiColorTheme() const
 {
@@ -199,12 +201,29 @@ bool CSMRRadar::SetSmallTargetIconBoostResolutionPreset(const std::string& prese
 
 double CSMRRadar::GetSmallTargetIconBoostResolutionScale() const
 {
-	const std::string preset = GetSmallTargetIconBoostResolutionPreset();
-	if (preset == "4k")
-		return 1.55;
-	if (preset == "2k")
-		return 1.25;
-	return 1.0;
+	return GetDisplayScale();
+}
+
+double CSMRRadar::GetDisplayScale() const
+{
+	// Keep the persisted key compatible with existing profiles.
+	return VsmrRendering::ResolutionScale(GetSmallTargetIconBoostResolutionPreset());
+}
+
+void CSMRRadar::RefreshDisplayScale()
+{
+	const double scale = GetDisplayScale();
+	if (AppliedDisplayScale == scale) return;
+	AppliedDisplayScale = scale;
+	LoadCustomFont();
+	TagTextCache.Clear();
+	InvalidateAvisoGroupRendering();
+	ClearAvisoGeoJsonRasterCache();
+	for (const auto& entry : appWindows)
+	{
+		if (entry.second != nullptr)
+			entry.second->ClearAvisoViewportCache();
+	}
 }
 
 std::vector<std::string> CSMRRadar::GetAvailableTagFonts() const

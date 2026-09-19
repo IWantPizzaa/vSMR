@@ -135,10 +135,11 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 		{
 			if (TagAngles.find(callsign) == TagAngles.end())
 				TagAngles[callsign] = 270.0f;
-			int leaderLength = LeaderLineDefaultlenght;
+			double leaderLength = LeaderLineDefaultlenght;
 			const auto configuredLength = TagLeaderLineLength.find(callsign);
 			if (configuredLength != TagLeaderLineLength.end())
 				leaderLength = configuredLength->second;
+			leaderLength *= GetDisplayScale();
 			tagCenter.x = long(targetPoint.x + float(leaderLength * cos(VsmrRadarUiSupport::DegToRad(TagAngles[callsign]))));
 			tagCenter.y = long(targetPoint.y + float(leaderLength * sin(VsmrRadarUiSupport::DegToRad(TagAngles[callsign]))));
 		}
@@ -170,6 +171,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 		}
 
 		VsmrTagRendering::PaintOptions options;
+		options.displayScale = GetDisplayScale();
 		options.targetPoint = targetPoint;
 		options.tagCenter = tagCenter;
 		options.roundedCorners = roundedCorners;

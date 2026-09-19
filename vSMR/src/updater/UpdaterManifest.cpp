@@ -103,10 +103,10 @@ namespace vsmr::updater::internal
 					asset.url = Utf8ToWide(JsonString(value, "browser_download_url"));
 					asset.size = JsonUint64(value, "size");
 					asset.digest = ToLowerAscii(JsonString(value, "digest"));
-					url_policy::ParsedHttpsUrl parsed;
 					if (asset.name.empty() || !names.insert(asset.name).second ||
 						asset.url.empty() ||
-						!url_policy::TryParseAllowedHttpsUrl(asset.url, parsed))
+						!url_policy::IsProjectReleaseAssetUrl(asset.url,
+							Utf8ToWide(release.version.normalized), Utf8ToWide(asset.name)))
 					{
 						continue;
 					}
@@ -144,7 +144,6 @@ namespace vsmr::updater::internal
 			}
 			const std::string base = "vSMR-" + release.version.normalized;
 			if (FindAsset(release, base + ".update.json") == nullptr ||
-				FindAsset(release, base + ".update.json.p7s") == nullptr ||
 				FindAsset(release, base + ".zip") == nullptr)
 			{
 				continue;
@@ -234,6 +233,12 @@ namespace vsmr::updater::internal
 		}
 		manifest.version = ParseSemVer(JsonString(document, "version"));
 		manifest.publishable = JsonBool(document, "publishable", false);
+		if (document.HasMember("signature_required") && !document["signature_required"].IsBool())
+		{
+			error = "manifest_signature_policy_invalid";
+			return false;
+		}
+		manifest.signatureRequired = JsonBool(document, "signature_required", true);
 		manifest.channel = ToLowerAscii(JsonString(document, "channel"));
 		manifest.minimumLoaderVersion = ParseSemVer(JsonString(document, "minimum_loader_version"));
 		manifest.runtimeRelativePath = JsonString(document, "runtime_relative_path");
@@ -326,9 +331,8 @@ namespace vsmr::updater::internal
 		const ReleaseAsset* manifestAsset = FindAsset(release, base + ".update.json");
 		const ReleaseAsset* signatureAsset = FindAsset(release, base + ".update.json.p7s");
 		const ReleaseAsset* archiveAsset = FindAsset(release, base + ".zip");
-		if (manifestAsset == nullptr || signatureAsset == nullptr || archiveAsset == nullptr ||
-			manifestAsset->size == 0 || manifestAsset->size > kMaximumManifestBytes ||
-			signatureAsset->size == 0 || signatureAsset->size > kMaximumSignatureBytes)
+		if (manifestAsset == nullptr || archiveAsset == nullptr ||
+			manifestAsset->size == 0 || manifestAsset->size > kMaximumManifestBytes)
 		{
 			error = "release_assets_missing";
 			return false;
@@ -345,6 +349,22 @@ namespace vsmr::updater::internal
 			manifestResponse.body.size() != manifestAsset->size)
 		{
 			error = manifestResponse.error.empty() ? "manifest_download_failed" : manifestResponse.error;
+			return false;
+		}
+		if (!ParseManifest(manifestResponse.body, manifest, error) ||
+			!ValidateManifestForRelease(manifest, release, *archiveAsset, error))
+			return false;
+		// An explicitly pinned/signed installation never silently downgrades trust.
+		// Unsigned installations rely on the fixed GitHub feed, TLS and SHA-256.
+		if (!verification::RequiresManifestSignature(manifest.signatureRequired, !trustedSigner.empty()))
+		{
+			manifestBytes = std::move(manifestResponse.body);
+			return true;
+		}
+		if (trustedSigner.empty() || signatureAsset == nullptr ||
+			signatureAsset->size == 0 || signatureAsset->size > kMaximumSignatureBytes)
+		{
+			error = "signature_required";
 			return false;
 		}
 		timeout = RemainingMs(context, kAssetMetadataTimeoutMs);
