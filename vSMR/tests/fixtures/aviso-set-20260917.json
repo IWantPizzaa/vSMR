@@ -111,7 +111,7 @@
     "LFPB.geojson": "4e7b36f15551349dd11818dbb214807414b4c2da0781cf26bf2e3f659cf113f4",
     "LFPC.geojson": "c840b8a106de971c1436d79760be12cffb6e72f29f38e373edd6c1d5341f517d",
     "LFPE.geojson": "0e3f3139df5028adc08203456c24cd5cc912f51fe76c986e0a1038c472c3657b",
-    "LFPG.geojson": "a09c933985e3a4753f1231715bbc2bc5fb3122e3217783f2b3f58ac31c57ad37",
+    "LFPG.geojson": "c3aa3a823329b78c92dab9928298211135cc6be7fafd633c520c9f4d27fbdf60",
     "LFPL.geojson": "2661db33385424e9a700e15861178ddd09f077e062a6158376dc3c97f5fe2491",
     "LFPM.geojson": "772ced160399a9be8eff9de978ab0b9d7c53f1ac4be97d72b036dc7a176c6f6f",
     "LFPN.geojson": "28e439456739c83824a63608d1edf2597a0873bcf89476f6474d34280fdd0a7a",
@@ -204,5 +204,14 @@
   "added_since_previous_import": [
     "LFRJ.geojson"
   ],
-  "corrections": []
+  "corrections": [],
+  "post_import_changes": [
+    {
+      "file": "LFPG.geojson",
+      "date": "2026-09-18",
+      "source_sha256": "a09c933985e3a4753f1231715bbc2bc5fb3122e3217783f2b3f58ac31c57ad37",
+      "description": "Restored 89 East and 97 West arrows in separate groups, retaining all 1468 converter-supplied features and existing palette styles.",
+      "arrow_source_commit": "0066b62"
+    }
+  ]
 }

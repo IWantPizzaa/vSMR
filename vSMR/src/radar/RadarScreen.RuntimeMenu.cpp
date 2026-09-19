@@ -626,8 +626,9 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		{
 			contentTop += 6;
 			drawSectionLabel("CONFIG");
-			const bool available = VsmrVsid::CanSubmitParisCommand(vsidState.providerReady,
-				vsidState.commandLineBusy, vsidState.parisCommandsAvailable, normalizedAirport);
+			const bool available = normalizedAirport == "LFPG" ? canSubmit :
+				VsmrVsid::CanSubmitParisCommand(vsidState.providerReady,
+					vsidState.commandLineBusy, vsidState.parisCommandsAvailable, normalizedAirport);
 			const auto state = vsidState.paris.value_or(VsmrParis::State{});
 			const auto selectedRule = VsmrParis::RegionalRule(state);
 			CRect leftArea, rightArea;
@@ -652,10 +653,13 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 				twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
 				const auto& linked = VsmrVsid::LfpgLinkActions[0];
 				const auto& unlinked = VsmrVsid::LfpgLinkActions[1];
+				const char* linkTooltip = normalizedAirport == "LFPG"
+					? "Toggle LFPG opposing. Clicking the published selection does nothing; if status is unknown, either button toggles the rule."
+					: nullptr;
 				drawRuntimeButton(linked.objectId, leftArea, linked.label, available,
-					state.linked == true, false, linked.tooltip);
+					state.linked == true, false, linkTooltip ? linkTooltip : linked.tooltip);
 				drawRuntimeButton(unlinked.objectId, rightArea, unlinked.label, available,
-					state.linked == false, false, unlinked.tooltip);
+					state.linked == false, false, linkTooltip ? linkTooltip : unlinked.tooltip);
 				contentTop += kPopupActionHeight + 3;
 				if (normalizedAirport == "LFPG")
 				{
@@ -663,8 +667,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 					for (const auto& mode : VsmrVsid::LfpgModeActions)
 					{
 						const bool minimumTaxiing = mode.action == VsmrVsid::CommandAction::LfpgMinimumTaxiing;
-						const bool selected = minimumTaxiing
-							? state.linked == true : state.linked == false;
+						const bool selected = VsmrVsid::IsLfpgTaxiActionSelected(mode.action, vsidState.lastSubmittedLfpgTaxiMode);
 						drawRuntimeButton(mode.objectId, minimumTaxiing ? leftArea : rightArea, mode.label, available,
 							selected, false, mode.tooltip);
 					}

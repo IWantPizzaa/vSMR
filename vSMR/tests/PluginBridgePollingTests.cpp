@@ -16,6 +16,9 @@ namespace
 {
 	VsmrPluginBridge::AttachState HostAttachState = VsmrPluginBridge::AttachState::Attached;
 	std::string SubmittedCommand;
+	std::vector<std::string> SubmittedCommands;
+	bool AcceptCommand = true;
+	VsmrEuroScopeCommandLine::SubmissionStatus SubmissionResult = VsmrEuroScopeCommandLine::SubmissionStatus::Idle;
 	struct PublishedField
 	{
 		const char* name;
@@ -112,12 +115,24 @@ void VsmrPluginBridge::ProviderDiagnostics::Report(const ProviderBinding&) {}
 void VsmrPluginBridge::ProviderDiagnostics::Reset() noexcept {}
 bool VsmrEuroScopeCommandLine::Begin(Owner, const std::string& command, std::string*)
 {
+	if (!AcceptCommand) return false;
 	SubmittedCommand = command;
+	SubmittedCommands.push_back(command);
+	SubmissionResult = SubmissionStatus::Pending;
 	return true;
 }
-VsmrEuroScopeCommandLine::SubmissionStatus VsmrEuroScopeCommandLine::Poll(Owner) { return SubmissionStatus::Idle; }
-bool VsmrEuroScopeCommandLine::IsBusy() noexcept { return false; }
-void VsmrEuroScopeCommandLine::Cancel(Owner) noexcept { SubmittedCommand.clear(); }
+VsmrEuroScopeCommandLine::SubmissionStatus VsmrEuroScopeCommandLine::Poll(Owner)
+{
+	const auto result = SubmissionResult;
+	if (result != SubmissionStatus::Pending) SubmissionResult = SubmissionStatus::Idle;
+	return result;
+}
+bool VsmrEuroScopeCommandLine::IsBusy() noexcept { return SubmissionResult == SubmissionStatus::Pending; }
+void VsmrEuroScopeCommandLine::Cancel(Owner) noexcept
+{
+	SubmittedCommand.clear();
+	SubmissionResult = SubmissionStatus::Idle;
+}
 
 void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 {
@@ -178,11 +193,82 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 	std::string error;
 	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::ParisWIPG, "LFPT", error) && SubmittedCommand == ".vsid paris LFPT wipg",
 		"regional manual commands keep their companion command spelling");
-	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgGroundCrossing, "LFPG", error) && SubmittedCommand == ".vsid paris LFPG unlinked",
-		"LFPG Ground Crossing remains available through the shared bridge client");
+	const auto completeCommand = [&] {
+		SubmissionResult = VsmrEuroScopeCommandLine::SubmissionStatus::Confirmed;
+		poll();
+	};
+	completeCommand();
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgGroundCrossing, "LFPG", error) && SubmittedCommand == ".vsid area LFPG OFF",
+		"LFPG Ground Crossing uses the native area command without a new bridge schema");
 	state = VsmrVsid::GetInterfaceState("LFPG");
-	check(state.paris && state.paris->linked == true,
-		"command submission does not fabricate an authoritative Paris selection");
+	check(state.paris && state.paris->linked == true && !state.lastSubmittedLfpgTaxiMode && state.commandLineBusy,
+		"pending taxi command neither changes link state nor claims a completed taxi selection");
+	completeCommand();
+	state = VsmrVsid::GetInterfaceState("LFPG");
+	check(state.paris && state.paris->linked == true && state.lastSubmittedLfpgTaxiMode == VsmrVsid::LfpgTaxiMode::GroundCrossing,
+		"completed Ground Crossing is recorded independently of Linked");
+	AcceptCommand = false;
+	check(!VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgMinimumTaxiing, "LFPG", error) &&
+		VsmrVsid::GetInterfaceState("LFPG").lastSubmittedLfpgTaxiMode == VsmrVsid::LfpgTaxiMode::GroundCrossing,
+		"rejecting the first area command preserves the previously submitted selection");
+	AcceptCommand = true;
+	check(!VsmrVsid::GetInterfaceState("LFPO").lastSubmittedLfpgTaxiMode,
+		"LFPG's last area command is not displayed at other airports");
+	const auto beforeLinked = SubmittedCommands.size();
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgLinked, "LFPG", error) && SubmittedCommands.size() == beforeLinked,
+		"clicking the published Linked selection does not toggle opposing");
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgUnlinked, "LFPG", error) && SubmittedCommand == ".vsid rule LFPG opposing",
+		"changing link state uses only the opposing rule");
+	completeCommand();
+	Published[4].text = "LFPG=?UM;";
+	++Revision;
+	poll();
+	state = VsmrVsid::GetInterfaceState("LFPG");
+	check(state.paris && state.paris->linked == false && state.lastSubmittedLfpgTaxiMode == VsmrVsid::LfpgTaxiMode::GroundCrossing,
+		"published Unlinked does not change the taxi-row highlight");
+	const auto beforeUnlinked = SubmittedCommands.size();
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgUnlinked, "LFPG", error) && SubmittedCommands.size() == beforeUnlinked,
+		"clicking the published Unlinked selection does not toggle opposing");
+	for (int repeat = 0; repeat < 2; ++repeat)
+	{
+		const auto first = SubmittedCommands.size();
+		check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgMinimumTaxiing, "LFPG", error) && SubmittedCommand == ".vsid area LFPG OFF",
+			"each Minimum Taxiing request first resets areas to avoid inverting an existing selection");
+		check(!VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgLinked, "LFPG", error) && SubmittedCommands.size() == first + 1U,
+			"another command cannot interleave the pending area sequence");
+		poll();
+		check(SubmittedCommands.size() == first + 1U,
+			"a pending command never advances or retries its sequence");
+		completeCommand();
+		check(SubmittedCommand == ".vsid area LFPG NORTH" && !VsmrVsid::GetInterfaceState("LFPG").lastSubmittedLfpgTaxiMode,
+			"NORTH is enabled only after OFF is consumed, without prematurely highlighting Minimum Taxiing");
+		completeCommand();
+		check(SubmittedCommand == ".vsid area LFPG SOUTH" && VsmrVsid::GetInterfaceState("LFPG").commandLineBusy,
+			"SOUTH follows NORTH and keeps the sequence busy until consumed");
+		completeCommand();
+		state = VsmrVsid::GetInterfaceState("LFPG");
+		check(state.paris && state.paris->linked == false && state.lastSubmittedLfpgTaxiMode == VsmrVsid::LfpgTaxiMode::MinimumTaxiing && !state.commandLineBusy,
+			"completed Minimum Taxiing preserves Unlinked and records only a local command selection");
+	}
+	Published[4].text = "LFPG=?LM;";
+	++Revision;
+	poll();
+	check(VsmrVsid::GetInterfaceState("LFPG").lastSubmittedLfpgTaxiMode == VsmrVsid::LfpgTaxiMode::MinimumTaxiing,
+		"returning to Linked preserves the Minimum Taxiing highlight");
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgMinimumTaxiing, "LFPG", error), "start ambiguous-delivery test");
+	const auto beforeAmbiguous = SubmittedCommands.size();
+	SubmissionResult = VsmrEuroScopeCommandLine::SubmissionStatus::Ambiguous;
+	poll();
+	poll();
+	state = VsmrVsid::GetInterfaceState("LFPG");
+	check(!state.lastSubmittedLfpgTaxiMode && !state.commandLineBusy && SubmittedCommands.size() == beforeAmbiguous,
+		"ambiguous area delivery aborts without retrying toggles or claiming a selection");
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgMinimumTaxiing, "LFPG", error), "start failed-followup test");
+	AcceptCommand = false;
+	completeCommand();
+	AcceptCommand = true;
+	check(!VsmrVsid::GetInterfaceState("LFPG").commandLineBusy && !VsmrVsid::GetInterfaceState("LFPG").lastSubmittedLfpgTaxiMode,
+		"failed followup stops the sequence with no completed taxi selection");
 	Published[4].text = "malformed";
 	++Revision;
 	poll();
@@ -196,8 +282,24 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 	state = VsmrVsid::GetInterfaceState("LFPG");
 	check(state.providerReady && !state.parisCommandsAvailable && !state.regionalCommandsAvailable && !state.paris,
 		"older vSID providers retain aircraft data without unsupported Paris controls");
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgGroundCrossing, "LFPG", error) && SubmittedCommand == ".vsid area LFPG OFF",
+		"native LFPG area commands work even without companion Paris support");
+	completeCommand();
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgLinked, "LFPG", error) && SubmittedCommand == ".vsid rule LFPG opposing",
+		"native LFPG link command works without companion Paris support and leaves selection unknown");
+	completeCommand();
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::ReloadConfiguration, "LFPG", error), "reload remains available");
+	check(!VsmrVsid::GetInterfaceState("LFPG").lastSubmittedLfpgTaxiMode,
+		"reload clears the remembered taxi command because config may change area defaults");
+	completeCommand();
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgMinimumTaxiing, "LFPG", error), "start provider-loss test");
+	const auto beforeUnload = SubmittedCommands.size();
 	Providers.erase("vsid");
+	SubmissionResult = VsmrEuroScopeCommandLine::SubmissionStatus::Confirmed;
 	poll();
+	check(SubmittedCommands.size() == beforeUnload && !VsmrVsid::GetInterfaceState("LFPG").lastSubmittedLfpgTaxiMode &&
+		!VsmrVsid::GetInterfaceState("LFPG").commandLineBusy,
+		"provider loss cancels remaining area toggles before dispatch and clears local selection");
 	check(!VsmrVsid::TryGetAircraftData("AFR123", vsid) && VsmrRampAgent::TryGetAircraftData("AFR123", ramp) && VsmrCdm::TryGetAircraftData("AFR123", cdm),
 		"unloading vSID clears only its provider snapshot");
 	Providers["vsid"] = 3U;
