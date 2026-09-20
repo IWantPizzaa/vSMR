@@ -25,6 +25,8 @@
 - Made `ready_startup` invoke CDM's authoritative Ready Start-up toggle when clicked, and added a Ready aircraft requirement to display modes.
 - Added the Ramp Agent interface through EuroScope Plugin Bridge. The `uk_stand` and `remark` tag tokens now show Ramp Agent's `rampagent/stand` and `rampagent/remark` values.
 
+- Added synchronization of the Line Up ground status between vSMR clients. EuroScope has no status for it, so vSMR writes it as a reserved controller assigned speed (10, in a 10-19 band held for future states) paired with the TAXI ground status, and every client reads the pair back. Line Up takes priority over TAXI while both are set; a controller who picks another ground status from outside vSMR takes the aircraft off Line Up on every client and the reserved value is cleared. An assigned speed outside the band stays a real speed assignment, and the reserved value is also ignored and cleared once the tag turns airborne. EuroScope refuses controller assigned data for an aircraft another controller tracks, so the status is then declined with an explanation instead of being shown locally only.
+
 ### Changed
 
 - Replaced the bundled AVISO set with 160 converter-supplied airport maps. Added LFRJ and removed 33 maps from the previous import. Dark/Light are available everywhere; Real is available at LFML, LFMN, LFPG, and LFPO. Restored LFPG's 89 East arrows and 97 West arrows in two independently selectable groups without changing the imported airport layout or palette styles; the other 159 maps retain their supplied bytes.
