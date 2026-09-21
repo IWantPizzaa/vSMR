@@ -1263,19 +1263,28 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		RefreshSectorMap(performance, setRefreshStage);
 
-		// Map to the rendering window, never to an unrelated active dialog.
-		// An unavailable or covered cursor must not leave the last hover latched.
+		// Keep the SDK's radar coordinate space even with an offscreen render DC.
+		// The worker-refresh host can be a parent frame, so is not a cursor origin.
 		mouseLocation = CPoint(-1000000, -1000000);
 		POINT p = {};
-		const HWND renderWindow = AvisoRefreshHostWindow.load(std::memory_order_acquire);
-		if (renderWindow != nullptr && ::IsWindow(renderWindow) && ::GetCursorPos(&p))
+		if (::GetCursorPos(&p))
 		{
 			const HWND underCursor = ::WindowFromPoint(p);
 			const HWND foreground = ::GetForegroundWindow();
-			if ((underCursor == renderWindow || ::IsChild(renderWindow, underCursor)) &&
-				foreground != nullptr && ::GetAncestor(foreground, GA_ROOT) == ::GetAncestor(renderWindow, GA_ROOT) &&
-				::ScreenToClient(renderWindow, &p))
-				mouseLocation = p;
+			POINT radarPoint{};
+			if (TagHoverPointer.Resolve(p, underCursor, foreground, radarPoint))
+				mouseLocation = radarPoint;
+			else if (TagHoverPointer.Window() == nullptr)
+			{
+				// Before the first SDK hover event, only a real window DC has a
+				// known origin. Never substitute GetActiveWindow for a memory DC.
+				const HWND renderWindow = ::WindowFromDC(hDC);
+				if (renderWindow != nullptr &&
+					(underCursor == renderWindow || ::IsChild(renderWindow, underCursor)) &&
+					foreground != nullptr && ::GetAncestor(foreground, GA_ROOT) == ::GetAncestor(renderWindow, GA_ROOT) &&
+					::ScreenToClient(renderWindow, &p))
+					mouseLocation = p;
+			}
 		}
 		// EuroScope may miss the release callback when capture or the target is lost.
 		if ((::GetAsyncKeyState(VK_LBUTTON) & 0x8000) == 0)
