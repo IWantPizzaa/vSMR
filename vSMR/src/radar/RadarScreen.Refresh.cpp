@@ -1207,6 +1207,19 @@ void CSMRRadar::RenderRefreshTagsAndRdf(
 	if (!rdfMainArea.IsRectEmpty())
 	{
 		const double perfRdfStartMs = RefreshPerfNowMs();
+		std::vector<RECT> rdfOcclusions;
+		for (const auto& display : appWindowDisplays)
+		{
+			if (!display.second)
+				continue;
+			const auto inset = appWindows.find(display.first);
+			if (inset != appWindows.end() && inset->second != nullptr)
+			{
+				const CRect frame = inset->second->GetWindowFrameRect();
+				if (!frame.IsRectEmpty())
+					rdfOcclusions.push_back(frame);
+			}
+		}
 		VsmrRdf::Draw(
 			hDC,
 			this,
@@ -1214,7 +1227,7 @@ void CSMRRadar::RenderRefreshTagsAndRdf(
 			[this](const CPosition& position) -> POINT
 			{
 				return ConvertCoordFromPositionToPixel(position);
-			});
+			}, false, rdfOcclusions);
 		performance.rdfMilliseconds += RefreshPerfNowMs() - perfRdfStartMs;
 	}
 
