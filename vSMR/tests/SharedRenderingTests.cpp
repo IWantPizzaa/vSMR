@@ -7,6 +7,7 @@
 #include "rendering/TagRenderer.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
 #include "rendering/DisplayScale.hpp"
+#include "radar/RadarHoverPointer.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -22,6 +23,62 @@ namespace
 	{
 		if (!condition)
 			failures.emplace_back(message);
+	}
+
+	void TestRadarHoverPointer(std::vector<std::string>& failures)
+	{
+		using namespace VsmrRadarInteraction;
+		Check(NeedsHoverRefresh(WM_MOUSEMOVE, false),
+			"mouse movement refreshes before any tag is detailed", failures);
+		Check(NeedsHoverRefresh(WM_MOUSELEAVE, true) &&
+			NeedsHoverRefresh(WM_LBUTTONUP, true) &&
+			NeedsHoverRefresh(WM_KILLFOCUS, true),
+			"leaving, releasing or losing focus refreshes expanded tags", failures);
+		Check(!NeedsHoverRefresh(WM_MOUSELEAVE, false),
+			"leaving without detailed tags needs no extra refresh", failures);
+
+		// Hidden native windows exercise real ScreenToClient transforms without
+		// moving the user's cursor or taking focus from their applications.
+		HWND frame = ::CreateWindowExW(0, L"STATIC", L"Hover test", WS_POPUP,
+			120, 140, 800, 600, nullptr, nullptr, nullptr, nullptr);
+		HWND view = ::CreateWindowExW(0, L"STATIC", L"Radar", WS_CHILD,
+			35, 65, 600, 400, frame, nullptr, nullptr, nullptr);
+		HWND sibling = ::CreateWindowExW(0, L"STATIC", L"Other view", WS_CHILD,
+			650, 65, 100, 400, frame, nullptr, nullptr, nullptr);
+		HWND otherFrame = ::CreateWindowExW(0, L"STATIC", L"Other application", WS_POPUP,
+			0, 0, 100, 100, nullptr, nullptr, nullptr, nullptr);
+		Check(frame && view && sibling && otherFrame, "hover test windows created", failures);
+		if (frame && view && sibling && otherFrame)
+		{
+			HoverPointer pointer;
+			POINT screenPoint{ 90, 110 };
+			::ClientToScreen(view, &screenPoint);
+			POINT result{};
+			Check(!pointer.Resolve(screenPoint, view, frame, result),
+				"uninitialized hover does not guess a frame coordinate origin", failures);
+			Check(pointer.Observe(view, screenPoint, { 100, 130 }) &&
+				pointer.Resolve(screenPoint, view, frame, result) && result.x == 100 && result.y == 130,
+				"hover preserves SDK coordinates inside an offset radar child window", failures);
+			screenPoint.x += 15;
+			screenPoint.y += 20;
+			Check(pointer.Resolve(screenPoint, view, frame, result) && result.x == 115 && result.y == 150,
+				"live pointer motion updates tag coordinates without a drag", failures);
+			::SetWindowPos(frame, nullptr, 240, 280, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+			screenPoint = { 90, 110 };
+			::ClientToScreen(view, &screenPoint);
+			Check(pointer.Resolve(screenPoint, view, frame, result) && result.x == 100 && result.y == 130,
+				"moving the frame preserves the calibrated radar origin", failures);
+			Check(!pointer.Resolve(screenPoint, sibling, frame, result) &&
+				!pointer.Resolve(screenPoint, otherFrame, frame, result) &&
+				!pointer.Resolve(screenPoint, view, otherFrame, result) &&
+				!pointer.Resolve(screenPoint, nullptr, frame, result),
+				"other views, covered radar and focus loss cannot retain hover", failures);
+			::DestroyWindow(view);
+			Check(!pointer.Resolve(screenPoint, view, frame, result),
+				"destroyed radar window cannot retain hover", failures);
+		}
+		if (frame) ::DestroyWindow(frame);
+		if (otherFrame) ::DestroyWindow(otherFrame);
 	}
 
 	int Width(const RECT& rect)
@@ -572,6 +629,7 @@ namespace
 std::vector<std::string> RunSharedRenderingBehaviorTests()
 {
 	std::vector<std::string> failures;
+	TestRadarHoverPointer(failures);
 	TestAvisoRasterBlitPlanning(failures);
 	Gdiplus::GdiplusStartupInput input;
 	ULONG_PTR token = 0;
