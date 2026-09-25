@@ -232,7 +232,7 @@ namespace
 					Expect(group["visible"].GetBool(), "LFPG arrow groups are available and initially visible");
 				}
 				Expect(east && west, "LFPG exposes East Arrows and West Arrows separately");
-				Expect(model.FeatureCount() == 1654U, "LFPG retains 1468 supplied features plus 186 restored arrows");
+				Expect(model.FeatureCount() == 1474U, "LFPG retains 1468 supplied features plus six grouped arrow features");
 				int eastArrows = 0, westArrows = 0, ungroupedFeatures = 0;
 				for (const auto& feature : document["features"].GetArray())
 				{
@@ -243,12 +243,16 @@ namespace
 					Expect(properties.HasMember("geometry_role") &&
 						std::string(properties["geometry_role"].GetString()) == "directional_arrows",
 						"LFPG arrow groups do not hide unrelated airport geometry");
+					const auto& geometry = feature["geometry"];
+					const bool multiLine = std::string(geometry["type"].GetString()) == "MultiLineString";
+					Expect(multiLine, "LFPG arrows use the updated grouped MultiLineString geometry");
+					const int arrowCount = multiLine ? static_cast<int>(geometry["coordinates"].Size()) : 1;
 					for (const auto& group : groups.GetArray())
 					{
 						const std::string id = group.GetString();
 						Expect(id == "ground-layout-east" || id == "ground-layout-west", "LFPG arrow membership is valid");
-						if (id == "ground-layout-east") ++eastArrows;
-						if (id == "ground-layout-west") ++westArrows;
+						if (id == "ground-layout-east") eastArrows += arrowCount;
+						if (id == "ground-layout-west") westArrows += arrowCount;
 					}
 				}
 				Expect(eastArrows == 89 && westArrows == 97 && ungroupedFeatures == 1468,
