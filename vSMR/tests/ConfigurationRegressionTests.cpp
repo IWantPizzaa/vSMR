@@ -222,16 +222,41 @@ namespace
 					"Every palette uses the same sector-pack geometry: " + airport);
 			if (airport == "LFPG")
 			{
-				// The final beta 6 converter import intentionally has no optional groups.
-				// Keep validating the supplied geometry instead of restoring old map data.
-				Expect(document["vsmr_groups"].Empty(), "LFPG preserves the supplied empty group list");
-				Expect(model.FeatureCount() == 1468U, "LFPG preserves all 1468 supplied features");
+				bool east = false, west = false;
+				Expect(document["vsmr_groups"].Size() == 2U, "LFPG has two independent arrow groups");
+				for (const auto& group : document["vsmr_groups"].GetArray())
+				{
+					const std::string id = group["id"].GetString();
+					east = east || id == "ground-layout-east";
+					west = west || id == "ground-layout-west";
+					Expect(group["visible"].GetBool(), "LFPG arrow groups are available and initially visible");
+				}
+				Expect(east && west, "LFPG exposes East Arrows and West Arrows separately");
+				Expect(model.FeatureCount() == 1474U, "LFPG retains 1468 supplied features plus six grouped arrow features");
+				int eastArrows = 0, westArrows = 0, ungroupedFeatures = 0;
 				for (const auto& feature : document["features"].GetArray())
 				{
 					const auto& properties = feature["properties"];
-					Expect(properties["vsmr_group_ids"].Empty(),
-						"LFPG supplied features do not reference removed groups");
+					const auto& groups = properties["vsmr_group_ids"];
+					if (groups.Empty()) { ++ungroupedFeatures; continue; }
+					Expect(groups.Size() == 1U, "Each LFPG arrow belongs to only one direction group");
+					Expect(properties.HasMember("geometry_role") &&
+						std::string(properties["geometry_role"].GetString()) == "directional_arrows",
+						"LFPG arrow groups do not hide unrelated airport geometry");
+					const auto& geometry = feature["geometry"];
+					const bool multiLine = std::string(geometry["type"].GetString()) == "MultiLineString";
+					Expect(multiLine, "LFPG arrows use the updated grouped MultiLineString geometry");
+					const int arrowCount = multiLine ? static_cast<int>(geometry["coordinates"].Size()) : 1;
+					for (const auto& group : groups.GetArray())
+					{
+						const std::string id = group.GetString();
+						Expect(id == "ground-layout-east" || id == "ground-layout-west", "LFPG arrow membership is valid");
+						if (id == "ground-layout-east") eastArrows += arrowCount;
+						if (id == "ground-layout-west") westArrows += arrowCount;
+					}
 				}
+				Expect(eastArrows == 89 && westArrows == 97 && ungroupedFeatures == 1468,
+					"LFPG preserves the original East/West arrow sets and ungrouped airport layout");
 				bool grassPaletteFound = false;
 				for (auto style = document["styles"].MemberBegin(); style != document["styles"].MemberEnd(); ++style)
 				{

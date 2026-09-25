@@ -2,6 +2,7 @@
 #include "shared/JsonDocument.hpp"
 
 #include "rdf/RdfOverlay.hpp"
+#include "rdf/RdfGeometry.hpp"
 
 #include "shared/logging/Logger.hpp"
 #include "radar/RadarScreen.hpp"
@@ -646,11 +647,6 @@ namespace
 		return service;
 	}
 
-	bool PointInside(const POINT& point, const RECT& viewport)
-	{
-		return point.x >= viewport.left && point.x <= viewport.right &&
-			point.y >= viewport.top && point.y <= viewport.bottom;
-	}
 }
 
 namespace VsmrRdf
@@ -685,7 +681,8 @@ namespace VsmrRdf
 		CSMRRadar* radar,
 		const RECT& viewport,
 		const Projector& projector,
-		bool airborneOnly)
+		bool airborneOnly,
+		const std::vector<RECT>& occlusions)
 	{
 		if (dc == nullptr || radar == nullptr || !projector ||
 			viewport.right <= viewport.left || viewport.bottom <= viewport.top)
@@ -736,6 +733,9 @@ namespace VsmrRdf
 
 		if (positions.empty())
 			return;
+		const std::vector<RECT> visibleAreas = VisibleAreas(viewport, occlusions);
+		if (visibleAreas.empty())
+			return;
 
 		const int savedDc = ::SaveDC(dc);
 		if (savedDc == 0)
@@ -751,6 +751,15 @@ namespace VsmrRdf
 			return;
 		}
 
+		for (const RECT& cover : occlusions)
+		{
+			if (::ExcludeClipRect(dc, cover.left, cover.top, cover.right, cover.bottom) == ERROR)
+			{
+				::RestoreDC(dc, savedDc);
+				return;
+			}
+		}
+
 		const COLORREF color = positions.size() > 1
 			? RGB(255, 0, 0)
 			: RGB(255, 255, 255);
@@ -763,13 +772,10 @@ namespace VsmrRdf
 
 		::SelectObject(dc, pen);
 		::SelectObject(dc, ::GetStockObject(HOLLOW_BRUSH));
-		const POINT center = {
-			viewport.left + (viewport.right - viewport.left) / 2,
-			viewport.top + (viewport.bottom - viewport.top) / 2
-		};
+		const POINT center = DirectionOrigin(viewport, visibleAreas);
 		for (const POINT& position : positions)
 		{
-			if (PointInside(position, viewport))
+			if (IsVisible(position, visibleAreas))
 			{
 				::Ellipse(
 					dc,
