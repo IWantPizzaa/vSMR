@@ -324,8 +324,11 @@
     <ClInclude Include="src\plugin\PluginMetadata.hpp" />
     <ClInclude Include="src\plugin\Plugin.RuntimeState.hpp" />
     <ClInclude Include="src\plugin\PluginRuntimeAudio.hpp" />
+    <ClInclude Include="src\plugin\PluginRuntimeAudio.Internal.hpp" />
     <ClInclude Include="src\rendering\TagRenderer.hpp" />
     <ClInclude Include="src\rendering\DisplayScale.hpp" />
+    <ClInclude Include="src\radar\RadarHoverPointer.hpp" />
+    <ClInclude Include="src\rdf\RdfGeometry.hpp" />
     <ClInclude Include="src\rendering\TargetSymbolRenderer.hpp" />
     <ClInclude Include="src\radar\RadarGeometry.hpp" />
     <ClInclude Include="src\radar\RadarScreen.hpp" />

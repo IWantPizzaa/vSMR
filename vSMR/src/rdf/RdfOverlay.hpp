@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <vector>
 
 class CSMRPlugin;
 class CSMRRadar;
@@ -31,10 +32,13 @@ namespace VsmrRdf
 
 	// Resolves transmitting callsigns from the radar's immutable frame scene and
 	// draws into the supplied viewport using that viewport's projector.
+	// Occlusions are opaque overlays in the same coordinate space (main-view
+	// inset frames). Hidden transmitters use a direction line instead of a ring.
 	void Draw(
 		HDC dc,
 		CSMRRadar* radar,
 		const RECT& viewport,
 		const Projector& projector,
-		bool airborneOnly = false);
+		bool airborneOnly = false,
+		const std::vector<RECT>& occlusions = {});
 }
