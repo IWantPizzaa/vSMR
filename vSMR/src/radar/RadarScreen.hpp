@@ -15,6 +15,7 @@
 #include <math.h>
 #include "radar/RadarScreenTypes.hpp"
 #include "radar/RadarUiSupport.hpp"
+#include "radar/RadarHoverPointer.hpp"
 #include "aircraft/CallsignLookup.hpp"
 #include "config/RuntimeConfig.hpp"
 #include "diagnostics/PerformanceDiagnostics.hpp"
@@ -203,6 +204,7 @@ private:
 	double AvisoGeoJsonMaxLatitude = 0.0;
 	std::unique_ptr<VsmrAviso::AvisoRasterPipeline> AvisoGeoJsonRenderPipeline;
 	std::atomic<HWND> AvisoRefreshHostWindow{ nullptr };
+	VsmrRadarInteraction::HoverPointer TagHoverPointer;
 	std::atomic<bool> ShutdownRequested{ false };
 	std::atomic<bool> AvisoGeoJsonRenderStop{ false };
 	bool AvisoGeoJsonScrollSelected = false;

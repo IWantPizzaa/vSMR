@@ -12,6 +12,8 @@ extern HCURSOR smrCursor;
 extern bool standardCursor;
 extern bool customCursor;
 
+void EnsureInsetWindowProcHook(HWND hwnd, CSMRRadar* radarScreen);
+
 // Anonymous interaction helpers cannot be friended directly. This named shim
 // exposes only the state needed for hit-testing and viewport selection within
 // this translation unit.
@@ -705,6 +707,16 @@ void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT
 	UNREFERENCED_PARAMETER(Area);
 	UNREFERENCED_PARAMETER(sObjectId);
 	mouseLocation = Pt;
+	// Use the mouse message's position, not a later GetCursorPos sample: Pt and
+	// the native point must describe the same event even during rapid movement.
+	const DWORD messagePosition = ::GetMessagePos();
+	const POINT screenPoint = {
+		static_cast<short>(LOWORD(messagePosition)),
+		static_cast<short>(HIWORD(messagePosition)) };
+	const HWND viewWindow = ::WindowFromPoint(screenPoint);
+	if (::GetWindowThreadProcessId(viewWindow, nullptr) == ::GetCurrentThreadId() &&
+		TagHoverPointer.Observe(viewWindow, screenPoint, Pt))
+		EnsureInsetWindowProcHook(viewWindow, this);
 	MarkPerformanceRefreshReason(
 		VsmrPerformance::FrameRefreshReason::Hover);
 	CInsetWindow* activeWindowInteraction = ActiveInsetWindowInteraction(this);

@@ -7,6 +7,8 @@
 #include "rendering/TagRenderer.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
 #include "rendering/DisplayScale.hpp"
+#include "radar/RadarHoverPointer.hpp"
+#include "rdf/RdfGeometry.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -22,6 +24,114 @@ namespace
 	{
 		if (!condition)
 			failures.emplace_back(message);
+	}
+
+	void TestRdfInsetOcclusion(std::vector<std::string>& failures)
+	{
+		using namespace VsmrRdf;
+		const RECT viewport{ 10, 20, 210, 180 };
+		const auto unobscured = VisibleAreas(viewport, {});
+		Check(IsVisible({ 100, 80 }, unobscured) && !IsVisible({ 250, 80 }, unobscured),
+			"RDF uses rings for visible targets and lines for offscreen targets", failures);
+		const POINT usualOrigin = DirectionOrigin(viewport, unobscured);
+		Check(usualOrigin.x == 110 && usualOrigin.y == 100,
+			"RDF without insets retains the viewport-center line origin", failures);
+
+		const RECT floatingFrame{ 140, 35, 200, 140 };
+		const auto floating = VisibleAreas(viewport, { floatingFrame });
+		Check(!IsVisible({ 160, 80 }, floating) && IsVisible({ 130, 80 }, floating),
+			"RDF switches from ring to direction line for a target under a floating inset", failures);
+		Check(!IsVisible({ 150, 36 }, floating),
+			"inset title bars and borders also occlude the main-view RDF target", failures);
+		Check(IsVisible({ 200, 80 }, floating) && !IsVisible({ 210, 80 }, floating),
+			"RDF rectangle edges follow the same half-open bounds as native clipping", failures);
+		const POINT floatingOrigin = DirectionOrigin(viewport, floating);
+		Check(floatingOrigin.x == usualOrigin.x && floatingOrigin.y == usualOrigin.y,
+			"a floating inset does not move an unobscured RDF line origin", failures);
+		Check(IsVisible({ 160, 80 }, VisibleAreas(viewport, {})),
+			"closing or hiding an inset restores the main-view RDF ring", failures);
+
+		const std::vector<RECT> covers{
+			{ 70, 60, 160, 150 }, { 120, 40, 230, 120 }, { -50, -50, 30, 40 }
+		};
+		const auto overlapping = VisibleAreas(viewport, covers);
+		const POINT relocatedOrigin = DirectionOrigin(viewport, overlapping);
+		Check(IsVisible(relocatedOrigin, overlapping) && !IsVisible(usualOrigin, overlapping),
+			"RDF moves its direction-line origin into visible radar when the center is covered", failures);
+		bool matchesOcclusionUnion = true;
+		for (LONG y = 10; y <= 190; ++y)
+			for (LONG x = 0; x <= 220; ++x)
+			{
+				const POINT point{ x, y };
+				const bool expected = Contains(viewport, point) &&
+					std::none_of(covers.begin(), covers.end(),
+						[point](const RECT& cover) { return Contains(cover, point); });
+				matchesOcclusionUnion = matchesOcclusionUnion && (IsVisible(point, overlapping) == expected);
+			}
+		Check(matchesOcclusionUnion,
+			"overlapping and partially offscreen inset frames preserve every uncovered radar pixel", failures);
+		Check(VisibleAreas(viewport, { viewport }).empty() &&
+			VisibleAreas({ 0, 0, 0, 0 }, {}).empty(),
+			"fully covered or empty radar areas produce no RDF marker", failures);
+		const auto offscreen = VisibleAreas(viewport, { { 300, 300, 400, 400 } });
+		Check(offscreen.size() == 1 && IsVisible(usualOrigin, offscreen),
+			"an inset outside the main viewport does not change RDF visibility", failures);
+	}
+
+	void TestRadarHoverPointer(std::vector<std::string>& failures)
+	{
+		using namespace VsmrRadarInteraction;
+		Check(NeedsHoverRefresh(WM_MOUSEMOVE, false),
+			"mouse movement refreshes before any tag is detailed", failures);
+		Check(NeedsHoverRefresh(WM_MOUSELEAVE, true) &&
+			NeedsHoverRefresh(WM_LBUTTONUP, true) &&
+			NeedsHoverRefresh(WM_KILLFOCUS, true),
+			"leaving, releasing or losing focus refreshes expanded tags", failures);
+		Check(!NeedsHoverRefresh(WM_MOUSELEAVE, false),
+			"leaving without detailed tags needs no extra refresh", failures);
+
+		// Hidden native windows exercise real ScreenToClient transforms without
+		// moving the user's cursor or taking focus from their applications.
+		HWND frame = ::CreateWindowExW(0, L"STATIC", L"Hover test", WS_POPUP,
+			120, 140, 800, 600, nullptr, nullptr, nullptr, nullptr);
+		HWND view = ::CreateWindowExW(0, L"STATIC", L"Radar", WS_CHILD,
+			35, 65, 600, 400, frame, nullptr, nullptr, nullptr);
+		HWND sibling = ::CreateWindowExW(0, L"STATIC", L"Other view", WS_CHILD,
+			650, 65, 100, 400, frame, nullptr, nullptr, nullptr);
+		HWND otherFrame = ::CreateWindowExW(0, L"STATIC", L"Other application", WS_POPUP,
+			0, 0, 100, 100, nullptr, nullptr, nullptr, nullptr);
+		Check(frame && view && sibling && otherFrame, "hover test windows created", failures);
+		if (frame && view && sibling && otherFrame)
+		{
+			HoverPointer pointer;
+			POINT screenPoint{ 90, 110 };
+			::ClientToScreen(view, &screenPoint);
+			POINT result{};
+			Check(!pointer.Resolve(screenPoint, view, frame, result),
+				"uninitialized hover does not guess a frame coordinate origin", failures);
+			Check(pointer.Observe(view, screenPoint, { 100, 130 }) &&
+				pointer.Resolve(screenPoint, view, frame, result) && result.x == 100 && result.y == 130,
+				"hover preserves SDK coordinates inside an offset radar child window", failures);
+			screenPoint.x += 15;
+			screenPoint.y += 20;
+			Check(pointer.Resolve(screenPoint, view, frame, result) && result.x == 115 && result.y == 150,
+				"live pointer motion updates tag coordinates without a drag", failures);
+			::SetWindowPos(frame, nullptr, 240, 280, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+			screenPoint = { 90, 110 };
+			::ClientToScreen(view, &screenPoint);
+			Check(pointer.Resolve(screenPoint, view, frame, result) && result.x == 100 && result.y == 130,
+				"moving the frame preserves the calibrated radar origin", failures);
+			Check(!pointer.Resolve(screenPoint, sibling, frame, result) &&
+				!pointer.Resolve(screenPoint, otherFrame, frame, result) &&
+				!pointer.Resolve(screenPoint, view, otherFrame, result) &&
+				!pointer.Resolve(screenPoint, nullptr, frame, result),
+				"other views, covered radar and focus loss cannot retain hover", failures);
+			::DestroyWindow(view);
+			Check(!pointer.Resolve(screenPoint, view, frame, result),
+				"destroyed radar window cannot retain hover", failures);
+		}
+		if (frame) ::DestroyWindow(frame);
+		if (otherFrame) ::DestroyWindow(otherFrame);
 	}
 
 	int Width(const RECT& rect)
@@ -572,6 +682,8 @@ namespace
 std::vector<std::string> RunSharedRenderingBehaviorTests()
 {
 	std::vector<std::string> failures;
+	TestRadarHoverPointer(failures);
+	TestRdfInsetOcclusion(failures);
 	TestAvisoRasterBlitPlanning(failures);
 	Gdiplus::GdiplusStartupInput input;
 	ULONG_PTR token = 0;

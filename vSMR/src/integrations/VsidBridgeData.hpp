@@ -8,8 +8,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace VsmrVsid
 {
@@ -51,6 +53,19 @@ namespace VsmrVsid
 		Synchronize,
 		ReloadConfiguration
 	};
+
+	enum class LfpgTaxiMode { MinimumTaxiing, GroundCrossing };
+
+	inline bool IsLfpgTaxiAction(CommandAction action) noexcept
+	{
+		return action == CommandAction::LfpgMinimumTaxiing || action == CommandAction::LfpgGroundCrossing;
+	}
+
+	inline bool IsLfpgTaxiActionSelected(CommandAction action, std::optional<LfpgTaxiMode> lastSubmitted) noexcept
+	{
+		return (action == CommandAction::LfpgMinimumTaxiing && lastSubmitted == LfpgTaxiMode::MinimumTaxiing) ||
+			(action == CommandAction::LfpgGroundCrossing && lastSubmitted == LfpgTaxiMode::GroundCrossing);
+	}
 
 	struct AircraftData
 	{
@@ -191,11 +206,12 @@ namespace VsmrVsid
 		case CommandAction::LfpgMinimumTaxiing:
 		case CommandAction::LfpgGroundCrossing:
 			return normalizedAirport == "LFPG"
-				? std::string(".vsid paris LFPG ") + (action == CommandAction::LfpgMinimumTaxiing ? "linked" : "unlinked")
+				? ".vsid area LFPG OFF"
 				: std::string();
 		case CommandAction::LfpgLinked:
 		case CommandAction::LfpgUnlinked:
-			return (normalizedAirport == "LFPG" || normalizedAirport == "LFPO")
+			if (normalizedAirport == "LFPG") return ".vsid rule LFPG opposing";
+			return normalizedAirport == "LFPO"
 				? ".vsid paris " + normalizedAirport + " " + (action == CommandAction::LfpgLinked ? "linked" : "unlinked")
 				: std::string();
 		case CommandAction::Synchronize:
@@ -213,6 +229,17 @@ namespace VsmrVsid
 		default:
 			return {};
 		}
+	}
+
+	// Area names are independent geographic toggles, not names of taxi modes.
+	// Start from OFF so Minimum Taxiing is repeatable regardless of current state.
+	inline std::vector<std::string> BuildCommandSequence(CommandAction action, std::string_view airport)
+	{
+		const auto first = BuildCommand(action, airport);
+		if (first.empty()) return {};
+		if (action == CommandAction::LfpgMinimumTaxiing)
+			return { first, ".vsid area LFPG NORTH", ".vsid area LFPG SOUTH" };
+		return { first };
 	}
 
 	struct RuntimeActionDefinition
@@ -239,10 +266,10 @@ namespace VsmrVsid
 	inline constexpr std::array<RuntimeActionDefinition, 2> LfpgModeActions = { {
 		{ CommandAction::LfpgMinimumTaxiing,
 			"runtime.vsid.lfpg-minimum-taxiing", "Minimum Taxiing",
-			"LFPG Minimum Taxiing mode (Roulage Mini)" },
+			"Enable LFPG NORTH and SOUTH areas (Minimum Taxiing). Highlight = last command sent by vSMR, not live vSID status." },
 		{ CommandAction::LfpgGroundCrossing,
 			"runtime.vsid.lfpg-ground-crossing", "Ground Crossing",
-			"LFPG Ground Crossing mode (Croisement au sol)" }
+			"Disable LFPG areas (Ground Crossing). Highlight = last command sent by vSMR, not live vSID status." }
 	} };
 
 	inline constexpr std::array<RuntimeActionDefinition, 2> LfpgLinkActions = { {

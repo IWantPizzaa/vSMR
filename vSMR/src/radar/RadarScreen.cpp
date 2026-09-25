@@ -1033,7 +1033,8 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 		const auto radarIt = gInsetWindowRadarScreens.find(hwnd);
 		if (radarIt != gInsetWindowRadarScreens.end())
 			for (CSMRRadar* radar : radarIt->second)
-				if (radar != nullptr && !radar->IsShutdownRequested() && radar->HasDetailedTags())
+				if (radar != nullptr && !radar->IsShutdownRequested() &&
+					VsmrRadarInteraction::NeedsHoverRefresh(uMsg, radar->HasDetailedTags()))
 				{
 					if (uMsg == WM_CAPTURECHANGED || uMsg == WM_KILLFOCUS)
 						radar->CancelTagDrag();
