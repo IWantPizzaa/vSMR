@@ -24,6 +24,8 @@ namespace VsmrVsid
 		std::size_t aircraftCount = 0U;
 		std::optional<bool> automaticMode;
 		std::optional<VsmrParis::State> paris;
+		// Last completed command sequence, not an authoritative area-state snapshot.
+		std::optional<LfpgTaxiMode> lastSubmittedLfpgTaxiMode;
 	};
 
 	// Polling happens only from EuroScope's timer callback. Rendering reads the

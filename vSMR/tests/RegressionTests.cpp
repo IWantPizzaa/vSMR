@@ -457,25 +457,40 @@ namespace
 		Expect(
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgMinimumTaxiing,
-				"LFPG") == ".vsid paris LFPG linked" &&
+				"LFPG") == ".vsid area LFPG OFF" &&
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgGroundCrossing,
-				"LFPG") == ".vsid paris LFPG unlinked" &&
+				"LFPG") == ".vsid area LFPG OFF" &&
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgGroundCrossing,
 				"LFPO").empty(),
-			"Legacy LFPG actions set explicit states");
+			"LFPG taxi commands use areas, never the opposing rule");
+		Expect(
+			VsmrVsid::BuildCommandSequence(VsmrVsid::CommandAction::LfpgMinimumTaxiing, "lfpg") ==
+				std::vector<std::string>{ ".vsid area LFPG OFF", ".vsid area LFPG NORTH", ".vsid area LFPG SOUTH" } &&
+			VsmrVsid::BuildCommandSequence(VsmrVsid::CommandAction::LfpgGroundCrossing, "LFPG") ==
+				std::vector<std::string>{ ".vsid area LFPG OFF" } &&
+			VsmrVsid::BuildCommandSequence(VsmrVsid::CommandAction::LfpgMinimumTaxiing, "LFPO").empty(),
+			"Minimum Taxiing starts from OFF before enabling both geographic areas; Ground Crossing disables areas");
+		Expect(
+			VsmrVsid::IsLfpgTaxiActionSelected(VsmrVsid::CommandAction::LfpgMinimumTaxiing, VsmrVsid::LfpgTaxiMode::MinimumTaxiing) &&
+			!VsmrVsid::IsLfpgTaxiActionSelected(VsmrVsid::CommandAction::LfpgGroundCrossing, VsmrVsid::LfpgTaxiMode::MinimumTaxiing) &&
+			VsmrVsid::IsLfpgTaxiActionSelected(VsmrVsid::CommandAction::LfpgGroundCrossing, VsmrVsid::LfpgTaxiMode::GroundCrossing) &&
+			!VsmrVsid::IsLfpgTaxiActionSelected(VsmrVsid::CommandAction::LfpgMinimumTaxiing, VsmrVsid::LfpgTaxiMode::GroundCrossing) &&
+			!VsmrVsid::IsLfpgTaxiActionSelected(VsmrVsid::CommandAction::LfpgMinimumTaxiing, std::nullopt) &&
+			!VsmrVsid::IsLfpgTaxiActionSelected(VsmrVsid::CommandAction::LfpgLinked, VsmrVsid::LfpgTaxiMode::MinimumTaxiing),
+			"Taxi row highlights only its own last submitted command, never a link selection");
 		Expect(
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgLinked,
-				"LFPG") == ".vsid paris LFPG linked" &&
+				"LFPG") == ".vsid rule LFPG opposing" &&
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgUnlinked,
-				"LFPG") == ".vsid paris LFPG unlinked" &&
+				"LFPG") == ".vsid rule LFPG opposing" &&
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgLinked,
 				"LFPO") == ".vsid paris LFPO linked",
-			"Link controls set explicit states at LFPG and LFPO");
+			"LFPG link controls toggle opposing; LFPO keeps its existing companion commands");
 		Expect(
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::ReloadConfiguration,

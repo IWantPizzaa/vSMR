@@ -11,6 +11,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <exception>
 #include <limits>
 #include <map>
@@ -66,6 +67,7 @@ namespace
 	std::mutex StateMutex;
 	std::map<std::string, bool> AutomaticModes;
 	std::map<std::string, VsmrParis::State> ParisStates;
+	std::optional<VsmrVsid::LfpgTaxiMode> LastSubmittedLfpgTaxiMode;
 	std::unordered_map<std::string, VsmrVsid::AircraftData> AircraftByCallsign;
 	std::atomic<bool> ParisCommandsAvailable{ false };
 	std::atomic<bool> RegionalCommandsAvailable{ false };
@@ -78,8 +80,24 @@ namespace
 	AttachState LastAttachState = AttachState::NotLoaded;
 	bool LastProviderReady = false;
 
+	// Commands run on the EuroScope thread, one at a time. Never retry a toggle
+	// after ambiguous delivery. Renderers only read the busy flag and last result.
+	std::deque<std::string> PendingAreaCommands;
+	std::optional<VsmrVsid::LfpgTaxiMode> PendingTaxiMode;
+	std::atomic<bool> AreaSequenceActive{ false };
+
+	void ClearAreaSequence()
+	{
+		PendingAreaCommands.clear();
+		PendingTaxiMode.reset();
+		AreaSequenceActive.store(false, std::memory_order_relaxed);
+	}
+
 	bool DisconnectProvider()
 	{
+		if (AreaSequenceActive.load(std::memory_order_relaxed))
+			VsmrEuroScopeCommandLine::Cancel(VsmrEuroScopeCommandLine::Owner::Vsid);
+		ClearAreaSequence();
 		Provider.Reset();
 		ProviderReady.store(false, std::memory_order_relaxed);
 		ParisCommandsAvailable.store(false, std::memory_order_relaxed);
@@ -87,11 +105,12 @@ namespace
 		LastProviderRevision = NoRevision;
 		LastScannedCallsigns.clear();
 		std::lock_guard<std::mutex> guard(StateMutex);
-		if (AircraftByCallsign.empty() && AutomaticModes.empty() && ParisStates.empty())
+		if (AircraftByCallsign.empty() && AutomaticModes.empty() && ParisStates.empty() && !LastSubmittedLfpgTaxiMode)
 			return false;
 		AircraftByCallsign.clear();
 		AutomaticModes.clear();
 		ParisStates.clear();
+		LastSubmittedLfpgTaxiMode.reset();
 		return true;
 	}
 
@@ -126,8 +145,8 @@ namespace
 bool VsmrVsid::Poll(const VsmrPluginBridge::Tick& tick)
 {
 	bool commandStateChanged = false;
-	switch (VsmrEuroScopeCommandLine::Poll(
-		VsmrEuroScopeCommandLine::Owner::Vsid))
+	const auto submission = VsmrEuroScopeCommandLine::Poll(VsmrEuroScopeCommandLine::Owner::Vsid);
+	switch (submission)
 	{
 	case VsmrEuroScopeCommandLine::SubmissionStatus::Confirmed:
 		Logger::info("vSID command consumed by EuroScope");
@@ -158,6 +177,37 @@ bool VsmrVsid::Poll(const VsmrPluginBridge::Tick& tick)
 		if (state != ProviderState::Ready)
 			return finish(DisconnectProvider());
 		ProviderReady.store(true, std::memory_order_relaxed);
+		if (PendingTaxiMode)
+		{
+			if (submission == VsmrEuroScopeCommandLine::SubmissionStatus::Confirmed)
+			{
+				if (PendingAreaCommands.empty())
+				{
+					std::lock_guard<std::mutex> guard(StateMutex);
+					LastSubmittedLfpgTaxiMode = PendingTaxiMode;
+					ClearAreaSequence();
+				}
+				else
+				{
+					std::string error;
+					if (VsmrEuroScopeCommandLine::Begin(VsmrEuroScopeCommandLine::Owner::Vsid,
+						PendingAreaCommands.front(), &error))
+						PendingAreaCommands.pop_front();
+					else
+					{
+						Logger::info("LFPG area sequence stopped: " + error);
+						ClearAreaSequence();
+					}
+				}
+			}
+			else if (submission == VsmrEuroScopeCommandLine::SubmissionStatus::Ambiguous ||
+				submission == VsmrEuroScopeCommandLine::SubmissionStatus::Idle)
+			{
+				Logger::info("LFPG area sequence stopped without retrying; verify areas in vSID.");
+				ClearAreaSequence();
+				commandStateChanged = true;
+			}
+		}
 		const bool parisCommands = SupportsParisCommands(Provider.SchemaMajor(), Provider.SchemaMinor());
 		const bool regionalCommands = SupportsRegionalCommands(Provider.SchemaMajor(), Provider.SchemaMinor());
 		commandStateChanged = (ParisCommandsAvailable.exchange(parisCommands, std::memory_order_relaxed) != parisCommands) || commandStateChanged;
@@ -281,7 +331,7 @@ VsmrVsid::InterfaceState VsmrVsid::GetInterfaceState(const std::string& airport)
 		ProviderReady.load(std::memory_order_relaxed);
 	state.parisCommandsAvailable = state.providerReady && ParisCommandsAvailable.load(std::memory_order_relaxed);
 	state.regionalCommandsAvailable = state.providerReady && RegionalCommandsAvailable.load(std::memory_order_relaxed);
-	state.commandLineBusy = VsmrEuroScopeCommandLine::IsBusy();
+	state.commandLineBusy = VsmrEuroScopeCommandLine::IsBusy() || AreaSequenceActive.load(std::memory_order_relaxed);
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
 		state.aircraftCount = AircraftByCallsign.size();
@@ -290,6 +340,8 @@ VsmrVsid::InterfaceState VsmrVsid::GetInterfaceState(const std::string& airport)
 			state.automaticMode = automatic->second;
 		const auto paris = ParisStates.find(NormalizeAirport(airport));
 		if (state.providerReady && paris != ParisStates.end()) state.paris = paris->second;
+		if (state.providerReady && NormalizeAirport(airport) == "LFPG")
+			state.lastSubmittedLfpgTaxiMode = LastSubmittedLfpgTaxiMode;
 	}
 	return state;
 }
@@ -317,13 +369,20 @@ bool VsmrVsid::SubmitCommand(
 		return false;
 	}
 
-	const std::string command = BuildCommand(action, activeAirport);
-	if (command.empty())
+	if (state.commandLineBusy)
+	{
+		error = "EuroScope is still processing another vSMR command.";
+		return false;
+	}
+	const auto commands = BuildCommandSequence(action, activeAirport);
+	if (commands.empty())
 	{
 		error = "Select a valid four-character airport before using this vSID action.";
 		return false;
 	}
-	if (IsParisAction(action) && !state.parisCommandsAvailable)
+	const bool nativeLfpgAction = NormalizeAirport(activeAirport) == "LFPG" &&
+		(IsLfpgTaxiAction(action) || action == CommandAction::LfpgLinked || action == CommandAction::LfpgUnlinked);
+	if (IsParisAction(action) && !nativeLfpgAction && !state.parisCommandsAvailable)
 	{
 		error = "Paris runway controls require the companion vSID build and airport configuration.";
 		return false;
@@ -333,12 +392,28 @@ bool VsmrVsid::SubmitCommand(
 		error = "Regional configuration buttons require the companion vSID build with bridge schema 1.3.";
 		return false;
 	}
+	// opposing is a toggle: clicking an already published selection is a no-op.
+	if (nativeLfpgAction && state.paris &&
+		((action == CommandAction::LfpgLinked && state.paris->linked == true) ||
+		 (action == CommandAction::LfpgUnlinked && state.paris->linked == false))) return true;
 	if (!VsmrEuroScopeCommandLine::Begin(
 		VsmrEuroScopeCommandLine::Owner::Vsid,
-		command,
+		commands.front(),
 		&error))
 	{
 		return false;
+	}
+	if (IsLfpgTaxiAction(action))
+	{
+		PendingAreaCommands.assign(commands.begin() + 1, commands.end());
+		PendingTaxiMode = action == CommandAction::LfpgMinimumTaxiing
+			? LfpgTaxiMode::MinimumTaxiing : LfpgTaxiMode::GroundCrossing;
+		AreaSequenceActive.store(true, std::memory_order_relaxed);
+	}
+	if (IsLfpgTaxiAction(action) || action == CommandAction::ReloadConfiguration)
+	{
+		std::lock_guard<std::mutex> guard(StateMutex);
+		LastSubmittedLfpgTaxiMode.reset();
 	}
 	return true;
 }
@@ -360,6 +435,7 @@ bool VsmrVsid::TryGetAircraftData(
 
 void VsmrVsid::Shutdown() noexcept
 {
+	ClearAreaSequence();
 	VsmrEuroScopeCommandLine::Cancel(
 		VsmrEuroScopeCommandLine::Owner::Vsid);
 	{
@@ -367,6 +443,7 @@ void VsmrVsid::Shutdown() noexcept
 		AircraftByCallsign.clear();
 		AutomaticModes.clear();
 		ParisStates.clear();
+		LastSubmittedLfpgTaxiMode.reset();
 	}
 	Provider.Reset();
 	Diagnostics.Reset();

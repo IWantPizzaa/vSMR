@@ -3,6 +3,8 @@
 // Used by vSMR.rc
 //
 #define IDC_SMRCURSOR                   104
+#define IDR_TIMER_ALARM_WAVE            105
+#define IDR_CPDLC_DING_WAVE             106
 #define IDD_DIALOG1                     7000
 #define IDD_DIALOG2                     7001
 #define IDC_CALLSIGN                    7004

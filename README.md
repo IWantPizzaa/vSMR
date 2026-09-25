@@ -16,6 +16,7 @@ Current development version: **2.0.0-beta.6** (`dev`). This README describes the
 - Resolution presets for AVISO rendering and aircraft icons/tags, without resizing menus or other UI
 - Automatic RIMCAS runway assignment from EuroScope's active-airport runway selection
 - AVISO, SRW 1, METAR, and Timer inset windows
+- Timer and CPDLC sounds use the files in `vSMR_Data/Audio`, with built-in fallbacks if those files are missing or cannot be played. If alerts remain silent, check the Windows output device and EuroScope's volume/mute setting in the Volume Mixer; vSMR does not override them.
 - CDM bridge integration and Hoppie CPDLC/PDC support
 - Optional vSID bridge data, tag tokens, rules, and Runtime Menu controls
 - Optional Ramp Agent stand and stand remark tag values through the plug-in bridge
@@ -31,7 +32,7 @@ Current development version: **2.0.0-beta.6** (`dev`). This README describes the
 - **Stand data:** `uk_stand` and `remark` come from Ramp Agent through EuroScope Plugin Bridge, not flight strip annotations 3 and 4. Missing providers leave their related values unavailable without disabling the rest of vSMR.
 - **Configuration recovery:** The Control Center has Revert and Bundled defaults. The old Undo/Redo controls and legacy profile `.bak` restoration are no longer available. Keep your own configuration backups.
 
-The current converter-supplied AVISO set contains **160 maps** in [`vSMR/data/AVISO/`](vSMR/data/AVISO/), replacing the previous 192-map set. Maps absent from the replacement set are no longer bundled. Map groups depend on the supplied airport file: the current LFPG file does **not** include the former East/West arrow-control groups. Those map groups are separate from the vSID configuration controls below.
+The current converter-supplied AVISO set contains **160 maps** in [`vSMR/data/AVISO/`](vSMR/data/AVISO/), replacing the previous 192-map set. Maps absent from the replacement set are no longer bundled. LFPG includes restored **East Arrows** and **West Arrows** groups. Those map groups are separate from the vSID configuration controls below.
 
 ## Requirements
 
@@ -42,7 +43,11 @@ The current converter-supplied AVISO set contains **160 maps** in [`vSMR/data/AV
 
 The optional vSID, Ramp Agent, and CDM interfaces require [EuroScope Plugin Bridge](https://github.com/AlexisBalzano/Euroscope-Plugin-Bridge), plus a bridge-enabled [vSID](https://github.com/AlexisBalzano/vSID), [Ramp Agent](https://github.com/AlexisBalzano/EuroscopeRampAgent), or [CDM](https://github.com/IWantPizzaa/CDM) build. Stand and stand remark tag values come only from Ramp Agent through the bridge. Load them separately through EuroScope's plug-in settings; vSMR deliberately does not bundle or load their DLLs. The consumed fields are listed in [EuroScope Plugin Bridge data](https://github.com/IWantPizzaa/vSMR/wiki/Integrations).
 
-[Paris configuration](https://github.com/IWantPizzaa/vSMR/wiki/Paris-vSID-Configuration) requires the companion vSID build and configuration migration. LFPG/LFPO offer manual Linked/Unlinked selections; LFPG also has Minimum Taxiing and Ground Crossing actions. LFPN, LFPV, LFPT, and LFOB offer manual WL/EL/IPGW/IPOW selections. **Auto runways has been removed:** EuroScope runway changes do not select these rules. vSID's separate **Auto mode** for automatic SID assignment remains available. This does not affect RIMCAS, which still follows EuroScope's selected runways automatically.
+[Paris configuration](https://github.com/IWantPizzaa/vSMR/wiki/Paris-vSID-Configuration): LFPG uses existing vSID commands for two independent rows: Linked/Unlinked toggles the `opposing` rule, while Minimum Taxiing/Ground Crossing controls geographic areas. No new companion schema is required for these LFPG actions. LFPO's explicit Linked/Unlinked selections and the LFPN/LFPV/LFPT/LFOB WL/EL/IPGW/IPOW selections still require the companion build and configuration. **Auto runways has been removed:** EuroScope runway changes do not select these rules. vSID's separate **Auto mode** for automatic SID assignment remains available. This does not affect RIMCAS, which still follows EuroScope's selected runways automatically.
+
+For the LFPG configuration with NORTH and SOUTH areas, **Minimum Taxiing** sends `.vsid area LFPG OFF`, then `.vsid area LFPG NORTH`, then `.vsid area LFPG SOUTH`, waiting for each command to be consumed. Resetting first makes repeated clicks enable both areas instead of toggling them off. **Ground Crossing** sends `.vsid area LFPG OFF`. These change no rules. An ambiguous or failed submission stops the sequence without retrying a toggle; inspect vSID's area status before continuing. The taxi-row highlight means **last command sequence sent by vSMR**, not live vSID status, and resets on reload or provider disconnect. Manual commands outside vSMR are not reflected in this highlight. NORTH/SOUTH are geographic areas, not alternate names for the modes.
+
+LFPG Linked/Unlinked sends `.vsid rule LFPG opposing`. If the selected link state is already published by vSID, clicking it does nothing. Without published status, either button acts as the native toggle and neither is highlighted. Changing link state never changes the remembered taxi command, and area commands never change the link selection. No installed vSID DLL or configuration files are modified by these UI actions.
 
 vSMR is a EuroScope plug-in, not a standalone application. WebView2 hosts the local Control Center; internet access is needed for online integrations, updates, and GitHub data imports.
 
@@ -125,7 +130,7 @@ After building the native test executable, run the regression suite independentl
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tests\run_tests.ps1
 ```
 
-Release-input checks enforce matching beta 6 versions, the exact 160-map import, and an update policy that never deletes a bundled airport. LFPG regression expectations match the supplied map's 1,468 features and empty group list; the older East/West arrow groups are not part of this import.
+Release-input checks enforce matching beta 6 versions, the reviewed hashes of all 160 maps, and an update policy that never deletes a bundled airport. LFPG retains the supplied map's 1,468 features plus 89 East arrows and 97 West arrows, independently controlled through the **East Arrows** and **West Arrows** groups. The hash manifest records this post-import restoration.
 
 Publishable artifacts require a clean source commit and verified bundled-asset provenance. Signing is optional; configuring a signing certificate/pin or `-RequireSignature` enforces signed binaries and the matching detached update signature. The packager, binary product versions, and AppVeyor settings target beta 6. Five asset groups still need provenance verification; local validation packages are not distributable releases. See the [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.md).
 
