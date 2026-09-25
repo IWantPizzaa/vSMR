@@ -23,6 +23,10 @@
 LANGUAGE LANG_NEUTRAL, SUBLANG_DEFAULT
 #pragma code_page(1252)
 
+// Built-in fallbacks keep notifications available with missing/broken data files.
+IDR_TIMER_ALARM_WAVE WAVE "../data/Audio/Alarm.wav"
+IDR_CPDLC_DING_WAVE  WAVE "../data/Audio/Ding.wav"
+
 /////////////////////////////////////////////////////////////////////////////
 //
 // Cursor

@@ -16,6 +16,7 @@ Current development version: **2.0.0-beta.6** (`dev`). This README describes the
 - Resolution presets for AVISO rendering and aircraft icons/tags, without resizing menus or other UI
 - Automatic RIMCAS runway assignment from EuroScope's active-airport runway selection
 - AVISO, SRW 1, METAR, and Timer inset windows
+- Timer and CPDLC sounds use the files in `vSMR_Data/Audio`, with built-in fallbacks if those files are missing or cannot be played. If alerts remain silent, check the Windows output device and EuroScope's volume/mute setting in the Volume Mixer; vSMR does not override them.
 - CDM bridge integration and Hoppie CPDLC/PDC support
 - Optional vSID bridge data, tag tokens, rules, and Runtime Menu controls
 - Optional Ramp Agent stand and stand remark tag values through the plug-in bridge

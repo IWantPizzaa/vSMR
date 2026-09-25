@@ -196,6 +196,7 @@
     <ClInclude Include="src\plugin\PluginMetadata.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\plugin\Plugin.RuntimeState.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\plugin\PluginRuntimeAudio.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\plugin\PluginRuntimeAudio.Internal.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\rendering\TagRenderer.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\rendering\DisplayScale.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarHoverPointer.hpp"><Filter>Headers</Filter></ClInclude>
