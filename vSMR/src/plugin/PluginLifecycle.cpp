@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "plugin/Plugin.hpp"
 #include "plugin/Plugin.RuntimeState.hpp"
+#include "plugin/PluginRuntimeAudio.hpp"
 
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
@@ -98,6 +99,7 @@ CSMRPlugin::~CSMRPlugin()
 {
 	// Stopping callbacks and workers before releasing shared state
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
+	VsmrPluginRuntimeAudio::Stop();
 	VsmrGroundState::ClearAllLineupOverrides();
 	VsmrCdm::Shutdown();
 	VsmrRampAgent::Shutdown();
@@ -123,6 +125,7 @@ bool VsmrShutdownPlugin()
 	CSMRPlugin* const pluginInstance = ActivePluginInstance.load(
 		std::memory_order_acquire);
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
+	VsmrPluginRuntimeAudio::Stop();
 	VsmrGroundState::ClearAllLineupOverrides();
 	VsmrCdm::Shutdown();
 	VsmrRampAgent::Shutdown();

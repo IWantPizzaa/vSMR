@@ -1,16 +1,22 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "plugin/PluginRuntimeAudio.hpp"
+#include "plugin/PluginRuntimeAudio.Internal.hpp"
+#include "plugin/Plugin.RuntimeState.hpp"
 
 #include "bootstrap/RuntimeContext.hpp"
 #include "shared/logging/Logger.hpp"
 
 #include <filesystem>
+#include <mutex>
 #include <string>
 
 #include "Mmsystem.h"
 
 namespace
 {
+	std::mutex AudioMutex;
+	bool AudioStarted = false;
+
 	std::filesystem::path ResolveRuntimeAudioPath(const wchar_t* fileName)
 	{
 		if (VsmrRuntimeContext::IsConfigured())
@@ -44,25 +50,36 @@ bool VsmrPluginRuntimeAudio::Play(
 	const wchar_t* fileName,
 	const char* description)
 {
+	std::lock_guard<std::mutex> lock(AudioMutex);
+	if (PluginShutdownRequested.load(std::memory_order_relaxed) || fileName == nullptr)
+		return false;
 	const std::filesystem::path audioPath = ResolveRuntimeAudioPath(fileName);
-	if (audioPath.empty())
-	{
-		Logger::info(std::string("Unable to resolve ") + description + " audio path");
-		return false;
-	}
-
 	std::error_code ec;
-	if (!std::filesystem::is_regular_file(audioPath, ec))
+	const bool fileAvailable = !audioPath.empty() && std::filesystem::is_regular_file(audioPath, ec);
+	const PlaybackSource source = PlayWithFallback(
+		fileAvailable ? audioPath.c_str() : nullptr,
+		HINSTANCE(&__ImageBase), BuiltInSound(fileName), ::PlaySoundW);
+	if (source == PlaybackSource::BuiltIn)
 	{
-		Logger::info(std::string(description) + " audio file is missing: " + audioPath.u8string());
+		Logger::info(std::string(description) + " using built-in sound; external file " +
+			(fileAvailable ? "could not be played: " : "missing or inaccessible: ") + audioPath.u8string());
+	}
+	if (source == PlaybackSource::Failed)
+	{
+		Logger::info(std::string(description) + " audio playback failed, including built-in fallback: " +
+			audioPath.u8string() + "; check Windows audio output and EuroScope volume/mute settings");
 		return false;
 	}
-
-	if (!::PlaySoundW(audioPath.c_str(), nullptr, SND_FILENAME | SND_ASYNC | SND_NODEFAULT))
-	{
-		Logger::info(std::string(description) + " audio playback failed: " + audioPath.u8string());
-		return false;
-	}
-
+	AudioStarted = true;
 	return true;
+}
+
+void VsmrPluginRuntimeAudio::Stop()
+{
+	std::lock_guard<std::mutex> lock(AudioMutex);
+	if (AudioStarted)
+	{
+		::PlaySoundW(nullptr, HINSTANCE(&__ImageBase), 0);
+		AudioStarted = false;
+	}
 }
