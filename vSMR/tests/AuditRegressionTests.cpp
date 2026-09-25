@@ -13,6 +13,7 @@
 #include "rendering/TargetProjection.hpp"
 #include "platform/windows/network/HttpHelper.hpp"
 #include "updater/UpdaterVerification.hpp"
+#include "plugin/PluginRuntimeAudio.Internal.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -21,6 +22,56 @@
 
 namespace
 {
+void TestRuntimeAudioFallback(std::vector<std::string>& failures)
+{
+	using namespace VsmrPluginRuntimeAudio;
+	auto check = [&](bool condition, const char* message)
+	{ if (!condition) failures.emplace_back(message); };
+	const HMODULE module = ::GetModuleHandleW(nullptr);
+	check(BuiltInSound(L"Alarm.wav") == IDR_TIMER_ALARM_WAVE &&
+		BuiltInSound(L"ALARM.WAV") == IDR_TIMER_ALARM_WAVE &&
+		BuiltInSound(L"Ding.wav") == IDR_CPDLC_DING_WAVE &&
+		BuiltInSound(nullptr) == 0 && BuiltInSound(L"unknown.wav") == 0,
+		"audio maps only supported notifications to built-in resources");
+	for (const WORD resource : { WORD(IDR_TIMER_ALARM_WAVE), WORD(IDR_CPDLC_DING_WAVE) })
+	{
+		for (const bool hasFile : { false, true })
+			for (const bool filePlays : { false, true })
+				for (const bool resourcePlays : { false, true })
+				{
+					unsigned calls = 0;
+					const wchar_t* path = hasFile ? L"C:\\Custom sounds\\notification.wav" : nullptr;
+					const auto result = PlayWithFallback(path, module, resource,
+						[&](LPCWSTR name, HMODULE instance, DWORD flags) -> BOOL
+						{
+							++calls;
+							check((flags & SND_ASYNC) != 0 && (flags & SND_NODEFAULT) != 0 &&
+								(flags & SND_SYSTEM) == 0,
+								"notifications are asynchronous and respect the existing application audio session");
+							if (flags & SND_FILENAME)
+							{
+								check(calls == 1 && name == path && instance == nullptr,
+									"custom notification file is attempted first");
+								return filePlays;
+							}
+							check((flags & SND_RESOURCE) == SND_RESOURCE && instance == module &&
+								IS_INTRESOURCE(name) && reinterpret_cast<ULONG_PTR>(name) == resource,
+								"fallback uses the matching resource and the runtime's module handle");
+							return resourcePlays;
+							});
+					const auto expected = hasFile && filePlays ? PlaybackSource::File :
+						(resourcePlays ? PlaybackSource::BuiltIn : PlaybackSource::Failed);
+					check(result == expected && calls == (hasFile && !filePlays ? 2U : 1U),
+						"audio handles missing, invalid and working files plus fallback/device failures");
+				}
+	}
+	unsigned unexpectedCalls = 0;
+	auto shouldNotPlay = [&](LPCWSTR, HMODULE, DWORD) -> BOOL { ++unexpectedCalls; return TRUE; };
+	check(PlayWithFallback(nullptr, module, 0, shouldNotPlay) == PlaybackSource::Failed &&
+		PlayWithFallback(nullptr, nullptr, IDR_TIMER_ALARM_WAVE, shouldNotPlay) == PlaybackSource::Failed &&
+		unexpectedCalls == 0, "unknown or unavailable resources do not trigger arbitrary system sounds");
+}
+
 void TestProfileMigration(std::vector<std::string>& failures)
 {
 	auto check = [&](bool condition, const char* message)
@@ -208,6 +259,7 @@ std::vector<std::string> RunAuditRegressionTests()
 	check(!VsmrJsonInputLimits::Validate("[0,1,2]", limits, error), "SAX validation terminates when the value budget is exceeded");
 
 	TestProfileMigration(failures);
+	TestRuntimeAudioFallback(failures);
 	TestTagDataFormatting(failures);
 	TestTargetProjection(failures);
 	TestRunwayRefreshes(failures);
