@@ -257,8 +257,109 @@ namespace
 		Expect(classifyGroundState("LINE UP", 0, true) == GroundStateCategory::Lnup, "ground state lineup alias");
 		Expect(classifyGroundState("", 0, false) == GroundStateCategory::Gate, "stationary empty state defaults to gate");
 		Expect(classifyGroundState("", 2, false) == GroundStateCategory::Unknown, "moving empty state stays unknown");
-		Expect(!shouldDisplayTagInTowerMode("STUP", 0, false), "tower mode hides startup");
-		Expect(shouldDisplayTagInTowerMode("TAXI", 8, false), "tower mode shows taxi");
+		Expect(!shouldDisplayTagInTowerMode("STUP", 0, false, 0), "tower mode hides startup");
+		Expect(shouldDisplayTagInTowerMode("TAXI", 8, false, 0), "tower mode shows taxi");
+	}
+
+	void TestSharedGroundState()
+	{
+		Expect(VsmrGroundStateSync::CanWriteSharedState(0) &&
+			VsmrGroundStateSync::CanWriteSharedState(10) &&
+			VsmrGroundStateSync::CanWriteSharedState(19),
+			"shared states may use only unassigned speeds or their reserved band");
+		for (int speed : { -1, 1, 9, 20, 180, 250 })
+			Expect(!VsmrGroundStateSync::CanWriteSharedState(speed),
+				"selecting Line Up must not overwrite a real speed assignment");
+		Expect(
+			VsmrGroundStateSync::AssignedSpeedForCategory(GroundStateCategory::Lnup) ==
+				VsmrGroundStateSync::LineupAssignedSpeed,
+			"line up maps to the reserved assigned speed");
+		Expect(
+			VsmrGroundStateSync::AssignedSpeedForCategory(GroundStateCategory::Taxi) == 0,
+			"a state EuroScope synchronizes itself shares no assigned speed");
+		Expect(
+			VsmrGroundStateSync::CategoryForAssignedSpeed(VsmrGroundStateSync::LineupAssignedSpeed) ==
+				GroundStateCategory::Lnup,
+			"the reserved assigned speed reads back as line up");
+		Expect(
+			VsmrGroundStateSync::CategoryForAssignedSpeed(250) == GroundStateCategory::Unknown,
+			"a real speed assignment carries no ground state");
+		Expect(
+			VsmrGroundStateSync::IsReservedAssignedSpeed(VsmrGroundStateSync::ReservedFirst) &&
+				VsmrGroundStateSync::IsReservedAssignedSpeed(VsmrGroundStateSync::ReservedLast),
+			"the reserved band covers both of its bounds");
+		Expect(
+			!VsmrGroundStateSync::IsReservedAssignedSpeed(0) &&
+				!VsmrGroundStateSync::IsReservedAssignedSpeed(VsmrGroundStateSync::ReservedLast + 1),
+			"speeds outside the reserved band stay real assignments");
+
+		// Both can be set at once, and the shared value is the one a controller picked
+		Expect(
+			classifyGroundStateWithSharedState("TAXI", 8, false, VsmrGroundStateSync::LineupAssignedSpeed) ==
+				GroundStateCategory::Lnup,
+			"a shared line up wins over the taxi status");
+		Expect(
+			classifyGroundStateWithSharedState("TAXI", 8, false, 0) == GroundStateCategory::Taxi,
+			"without a shared state the EuroScope status is used");
+		Expect(
+			classifyGroundStateWithSharedState("PUSH", 0, false, VsmrGroundStateSync::ReservedLast) ==
+				GroundStateCategory::Push,
+			"a reserved value this version does not know falls back to the EuroScope status");
+		Expect(
+			classifyGroundStateWithSharedState("TAXI", 8, false, 250) == GroundStateCategory::Taxi,
+			"a real speed assignment leaves the EuroScope status alone");
+		// A status a controller picks outside vSMR takes the aircraft off its
+		// shared state, so both clients agree again on the default state
+		Expect(
+			classifyGroundState(VsmrGroundStateSync::LineupEuroScopeStatus, 0, false) ==
+				VsmrGroundStateSync::CompanionCategoryForAssignedSpeed(
+					VsmrGroundStateSync::LineupAssignedSpeed),
+			"the status vSMR writes with line up is the one it expects to read back");
+		Expect(
+			classifyGroundStateWithSharedState("PUSH", 0, false, VsmrGroundStateSync::LineupAssignedSpeed) ==
+				GroundStateCategory::Push,
+			"a status changed outside vSMR wins over a shared state");
+		Expect(
+			classifyGroundStateWithSharedState("DEPA", 20, false, VsmrGroundStateSync::LineupAssignedSpeed) ==
+				GroundStateCategory::Depa,
+			"a departure status changed outside vSMR wins over a shared state");
+		Expect(
+			classifyGroundStateWithSharedState("", 0, false, VsmrGroundStateSync::LineupAssignedSpeed) ==
+				GroundStateCategory::Gate,
+			"a shared state without the status vSMR writes with it is not shown");
+		Expect(
+			shouldDisplayTagInTowerMode("TAXI", 0, false, VsmrGroundStateSync::LineupAssignedSpeed),
+			"tower mode shows a shared line up");
+		Expect(
+			!shouldDisplayTagInTowerMode("PUSH", 0, false, VsmrGroundStateSync::LineupAssignedSpeed),
+			"tower mode follows a status changed outside vSMR");
+		Expect(
+			!shouldDisplayTagInTowerMode("", 0, false, 0),
+			"tower mode still hides an aircraft without any status");
+
+		// The tag turns airborne above this speed, so a value nobody has cleared
+		// yet is never shown as a ground state
+		Expect(
+			classifyGroundStateWithSharedState(
+				"TAXI",
+				VsmrTargetRoleLogic::DefaultAirborneThresholdKt,
+				false,
+				VsmrGroundStateSync::LineupAssignedSpeed) == GroundStateCategory::Lnup,
+			"a shared ground state survives up to the airborne threshold");
+		Expect(
+			classifyGroundStateWithSharedState(
+				"TAXI",
+				VsmrTargetRoleLogic::DefaultAirborneThresholdKt + 1,
+				false,
+				VsmrGroundStateSync::LineupAssignedSpeed) == GroundStateCategory::Taxi,
+			"an airborne target ignores a shared ground state");
+		Expect(
+			!shouldDisplayTagInTowerMode(
+				"",
+				VsmrTargetRoleLogic::DefaultAirborneThresholdKt + 1,
+				false,
+				VsmrGroundStateSync::LineupAssignedSpeed),
+			"tower mode ignores a shared ground state once airborne");
 	}
 
 	void TestHoldingPointRemarks()
@@ -1099,6 +1200,7 @@ int wmain(int argc, wchar_t** argv)
 		: std::filesystem::current_path();
 
 	TestGroundState();
+	TestSharedGroundState();
 	TestRapidJsonUtilities();
 	TestJsonInputLimitBoundaries();
 	TestHoldingPointRemarks();
