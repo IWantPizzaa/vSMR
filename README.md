@@ -112,7 +112,7 @@ Bundled operational data is a starting point and must be checked for the local a
 | `.smr` | Open the Control Center |
 | `.smr diagnostics` | Write a bounded diagnostic report |
 | `.smr reload` | Reload runtime configuration/data for open radar screens |
-| `.smr rdf on` / `.smr rdf off` | Enable or disable native RDF display |
+| `.smr rdf on` / `.smr rdf off` | Enable or disable native RDF display (also in Control Center Settings) |
 | `.smr log normal` / `.smr log verbose` / `.smr log off` | Set logging verbosity or disable logging |
 | `.smr log status` | Show logging state and log location |
 

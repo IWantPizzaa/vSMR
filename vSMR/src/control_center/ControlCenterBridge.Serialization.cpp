@@ -6,6 +6,7 @@
 #include "plugin/Plugin.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
+#include "rdf/RdfOverlay.hpp"
 #include "control_center/ControlCenterMessageProtocol.hpp"
 #include "control_center/ControlCenterPerformance.hpp"
 #include "control_center/ControlCenterUpdater.hpp"
@@ -346,6 +347,9 @@ void VsmrControlCenterBridgeImpl::BuildSettings(
 		Owner->GetSmallTargetIconBoostResolutionPreset(),
 		allocator);
 	settings.AddMember("showFps", Owner->ShowFps, allocator);
+	// The RDF worker is plug-in wide, so the Control Center also reflects a state
+	// set through .smr rdf on|off.
+	settings.AddMember("rdfEnabled", VsmrRdf::GetStatus().enabled, allocator);
 	AddString(settings, "uiColorTheme", Owner->GetUiColorTheme(), allocator);
 	AddString(settings, "avisoColorPalette", Owner->GetAvisoColorPalette(), allocator);
 	rapidjson::Value avisoColorPalettes(rapidjson::kArrayType);

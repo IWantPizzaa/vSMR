@@ -2,8 +2,10 @@
 #include "control_center/ControlCenterBridge.Internal.hpp"
 
 #include "insets/InsetWindow.hpp"
+#include "plugin/Plugin.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
+#include "rdf/RdfOverlay.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 
 #include "rapidjson/document.h"
@@ -291,6 +293,20 @@ bool VsmrControlCenterBridgeImpl::HandleAlerts(
 	return true;
 }
 
+void VsmrControlCenterBridgeImpl::ApplyRdfEnabled(bool enabled)
+{
+	// The RDF worker is plug-in wide, and .smr rdf on|off writes the same EuroScope
+	// setting, so the command and the Control Center stay in sync.
+	VsmrRdf::SetEnabled(enabled);
+	CSMRPlugin* plugin = OwnerPlugin();
+	if (plugin == nullptr)
+		return;
+	plugin->SaveDataToSettings(
+		"rdf_enabled",
+		"Enable the native vSMR RDF overlay",
+		enabled ? "1" : "0");
+}
+
 bool VsmrControlCenterBridgeImpl::HandleSettings(
 	const rapidjson::Value* payload,
 	std::string& error)
@@ -317,6 +333,9 @@ bool VsmrControlCenterBridgeImpl::HandleSettings(
 			"Show FPS counter",
 			Owner->ShowFps ? "1" : "0");
 	}
+
+	if (payload->HasMember("rdfEnabled") && (*payload)["rdfEnabled"].IsBool())
+		ApplyRdfEnabled((*payload)["rdfEnabled"].GetBool());
 
 	if (payload->HasMember("avisoColorPalette"))
 	{
