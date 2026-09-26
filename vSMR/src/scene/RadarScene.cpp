@@ -208,6 +208,7 @@ namespace
 		HashSceneValue(result, target.assignedSquawk);
 		HashSceneValue(result, target.reportedSquawk);
 		HashSceneValue(result, target.groundStateText);
+		HashSceneValue(result, target.assignedSpeed);
 		HashSceneValue(result, target.hasFlightPlan);
 		HashSceneValue(result, target.correlated);
 		HashSceneValue(result, target.selected);
@@ -545,6 +546,10 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 				target.aircraftType.resize(4);
 			target.wakeCategory = flightData.GetAircraftWtc();
 			target.assignedSquawk = CopyText(assignedData.GetSquawk());
+			// The reserved band carries the ground states EuroScope has no status for.
+			target.assignedSpeed = assignedData.GetAssignedSpeed();
+			if (VsmrGroundStateSync::IsReservedAssignedSpeed(target.assignedSpeed))
+				VsmrGroundState::ObserveSharedState(target.callsign.c_str());
 			target.groundStateText = CopyText(flightPlan.GetGroundState());
 			target.tag.clearanceReceived = flightPlan.GetClearenceFlag();
 		}
@@ -566,6 +571,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			++scene->stats.iconTargetCount;
 
 		target.towerModeGroundStateText = target.groundStateText;
+		target.towerModeAssignedSpeed = target.assignedSpeed;
 		target.towerModeArrival = target.hasFlightPlan && !airportUpper.empty() &&
 			_stricmp(target.destination.c_str(), airportUpper.c_str()) == 0;
 		const bool needsCorrelatedFlightPlan = towerModeEnabled || RimcasInstance != nullptr;
@@ -578,6 +584,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			if (correlatedFlightPlan.IsValid())
 			{
 				target.towerModeGroundStateText = CopyText(correlatedFlightPlan.GetGroundState());
+				target.towerModeAssignedSpeed = correlatedFlightPlan.GetControllerAssignedData().GetAssignedSpeed();
 				const std::string correlatedDestination = CopyText(correlatedFlightPlan.GetFlightPlanData().GetDestination());
 				target.towerModeArrival = !airportUpper.empty() &&
 					_stricmp(correlatedDestination.c_str(), airportUpper.c_str()) == 0;
@@ -595,7 +602,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 
 		target.rimcas.onRunway = RimcasInstance != nullptr && RimcasInstance->isAcOnRunway(callsign);
 		target.groundState = target.hasFlightPlan
-			? classifyGroundStateForCallsign(callsign.c_str(), target.groundStateText.c_str(), target.reportedGroundSpeed, target.rimcas.onRunway)
+			? classifyGroundStateWithSharedState(target.groundStateText.c_str(), target.reportedGroundSpeed, target.rimcas.onRunway, target.assignedSpeed)
 			: GroundStateCategory::Unknown;
 		target.departure = target.hasFlightPlan && target.correlated && !airportUpper.empty() &&
 			_stricmp(target.origin.c_str(), airportUpper.c_str()) == 0;
@@ -628,7 +635,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		if (!target.correlated && target.reportedGroundSpeed < 3)
 			tagVisible = false;
 		if (towerModeEnabled && !target.towerModeArrival &&
-			!shouldDisplayTagInTowerMode(target.towerModeGroundStateText.c_str(), target.reportedGroundSpeed, target.rimcas.onRunway))
+			!shouldDisplayTagInTowerMode(target.towerModeGroundStateText.c_str(), target.reportedGroundSpeed, target.rimcas.onRunway, target.towerModeAssignedSpeed))
 		{
 			tagVisible = false;
 		}
@@ -1054,7 +1061,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		if (RimcasInstance != nullptr)
 			target.rimcas.severity = static_cast<int>(RimcasInstance->getAlertSeverity(static_cast<CRimcas::RimcasAlerts>(target.rimcas.movementAlert)));
 		target.groundState = target.hasFlightPlan
-			? classifyGroundStateForCallsign(target.callsign.c_str(), target.groundStateText.c_str(), target.reportedGroundSpeed, target.rimcas.onRunway)
+			? classifyGroundStateWithSharedState(target.groundStateText.c_str(), target.reportedGroundSpeed, target.rimcas.onRunway, target.assignedSpeed)
 			: GroundStateCategory::Unknown;
 		target.tag.status = ResolveTagStatus(target);
 		if (labels != nullptr)

@@ -100,7 +100,7 @@ CSMRPlugin::~CSMRPlugin()
 	// Stopping callbacks and workers before releasing shared state
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
 	VsmrPluginRuntimeAudio::Stop();
-	VsmrGroundState::ClearAllLineupOverrides();
+	VsmrGroundState::ForgetAllAircraft();
 	VsmrCdm::Shutdown();
 	VsmrRampAgent::Shutdown();
 	VsmrVsid::Shutdown();
@@ -126,7 +126,7 @@ bool VsmrShutdownPlugin()
 		std::memory_order_acquire);
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
 	VsmrPluginRuntimeAudio::Stop();
-	VsmrGroundState::ClearAllLineupOverrides();
+	VsmrGroundState::ForgetAllAircraft();
 	VsmrCdm::Shutdown();
 	VsmrRampAgent::Shutdown();
 	VsmrVsid::Shutdown();
