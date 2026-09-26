@@ -9,10 +9,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <map>
 #include <mutex>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -21,15 +23,20 @@
 
 namespace
 {
-	std::mutex LineupOverrideMutex;
-	std::map<std::string, std::chrono::steady_clock::time_point> LineupOverrides;
+	std::mutex SharedGroundStateMutex;
+	std::set<std::string> SharedGroundStateCallsigns;
+	// A shared state and the EuroScope status it is written with travel as two
+	// separate updates, so the moment between them must not read as a foreign
+	// status change on a client that received only one of them.
+	constexpr auto SharedStatusMismatchGrace = std::chrono::seconds(5);
+	std::map<std::string, std::chrono::steady_clock::time_point> SharedGroundStateMismatches;
 	std::mutex HoldingPointEditMutex;
 	std::string PendingHoldingPointCallsign;
 	using HoldingPointRunways = std::map<std::string, std::vector<std::string>>;
 	std::mutex HoldingPointCatalogMutex;
 	std::map<std::string, HoldingPointRunways> HoldingPointCatalog;
 
-	std::string NormalizeLineupCallsign(const char* callsign)
+	std::string NormalizeSharedStateCallsign(const char* callsign)
 	{
 		std::string normalized = callsign != nullptr ? callsign : "";
 		normalized.erase(
@@ -139,53 +146,59 @@ namespace
 		return runwayIt != airportIt->second.end() ? runwayIt->second : std::vector<std::string>();
 	}}
 
-bool VsmrGroundState::SetLineupOverride(const char* callsign)
+void VsmrGroundState::ObserveSharedState(const char* callsign)
 {
-	const std::string normalized = NormalizeLineupCallsign(callsign);
-	if (normalized.empty())
-		return false;
-	std::lock_guard<std::mutex> guard(LineupOverrideMutex);
-	LineupOverrides[normalized] = std::chrono::steady_clock::now();
-	return true;
-}
-
-void VsmrGroundState::ClearLineupOverride(const char* callsign)
-{
-	const std::string normalized = NormalizeLineupCallsign(callsign);
+	const std::string normalized = NormalizeSharedStateCallsign(callsign);
 	if (normalized.empty())
 		return;
-	std::lock_guard<std::mutex> guard(LineupOverrideMutex);
-	LineupOverrides.erase(normalized);
+	std::lock_guard<std::mutex> guard(SharedGroundStateMutex);
+	SharedGroundStateCallsigns.insert(normalized);
 }
 
-void VsmrGroundState::ClearAllLineupOverrides()
+void VsmrGroundState::ForgetAircraft(const char* callsign)
 {
-	std::lock_guard<std::mutex> guard(LineupOverrideMutex);
-	LineupOverrides.clear();
+	const std::string normalized = NormalizeSharedStateCallsign(callsign);
+	if (normalized.empty())
+		return;
+	std::lock_guard<std::mutex> guard(SharedGroundStateMutex);
+	SharedGroundStateCallsigns.erase(normalized);
+	SharedGroundStateMismatches.erase(normalized);
 }
 
-bool VsmrGroundState::IsLineupOverrideActive(const char* callsign, GroundStateCategory observedCategory)
+void VsmrGroundState::ForgetAllAircraft()
 {
-	const std::string normalized = NormalizeLineupCallsign(callsign);
+	std::lock_guard<std::mutex> guard(SharedGroundStateMutex);
+	SharedGroundStateCallsigns.clear();
+	SharedGroundStateMismatches.clear();
+}
+
+std::vector<std::string> VsmrGroundState::SharedStateCallsigns()
+{
+	std::lock_guard<std::mutex> guard(SharedGroundStateMutex);
+	return std::vector<std::string>(SharedGroundStateCallsigns.begin(), SharedGroundStateCallsigns.end());
+}
+
+bool VsmrGroundState::HasSettledStatusMismatch(const char* callsign, bool mismatched)
+{
+	const std::string normalized = NormalizeSharedStateCallsign(callsign);
 	if (normalized.empty())
 		return false;
 
-	std::lock_guard<std::mutex> guard(LineupOverrideMutex);
-	const auto overrideIt = LineupOverrides.find(normalized);
-	if (overrideIt == LineupOverrides.end())
+	std::lock_guard<std::mutex> guard(SharedGroundStateMutex);
+	if (!mismatched)
+	{
+		SharedGroundStateMismatches.erase(normalized);
 		return false;
+	}
 
-	if (observedCategory == GroundStateCategory::Taxi || observedCategory == GroundStateCategory::Lnup)
-		return true;
-
-	// SetScratchPadString("TAXI") updates EuroScope asynchronously on some
-	// installations. Keep the local state briefly, then fail safely if the
-	// host never reports TAXI or another controller changes the status.
-	if (std::chrono::steady_clock::now() - overrideIt->second < std::chrono::seconds(2))
-		return true;
-
-	LineupOverrides.erase(overrideIt);
-	return false;
+	const auto now = std::chrono::steady_clock::now();
+	const auto mismatch = SharedGroundStateMismatches.find(normalized);
+	if (mismatch == SharedGroundStateMismatches.end())
+	{
+		SharedGroundStateMismatches.emplace(normalized, now);
+		return false;
+	}
+	return now - mismatch->second >= SharedStatusMismatchGrace;
 }
 
 

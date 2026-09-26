@@ -443,8 +443,8 @@ void CRimcas::CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* i
 	}
 	std::string rwyOn = AcOnRunwayFunc(Rt, instance);
 	int groundspeed = Rt.reportedGroundSpeed;
-	const GroundStateCategory groundStateCategory = classifyGroundStateForCallsign(
-		Rt.callsign.c_str(), Rt.towerModeGroundStateText.c_str(), groundspeed, !rwyOn.empty());
+	const GroundStateCategory groundStateCategory = classifyGroundStateWithSharedState(
+		Rt.towerModeGroundStateText.c_str(), groundspeed, !rwyOn.empty(), Rt.towerModeAssignedSpeed);
 	const bool departureAuthorized = groundStateCategory == GroundStateCategory::Depa;
 	const bool lineupAuthorized = groundStateCategory == GroundStateCategory::Lnup;
 	const bool taxiAuthorized = groundStateCategory == GroundStateCategory::Taxi || departureAuthorized || lineupAuthorized;

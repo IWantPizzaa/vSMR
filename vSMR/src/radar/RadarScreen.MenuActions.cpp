@@ -56,7 +56,11 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 			euroScopeStatus = "STUP";
 		else if (_stricmp(itemString, "Push") == 0)
 			euroScopeStatus = "PUSH";
-		else if (_stricmp(itemString, "Taxi") == 0 || selectLineup)
+		else if (selectLineup)
+			// Written as a pair with the reserved assigned speed, so every client
+			// can tell a vSMR line up from a status set outside vSMR.
+			euroScopeStatus = VsmrGroundStateSync::LineupEuroScopeStatus;
+		else if (_stricmp(itemString, "Taxi") == 0)
 			euroScopeStatus = "TAXI";
 		else if (_stricmp(itemString, "Departure") == 0)
 			euroScopeStatus = "DEPA";
@@ -97,12 +101,48 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		}
 
 		auto assignedData = fp.GetControllerAssignedData();
+
+		// ----- Sharing the selected ground state -----
+		// EuroScope has no ground status for a line up, so vSMR writes a reserved
+		// assigned speed the other clients read back. A real speed assignment is
+		// left alone; only a reserved value is cleared.
+		const int sharedAssignedSpeed = VsmrGroundStateSync::AssignedSpeedForCategory(
+			selectLineup ? GroundStateCategory::Lnup : GroundStateCategory::Unknown);
+		const int previousAssignedSpeed = assignedData.GetAssignedSpeed();
+		if (sharedAssignedSpeed != 0 && !VsmrGroundStateSync::CanWriteSharedState(previousAssignedSpeed))
+		{
+			PendingGroundStatusCallsign.clear();
+			showConfigError("Line Up cannot be shared while this aircraft has a real assigned speed. "
+				"The speed assignment and ground status have been left unchanged.");
+			return;
+		}
+		const bool sharedStateChanges = sharedAssignedSpeed != previousAssignedSpeed &&
+			(sharedAssignedSpeed != 0 || VsmrGroundStateSync::IsReservedAssignedSpeed(previousAssignedSpeed));
+		// EuroScope refuses controller assigned data for an aircraft another
+		// controller tracks. Refusing here keeps every client on the same state.
+		if (sharedStateChanges &&
+			(!assignedData.SetAssignedSpeed(sharedAssignedSpeed) ||
+				assignedData.GetAssignedSpeed() != sharedAssignedSpeed))
+		{
+			PendingGroundStatusCallsign.clear();
+			showConfigError(
+				"EuroScope did not share the selected ground status with the other controllers. "
+				"Take the track of this aircraft, or ask its tracking controller to set the status.");
+			return;
+		}
+		auto restoreSharedAssignedSpeed = [&]()
+		{
+			if (sharedStateChanges)
+				(void)assignedData.SetAssignedSpeed(previousAssignedSpeed);
+		};
+
 		const char* existingScratchpadRaw = assignedData.GetScratchPadString();
 		const std::string existingScratchpad = existingScratchpadRaw != nullptr ? existingScratchpadRaw : "";
 		// EuroScope exposes ground-status changes through this setter, so the
 		// controller's scratchpad text must be restored immediately afterward.
 		if (!assignedData.SetScratchPadString(euroScopeStatus))
 		{
+			restoreSharedAssignedSpeed();
 			PendingGroundStatusCallsign.clear();
 			showConfigError("EuroScope did not accept the selected ground status.");
 			return;
@@ -112,15 +152,16 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		const std::string updatedScratchpad = updatedScratchpadRaw != nullptr ? updatedScratchpadRaw : "";
 		if (updatedScratchpad != existingScratchpad && !assignedData.SetScratchPadString(existingScratchpad.c_str()))
 		{
+			restoreSharedAssignedSpeed();
 			PendingGroundStatusCallsign.clear();
 			showConfigError("The ground status was not changed because the existing scratchpad could not be restored.");
 			return;
 		}
 
-		if (selectLineup)
-			VsmrGroundState::SetLineupOverride(PendingGroundStatusCallsign.c_str());
+		if (sharedAssignedSpeed != 0)
+			VsmrGroundState::ObserveSharedState(PendingGroundStatusCallsign.c_str());
 		else
-			VsmrGroundState::ClearLineupOverride(PendingGroundStatusCallsign.c_str());
+			VsmrGroundState::ForgetAircraft(PendingGroundStatusCallsign.c_str());
 		PendingGroundStatusCallsign.clear();
 		for (CSMRRadar* radar : RadarScreensOpened)
 		{
