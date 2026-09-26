@@ -1117,11 +1117,11 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 
 		const CRadarTargetPositionData position = rt.GetPosition();
 		const int reportedGs = position.IsValid() ? position.GetReportedGS() : 0;
-		const GroundStateCategory currentStatus = classifyGroundStateForCallsign(
-			callsign,
+		const GroundStateCategory currentStatus = classifyGroundStateWithSharedState(
 			fp.GetGroundState(),
 			reportedGs,
-			false);
+			false,
+			fp.GetControllerAssignedData().GetAssignedSpeed());
 		std::string rawStatus = fp.GetGroundState() != nullptr ? fp.GetGroundState() : "";
 		rawStatus.erase(
 			std::remove_if(rawStatus.begin(), rawStatus.end(), [](unsigned char c) { return std::isspace(c) != 0 || c == '-' || c == '_'; }),
