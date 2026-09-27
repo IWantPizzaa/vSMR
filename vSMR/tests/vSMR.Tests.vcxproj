@@ -122,6 +122,7 @@
     <ClInclude Include="..\src\aviso\AvisoRasterBlitter.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterPipeline.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterSizing.hpp" />
+    <ClInclude Include="..\src\aviso\AvisoRasterGeometry.hpp" />
     <ClInclude Include="..\src\aviso\AvisoPolygonOutline.hpp" />
     <ClInclude Include="..\src\radar\RecentAirports.hpp" />
     <ClInclude Include="..\src\config\RuntimeConfig.hpp" />
