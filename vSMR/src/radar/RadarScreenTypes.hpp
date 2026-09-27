@@ -60,6 +60,9 @@ namespace VsmrRadarTypes
 	struct AvisoFeature
 	{
 		bool polygon = false;
+		bool polygonOutline = false;
+		bool lightPolygonOutline = false;
+		bool realPolygonOutline = false;
 		int sourceFeatureIndex = -1;
 		std::string sourceFeatureId;
 		std::vector<std::string> groupIds;

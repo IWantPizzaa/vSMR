@@ -545,6 +545,8 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			continue;
 		if (feature.polygon)
 		{
+			const bool outline = request.colorPalette == "real" ? feature.realPolygonOutline
+				: request.colorPalette == "light" ? feature.lightPolygonOutline : feature.polygonOutline;
 			for (const std::vector<AvisoPoint>& ring : feature.paths)
 			{
 				if (renderCancelled())
@@ -572,6 +574,12 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 				{
 					SolidBrush fillBrush(featureFillColor);
 					rasterGraphics.FillPolygon(&fillBrush, rasterPoints.data(), static_cast<INT>(rasterPoints.size()), FillModeAlternate);
+				}
+				if (outline && featureStrokeColor.GetAlpha() > 0 && feature.strokeWidth > 0.0f)
+				{
+					Pen outlinePen(featureStrokeColor, feature.strokeWidth * static_cast<float>(request.rasterScale * request.displayScale));
+					outlinePen.SetLineJoin(LineJoinRound);
+					rasterGraphics.DrawPolygon(&outlinePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
 				}
 			}
 			continue;
