@@ -37,6 +37,10 @@ namespace VsmrPluginBridge
 	// construction, because EuroScope may load the bridge after vSMR (A4).
 	Tick BeginTick(EuroScopePlugIn::CPlugIn& plugin);
 
+	// UI thread only: validate the bridge without scanning flight plans. The
+	// returned API is used within this callback only, never retained by callers.
+	const ESB_Api_v1* AttachForUi();
+
 	// Any thread: the attach state seen by the latest BeginTick().
 	AttachState GetAttachState() noexcept;
 
