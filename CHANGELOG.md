@@ -10,9 +10,10 @@
 
 ### Changed
 
+- Replaced the METAR compass arrow with a wind-strength-colored band fading inward from the reported wind-from bearing to the centre. Wind-variation arcs use the same wind-from orientation; calm and variable winds retain their existing non-directional display.
 - Refreshed all 160 bundled AVISO GeoJSON maps from the converter's official GNG layouts and current settings, and updated the map hash inventory, provenance and validation fixtures.
 - Restored LFPG's 89 East arrows and 97 West arrows in two independently selectable groups.
-- Updated PDC and CPDLC message windows to a neutral grey palette with dark headers and blue-grey controls, without changing their layout.
+- Redesigned PDC and CPDLC message windows with aligned flight and clearance fields and side-by-side request/reply areas. Retained the Control Center's Tahoma typography, standard-height fields/buttons, compact striped title bar and square close button, with a charcoal/slate-grey palette and pale-blue Send button; CPDLC messages omit the clearance section.
 - Removed the Auto mode button and status row from the vSID popup and reduced its height. This does not disable vSID's underlying automatic mode.
 - Made vSID configuration buttons follow published live Paris rules, including changes made outside vSMR. Configuration selection remains manual in vSMR; automatic runway-based configuration detection is not included.
 - Improved vSID command responsiveness with short-lived 50 ms completion checks and immediate configuration refreshes, without rescanning aircraft. Multi-command actions remain serialized and ambiguous deliveries are not retried.
@@ -20,6 +21,8 @@
 
 ### Fixed
 
+- Made the entire Timer inset follow the interface Day/Night setting, including idle, hover, running and expired cells, text and borders, without resetting countdowns.
+- Fixed the PDC/CPDLC title bar intercepting close-button clicks; X now uses the Cancel path. Prevented decorative panels from painting over fields and filled multiline backgrounds completely. Fields retain Control Center input styling, with light-grey backgrounds for editable values and dark-grey backgrounds with muted text for read-only information.
 - Separated LFPG's Linked/Unlinked controls from Minimum Taxiing/Ground Crossing. Linked/Unlinked uses the `opposing` rule; Minimum Taxiing resets areas before enabling NORTH and SOUTH, while Ground Crossing disables areas. Clicking an already-published link selection does not toggle it again.
 - Preserved command-completion refresh notifications until EuroScope's regular callback acknowledges them, so the fast completion check cannot consume the notification needed to re-enable vSID buttons. Removed direct native-window repainting from command completion.
 - Fixed aircraft tag hover requiring a click or drag by calibrating cursor coordinates against the actual radar view and requesting a refresh when hover begins.

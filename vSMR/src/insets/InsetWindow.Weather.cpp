@@ -97,10 +97,6 @@ namespace
 		return std::to_string(weather.visibilityMeters) + " M";
 	}
 
-	int WindFlowDirection(int meteorologicalDirection)
-	{
-		return (meteorologicalDirection + 180) % 360;
-	}
 }
 
 HFONT CInsetWindow::GetWeatherFont(
@@ -343,7 +339,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 			if (sweep > 0)
 			{
 				gdi->DrawArc(&variationPen, variationRect,
-					static_cast<Gdiplus::REAL>(WindFlowDirection(weather.windVariationFromDegrees) - 90),
+					static_cast<Gdiplus::REAL>(weather.windVariationFromDegrees - 90),
 					static_cast<Gdiplus::REAL>(sweep));
 			}
 		}
@@ -351,6 +347,32 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 		{
 			variationPen.SetDashStyle(Gdiplus::DashStyleDash);
 			gdi->DrawEllipse(&variationPen, variationRect);
+		}
+
+		// METAR direction is where wind comes FROM. Shade inward from that
+		// bearing, not the reciprocal heading used by the previous flow arrow.
+		// Draw below ticks/text and fade fully at the centre to keep values clear.
+		if (weather.hasWind && !weather.windVariable && !weather.windCalm)
+		{
+			const double angle = DegToRad(static_cast<double>(weather.windDirectionDegrees) - 90.0);
+			const Gdiplus::PointF source(
+				centerX + static_cast<float>(std::cos(angle)) * (radius - 2.0f),
+				centerY + static_cast<float>(std::sin(angle)) * (radius - 2.0f));
+			const Gdiplus::PointF centre(centerX, centerY);
+			Gdiplus::LinearGradientBrush gradient(source, centre,
+				ToGdiColor(windColor, 240), ToGdiColor(windColor, 0));
+			const Gdiplus::REAL factors[] = { 0.0f, 0.6f, 0.95f, 1.0f };
+			const Gdiplus::REAL positions[] = { 0.0f, 0.35f, 0.75f, 1.0f };
+			gradient.SetBlend(factors, positions, 4);
+			Gdiplus::Pen band(&gradient, std::clamp(radius * 0.18f, 5.0f, 16.0f));
+			band.SetStartCap(Gdiplus::LineCapFlat);
+			band.SetEndCap(Gdiplus::LineCapFlat);
+			const Gdiplus::GraphicsState saved = gdi->Save();
+			Gdiplus::GraphicsPath compassClip;
+			compassClip.AddEllipse(roseRect);
+			gdi->SetClip(&compassClip, Gdiplus::CombineModeIntersect);
+			gdi->DrawLine(&band, source, centre);
+			gdi->Restore(saved);
 		}
 
 		Gdiplus::Pen minorTick(ToGdiColor(palette.divider), 1.0f);
@@ -377,39 +399,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 			}
 		}
 
-		// Draw the arrow first. The center plate then guarantees that the wind
-		// vector never obscures the direction or speed values.
-		if (weather.hasWind && !weather.windVariable && !weather.windCalm)
-		{
-			const double angle = (static_cast<double>(WindFlowDirection(weather.windDirectionDegrees)) - 90.0) * pi / 180.0;
-			const float dx = static_cast<float>(std::cos(angle));
-			const float dy = static_cast<float>(std::sin(angle));
-			const float startRadius = radius * 0.43f;
-			const float tipRadius = radius - 6.0f;
-			const Gdiplus::PointF start(centerX + dx * startRadius, centerY + dy * startRadius);
-			const Gdiplus::PointF tip(centerX + dx * tipRadius, centerY + dy * tipRadius);
-			Gdiplus::Pen needle(ToGdiColor(windColor), std::clamp(radius * 0.05f, 2.0f, 5.0f));
-			needle.SetStartCap(Gdiplus::LineCapRound);
-			needle.SetEndCap(Gdiplus::LineCapRound);
-			gdi->DrawLine(&needle, start, tip);
-			const float arrowLength = std::clamp(radius * 0.19f, 7.0f, 17.0f);
-			const float arrowWidth = std::clamp(radius * 0.095f, 4.0f, 9.0f);
-			const Gdiplus::PointF base(tip.X - dx * arrowLength, tip.Y - dy * arrowLength);
-			const Gdiplus::PointF perpendicular(-dy, dx);
-			Gdiplus::PointF arrow[] = {
-				tip,
-				Gdiplus::PointF(base.X + perpendicular.X * arrowWidth, base.Y + perpendicular.Y * arrowWidth),
-				Gdiplus::PointF(base.X - perpendicular.X * arrowWidth, base.Y - perpendicular.Y * arrowWidth)
-			};
-			Gdiplus::SolidBrush arrowBrush(ToGdiColor(windColor));
-			gdi->FillPolygon(&arrowBrush, arrow, static_cast<INT>(_countof(arrow)));
-		}
-
 		const float plateHalfWidth = (std::min)(radius * 0.48f, static_cast<float>(42.0 * scale));
-		const float plateHalfHeight = (std::min)(radius * 0.35f, static_cast<float>(24.0 * scale));
-		Gdiplus::SolidBrush centerPlate(ToGdiColor(palette.compass));
-		gdi->FillRectangle(&centerPlate, centerX - plateHalfWidth, centerY - plateHalfHeight,
-			plateHalfWidth * 2.0f, plateHalfHeight * 2.0f);
 		CRect directionArea(
 			static_cast<int>(centerX - plateHalfWidth),
 			static_cast<int>(centerY - 22.0 * scale),
