@@ -1,5 +1,33 @@
 # Changelog
 
+## [2.0.0] - Unreleased
+
+### Added
+
+- Added a Native RDF checkbox to Control Center Settings, synchronized with `.smr rdf on` / `.smr rdf off` and the saved EuroScope setting.
+- Added synchronization of the Line Up ground status between vSMR clients using TAXI plus a reserved controller-assigned speed value. Real speed assignments are preserved; shared Line Up state is cleared when the aircraft becomes airborne or another ground status is selected. Changes to aircraft tracked by another controller are declined with an explanation.
+- Added support for live LFPG taxi-area status from companion vSID bridge schema 1.4 (`lfpg_taxi`). Minimum Taxiing and Ground Crossing highlights use the published area state when available; older providers retain the last-completed-command fallback with an explanatory tooltip.
+
+### Changed
+
+- Refreshed all 160 bundled AVISO GeoJSON maps from the converter's official GNG layouts and current settings, and updated the map hash inventory, provenance and validation fixtures.
+- Restored LFPG's 89 East arrows and 97 West arrows in two independently selectable groups.
+- Updated PDC and CPDLC message windows to a neutral grey palette with dark headers and blue-grey controls, without changing their layout.
+- Removed the Auto mode button and status row from the vSID popup and reduced its height. This does not disable vSID's underlying automatic mode.
+- Made vSID configuration buttons follow published live Paris rules, including changes made outside vSMR. Configuration selection remains manual in vSMR; automatic runway-based configuration detection is not included.
+- Improved vSID command responsiveness with short-lived 50 ms completion checks and immediate configuration refreshes, without rescanning aircraft. Multi-command actions remain serialized and ambiguous deliveries are not retried.
+- Expanded regression coverage for native command-window timers, repeated clicks, vSID live state and command completion, tag hover, inset-aware RDF, shared Line Up state, and bundled audio resources.
+
+### Fixed
+
+- Separated LFPG's Linked/Unlinked controls from Minimum Taxiing/Ground Crossing. Linked/Unlinked uses the `opposing` rule; Minimum Taxiing resets areas before enabling NORTH and SOUTH, while Ground Crossing disables areas. Clicking an already-published link selection does not toggle it again.
+- Preserved command-completion refresh notifications until EuroScope's regular callback acknowledges them, so the fast completion check cannot consume the notification needed to re-enable vSID buttons. Removed direct native-window repainting from command completion.
+- Fixed aircraft tag hover requiring a click or drag by calibrating cursor coordinates against the actual radar view and requesting a refresh when hover begins.
+- Made native RDF account for inset occlusion: an aircraft hidden beneath an inset produces a direction line toward it rather than a ring hidden under the inset.
+- Added embedded timer-alarm and CPDLC-notification sound fallbacks when external WAV files are missing or cannot be played. Valid custom sound files remain preferred, and Windows mute and output settings remain respected.
+- Deferred airport/runway refreshes until after EuroScope's runway-dialog callback returns, reading the committed selections while preserving each view's configured airport.
+- Corrected holding-point catalogue entries for LFLL, LFML and LFPB.
+
 ## [2.0.0-beta.6] - 2026-09-18
 
 ### Added
@@ -11,7 +39,6 @@
 
 - Added explicit WL/EL/IPGW/IPOW vSID popup selections for LFPN, LFPV, LFPT and LFOB, with manual selection only. LFPG/LFPO retain Linked/Unlinked controls. Removed Auto runways and automatic runway-driven rule changes; the companion only publishes manually selected rules.
 
-- Added a Native RDF checkbox to Control Center Settings. It enables or disables the vSMR RDF overlay and writes the same EuroScope setting as `.smr rdf on` / `.smr rdf off`, so both stay in sync.
 - Added a per-profile "Fit background to each text line" tag option for the main radar, AVISO insets, and SRW insets.
 
 - Added a right-click airport history to the Runtime Menu ICAO field, listing the five most recently opened airports in the current radar-screen session for quick switching.
@@ -26,11 +53,9 @@
 - Made `ready_startup` invoke CDM's authoritative Ready Start-up toggle when clicked, and added a Ready aircraft requirement to display modes.
 - Added the Ramp Agent interface through EuroScope Plugin Bridge. The `uk_stand` and `remark` tag tokens now show Ramp Agent's `rampagent/stand` and `rampagent/remark` values.
 
-- Added synchronization of the Line Up ground status between vSMR clients. EuroScope has no status for it, so vSMR writes it as a reserved controller assigned speed (10, in a 10-19 band held for future states) paired with the TAXI ground status, and every client reads the pair back. Line Up takes priority over TAXI while both are set; a controller who picks another ground status from outside vSMR takes the aircraft off Line Up on every client and the reserved value is cleared. An assigned speed outside the band stays a real speed assignment, and the reserved value is also ignored and cleared once the tag turns airborne. EuroScope refuses controller assigned data for an aircraft another controller tracks, so the status is then declined with an explanation instead of being shown locally only.
-
 ### Changed
 
-- Replaced the bundled AVISO set with 160 converter-supplied airport maps. Added LFRJ and removed 33 maps from the previous import. Dark/Light are available everywhere; Real is available at LFML, LFMN, LFPG, and LFPO. Restored LFPG's 89 East arrows and 97 West arrows in two independently selectable groups without changing the imported airport layout or palette styles; the other 159 maps retain their supplied bytes.
+- Replaced the bundled AVISO set with exactly 160 converter-supplied airport maps, byte-for-byte. Added LFRJ and removed 33 maps from the previous import. Dark/Light are available everywhere; Real is available at LFML, LFMN, LFPG, and LFPO. The final LFPG map has no East/West arrow groups.
 - Applied the Settings resolution scale to AVISO geometry/text and aircraft icons/tags in the radar views, without resizing menus, Control Center, or inset controls.
 - Aligned package defaults, binary product versions, and AppVeyor configuration for beta 6. Added release-input validation of versions, map hashes, and update-policy consistency.
 - Reworked the EuroScope Plugin Bridge consumer to follow the bridge integration checklist: a single `esbridge.h` client shim attached from the timer, per-field resolution with type and schema checks, buffer resizing, stale-handle re-resolution, and one shared flight-plan scan per tick for vSID, Ramp Agent, and CDM. A missing plug-in or bridge now only disables the data it provides.
@@ -68,7 +93,6 @@
 
 ### Fixed
 
-- Fixed LFPG's vSID CONFIG rows sharing commands and selection state. Linked/Unlinked uses the existing `opposing` rule; Minimum Taxiing enables NORTH and SOUTH areas and Ground Crossing disables areas. No new vSID schema is required. Taxi highlights record the last completed command sequence sent by vSMR, independently of the published link state, and do not claim live area telemetry.
 - Made active profile selection independent for each ASR. Opening, selecting, saving or closing one ASR no longer applies its profile to other screens; shared configuration reloads preserve each screen's selection.
 
 - Fixed AVISO color edits and pasted colors changing other themes through inherited palette colors.
