@@ -12,6 +12,7 @@ class CSMRPlugin;
 extern std::atomic<bool> PluginShutdownRequested;
 extern std::atomic<CSMRPlugin*> ActivePluginInstance;
 extern std::atomic<bool> FlightDataRefreshPending;
+extern std::atomic<bool> AirportRunwayRefreshPending;
 extern bool BLINK;
 extern std::mutex DatalinkControlMutex;
 extern std::mutex DatalinkStateMutex;

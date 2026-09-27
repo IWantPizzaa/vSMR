@@ -77,9 +77,8 @@ namespace
 	}
 }
 
-VsmrPluginBridge::Tick VsmrPluginBridge::BeginTick(EuroScopePlugIn::CPlugIn& plugin)
+const ESB_Api_v1* VsmrPluginBridge::AttachForUi()
 {
-	Tick tick;
 	const ESB_Api_v1* api = ESB_Attach();
 	if (api == nullptr || !ServesRequiredMembers(*api))
 	{
@@ -90,10 +89,18 @@ VsmrPluginBridge::Tick VsmrPluginBridge::BeginTick(EuroScopePlugIn::CPlugIn& plu
 		CurrentAttachState.store(
 			loaded ? AttachState::Incompatible : AttachState::NotLoaded,
 			std::memory_order_relaxed);
-		return tick;
+		return nullptr;
 	}
 	CurrentAttachState.store(AttachState::Attached, std::memory_order_relaxed);
-	tick.api = api;
+	return api;
+}
+
+VsmrPluginBridge::Tick VsmrPluginBridge::BeginTick(EuroScopePlugIn::CPlugIn& plugin)
+{
+	Tick tick;
+	tick.api = AttachForUi();
+	if (tick.api == nullptr)
+		return tick;
 
 	try
 	{
