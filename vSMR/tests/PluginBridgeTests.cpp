@@ -399,6 +399,8 @@ namespace
 	}
 }
 
+void RunCommandLineWindowTests(std::vector<std::string>& failures);
+
 std::vector<std::string> RunPluginBridgeTests()
 {
 	std::vector<std::string> failures;
@@ -407,6 +409,7 @@ std::vector<std::string> RunPluginBridgeTests()
 	TestReads(api, failures);
 	TestRampAgentData(failures);
 	RunPluginBridgePollingTests(failures);
+	RunCommandLineWindowTests(failures);
 	Fake = FakeBridgeState{};
 	return failures;
 }

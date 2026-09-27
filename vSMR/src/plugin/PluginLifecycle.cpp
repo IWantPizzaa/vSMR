@@ -30,6 +30,7 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 	// Resetting process-wide session state
 	PluginShutdownRequested.store(false, std::memory_order_relaxed);
 	FlightDataRefreshPending.store(false, std::memory_order_relaxed);
+	AirportRunwayRefreshPending.store(false, std::memory_order_relaxed);
 	VsmrHoldingPoint::ClearPending();
 	VsmrCdm::Shutdown();
 	VsmrRampAgent::Shutdown();
@@ -93,6 +94,13 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 	// completed. A failed constructor must never leave a freed instance visible
 	// to runtime callbacks or shutdown recovery.
 	ActivePluginInstance.store(this, std::memory_order_release);
+	VsmrVsid::SetUiRefreshCallback([] {
+		if (PluginShutdownRequested.load(std::memory_order_relaxed))
+			return;
+		for (CSMRRadar* radar : RadarScreensOpened)
+			if (radar != nullptr && !radar->IsShutdownRequested())
+				radar->RequestRefresh();
+	});
 }
 
 CSMRPlugin::~CSMRPlugin()

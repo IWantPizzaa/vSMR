@@ -69,6 +69,10 @@
     <ClCompile Include="AuditRegressionTests.cpp" />
     <ClCompile Include="PluginBridgeTests.cpp" />
     <ClCompile Include="PluginBridgePollingTests.cpp" />
+    <ClCompile Include="CommandLineWindowTests.cpp" />
+    <ClCompile Include="..\src\platform\windows\EuroScopeCommandLine.cpp">
+      <PreprocessorDefinitions>VsmrEuroScopeCommandLine=VsmrCommandLineWindowTests;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
     <ClCompile Include="..\src\integrations\CdmBridgeClient.cpp" />
     <ClCompile Include="..\src\integrations\VsidBridgeClient.cpp" />
     <ClCompile Include="..\src\integrations\RampAgentBridgeClient.cpp" />

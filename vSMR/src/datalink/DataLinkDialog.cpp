@@ -13,35 +13,37 @@
 
 namespace
 {
-	const COLORREF kBackgroundColor = RGB(37, 48, 51);
-	const COLORREF kFooterColor = RGB(36, 47, 50);
-	const COLORREF kPanelColor = RGB(41, 54, 57);
-	const COLORREF kPanelTitleColor = RGB(34, 45, 48);
-	const COLORREF kControlColor = RGB(32, 41, 44);
-	const COLORREF kReadOnlyColor = RGB(36, 48, 51);
-	const COLORREF kBorderColor = RGB(5, 7, 8);
-	const COLORREF kInnerBorderColor = RGB(17, 23, 25);
-	const COLORREF kTextColor = RGB(201, 212, 215);
-	const COLORREF kLabelTextColor = RGB(168, 183, 188);
-	const COLORREF kMutedTextColor = RGB(145, 161, 166);
-	const COLORREF kAccentColor = RGB(80, 150, 180);
-	const COLORREF kAccentFocusColor = RGB(112, 171, 197);
-	const COLORREF kAccentHoverColor = RGB(148, 196, 223);
-	const COLORREF kAccentPressedColor = RGB(65, 126, 151);
-	const COLORREF kButtonColor = RGB(42, 56, 59);
-	const COLORREF kButtonHoverColor = RGB(53, 71, 75);
-	const COLORREF kButtonPressedColor = RGB(45, 61, 65);
-	const COLORREF kDisabledBackgroundColor = RGB(31, 42, 45);
-	const COLORREF kDisabledTextColor = RGB(91, 107, 112);
-	const COLORREF kTitleBackgroundColor = RGB(9, 12, 13);
-	const COLORREF kTitleStripeColor = RGB(23, 29, 31);
-	const COLORREF kTitleTextColor = RGB(211, 221, 224);
-	const COLORREF kCloseBackgroundColor = RGB(21, 27, 29);
-	const COLORREF kCloseHoverColor = RGB(57, 69, 74);
-	const COLORREF kCloseBorderColor = RGB(104, 117, 122);
-	const COLORREF kCloseTextColor = RGB(188, 200, 204);
-	const COLORREF kScrollTrackColor = RGB(41, 50, 53);
-	const COLORREF kScrollThumbColor = RGB(146, 146, 146);
+	// Shared PDC/CPDLC palette matching the reference message window:
+	// striped charcoal title, dark headers, slate-grey body and off-white text.
+	const COLORREF kBackgroundColor = RGB(81, 88, 91);
+	const COLORREF kFooterColor = RGB(51, 58, 61);
+	const COLORREF kPanelColor = RGB(81, 88, 91);
+	const COLORREF kPanelTitleColor = RGB(36, 40, 41);
+	const COLORREF kControlColor = RGB(70, 77, 80);
+	const COLORREF kReadOnlyColor = RGB(81, 88, 91);
+	const COLORREF kBorderColor = RGB(43, 49, 51);
+	const COLORREF kInnerBorderColor = RGB(62, 69, 72);
+	const COLORREF kTextColor = RGB(222, 224, 222);
+	const COLORREF kLabelTextColor = RGB(222, 224, 222);
+	const COLORREF kMutedTextColor = RGB(200, 203, 202);
+	const COLORREF kAccentColor = RGB(98, 108, 116);
+	const COLORREF kAccentFocusColor = RGB(188, 198, 207);
+	const COLORREF kAccentHoverColor = RGB(113, 123, 131);
+	const COLORREF kAccentPressedColor = RGB(71, 81, 89);
+	const COLORREF kButtonColor = RGB(75, 83, 88);
+	const COLORREF kButtonHoverColor = RGB(94, 103, 109);
+	const COLORREF kButtonPressedColor = RGB(59, 67, 72);
+	const COLORREF kDisabledBackgroundColor = RGB(62, 68, 71);
+	const COLORREF kDisabledTextColor = RGB(139, 145, 147);
+	const COLORREF kTitleBackgroundColor = RGB(20, 24, 25);
+	const COLORREF kTitleStripeColor = RGB(49, 56, 59);
+	const COLORREF kTitleTextColor = RGB(242, 244, 241);
+	const COLORREF kCloseBackgroundColor = RGB(103, 116, 128);
+	const COLORREF kCloseHoverColor = RGB(126, 138, 150);
+	const COLORREF kCloseBorderColor = RGB(156, 168, 180);
+	const COLORREF kCloseTextColor = RGB(222, 227, 232);
+	const COLORREF kScrollTrackColor = RGB(51, 58, 61);
+	const COLORREF kScrollThumbColor = RGB(139, 149, 156);
 	const int kMessageModeDialogUnitReduction = 64;
 	const int kPanelHeaderHeightAt96Dpi = 19;
 	const int kPanelCornerRadiusAt96Dpi = 6;
@@ -1027,7 +1029,7 @@ void CDataLinkDialog::DrawPanel(LPDRAWITEMSTRUCT drawItem, const CString& captio
 		rect.right - ScaleForDpi(drawItem->hDC, 6),
 		rect.top + headerHeight - 1);
 	dc.SetBkMode(TRANSPARENT);
-	dc.SetTextColor(RGB(214, 224, 226));
+	dc.SetTextColor(kTextColor);
 	CFont* oldFont = dc.SelectObject(&m_BoldFont);
 	dc.DrawText(caption, captionRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
 	dc.SelectObject(oldFont);
@@ -1066,7 +1068,7 @@ void CDataLinkDialog::DrawButton(LPDRAWITEMSTRUCT drawItem, const CString& capti
 	dc.SelectObject(oldBrush);
 	dc.SelectObject(oldPen);
 	dc.SetBkMode(TRANSPARENT);
-	dc.SetTextColor(disabled ? kDisabledTextColor : (primary ? RGB(242, 247, 248) : kTextColor));
+	dc.SetTextColor(disabled ? kDisabledTextColor : (primary ? kTitleTextColor : kTextColor));
 	CFont* oldFont = dc.SelectObject(primary ? &m_BoldFont : &m_InterfaceFont);
 	if (pressed)
 		rect.OffsetRect(0, 1);
