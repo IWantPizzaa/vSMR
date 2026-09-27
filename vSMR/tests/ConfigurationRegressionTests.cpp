@@ -272,8 +272,8 @@ namespace
 					"Every palette uses the same sector-pack geometry: " + airport);
 			if (airport == "LFLL")
 			{
-				Expect(model.FeatureCount() == 427U && document["styles"].MemberCount() == 21U,
-					"LFLL combines 405 supplied features with 22 retained terrain/safety features");
+				Expect(model.FeatureCount() == 420U && document["styles"].MemberCount() == 21U,
+					"LFLL retains the detailed GNG map with consolidated multiline guidance features");
 				Expect(std::string(metadata["background_colors"]["real"].GetString()) == "#50595F",
 					"LFLL Real uses the lighter reference slate background");
 				const auto& styles = document["styles"];
@@ -289,9 +289,9 @@ namespace
 						if (std::string(feature["properties"]["style_id"].GetString()) == style->name.GetString()) ++actualCount;
 					Expect(style->value["feature_count"].GetUint() == actualCount, "LFLL detail style counts match the imported geometry");
 				}
-				Expect(styles["marking.surface"]["feature_count"].GetUint() == 152U &&
+				Expect(styles["polygon.surfacemarking"]["feature_count"].GetUint() == 152U &&
 					styles["polygon.building.394446"]["feature_count"].GetUint() == 35U &&
-					styles["line.stand_entry"]["feature_count"].GetUint() == 5U,
+					styles["line.standentry"]["feature_count"].GetUint() == 1U,
 					"LFLL includes supplied runway markings, detailed buildings and stand entry lines");
 				Expect(styles["polygon.stopbar.7e0000"]["feature_count"].GetUint() == 17U &&
 					styles["polygon.closurearea.ff0000"]["feature_count"].GetUint() == 4U &&

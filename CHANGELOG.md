@@ -25,6 +25,7 @@
 
 ### Fixed
 
+- Fixed small AVISO rectangles and building corners turning into triangles when zoomed out with Rotate Screen enabled. Projection scale now includes both rotated axes, polygon corners are preserved, and line simplification uses final raster coordinates.
 - Made the entire Timer inset follow the interface Day/Night setting, including idle, hover, running and expired cells, text and borders, without resetting countdowns.
 - Fixed the PDC/CPDLC title bar intercepting close-button clicks; X now uses the Cancel path. Prevented decorative panels from painting over fields and filled multiline backgrounds completely. Fields retain Control Center input styling, with light-grey backgrounds for editable values and dark-grey backgrounds with muted text for read-only information.
 - Separated LFPG's Linked/Unlinked controls from Minimum Taxiing/Ground Crossing. Linked/Unlinked uses the `opposing` rule; Minimum Taxiing resets areas before enabling NORTH and SOUTH, while Ground Crossing disables areas. Clicking an already-published link selection does not toggle it again.
