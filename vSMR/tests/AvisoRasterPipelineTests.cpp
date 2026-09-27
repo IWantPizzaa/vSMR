@@ -5,6 +5,7 @@
 #include "AvisoRasterPipelineTests.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
 #include "aviso/AvisoRasterSizing.hpp"
+#include "aviso/AvisoRasterGeometry.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -27,6 +28,65 @@ namespace
 	{
 		if (!condition)
 			failures.emplace_back(message);
+	}
+
+	void TestRotatedRasterGeometry(Failures& failures)
+	{
+		const Gdiplus::PointF rectangle[] = { {0, 0}, {4, 0}, {4, 1}, {0, 1}, {0, 0} };
+		// Reproduce the previous shortcut: at 75 degrees it drops one corner
+		// and the closing point of this rectangle, leaving a filled triangle.
+		const double oldAxisComponent = std::cos(75.0 * 3.14159265358979323846 / 180.0);
+		std::vector<Gdiplus::PointF> legacyPoints;
+		for (const auto& point : rectangle)
+		{
+			if (!legacyPoints.empty())
+			{
+				const double dx = (point.X - legacyPoints.back().X) * oldAxisComponent;
+				const double dy = (point.Y - legacyPoints.back().Y) * oldAxisComponent;
+				if (dx * dx + dy * dy < 0.25) continue;
+			}
+			legacyPoints.push_back(point);
+		}
+		Check(legacyPoints.size() == 3U, "Regression fixture reproduces the old rotated rectangle-to-triangle bug", failures);
+		for (const double degrees : { 0.0, 35.0, 75.0, 89.9, 90.0, 115.0, 180.0, 270.0, -75.0 })
+		{
+			const double radians = degrees * 3.14159265358979323846 / 180.0;
+			for (const double zoom : { 1.0, 0.5, 0.1 })
+			{
+				auto project = [&](const Gdiplus::PointF& point)
+				{
+					return Gdiplus::PointF(static_cast<float>((point.X * std::cos(radians) - point.Y * std::sin(radians)) * zoom),
+						static_cast<float>((point.X * std::sin(radians) + point.Y * std::cos(radians)) * zoom));
+				};
+				Check(std::abs(VsmrAviso::ProjectedAxisLength(project(rectangle[0]), project(rectangle[1])) - 4.0 * zoom) < 1e-5 &&
+					std::abs(VsmrAviso::ProjectedAxisLength(project(rectangle[1]), project(rectangle[2])) - zoom) < 1e-5,
+					"AVISO projected axis lengths stay constant under rotation, including quarter-turns", failures);
+				for (const auto rasterScale : { std::pair<double, double>{1.0, 1.0}, {0.5, 0.8}, {2.0, 2.0} })
+				{
+					std::vector<Gdiplus::PointF> points;
+					for (const auto& coordinate : rectangle)
+					{
+						const auto point = project(coordinate);
+						VsmrAviso::AppendProjectedRasterPoint(points,
+							Gdiplus::PointF(static_cast<float>(point.X * rasterScale.first), static_cast<float>(point.Y * rasterScale.second)), 0.25, true);
+					}
+					Check(points.size() == 5U, "Zoomed-out rotated polygons retain all four corners and their closing vertex", failures);
+					double twiceArea = 0.0;
+					for (std::size_t i = 1; i < points.size(); ++i)
+						twiceArea += static_cast<double>(points[i - 1].X) * points[i].Y - static_cast<double>(points[i].X) * points[i - 1].Y;
+					Check(std::abs(std::abs(twiceArea) * 0.5 - 4.0 * zoom * zoom * rasterScale.first * rasterScale.second) < 1e-5,
+						"Rotated rectangle area is preserved through native, downsampled and oversampled raster paths", failures);
+				}
+			}
+		}
+		std::vector<Gdiplus::PointF> line;
+		VsmrAviso::AppendProjectedRasterPoint(line, Gdiplus::PointF(0, 0), 0.25, true);
+		VsmrAviso::AppendProjectedRasterPoint(line, Gdiplus::PointF(0.1f, 0.1f), 0.25, false);
+		Check(line.size() == 1U, "Dense open lines still simplify using final raster distance", failures);
+		VsmrAviso::AppendProjectedRasterPoint(line, Gdiplus::PointF(0.1f, 0.1f), 0.25, true);
+		Check(line.size() == 2U, "Short open lines preserve their last endpoint", failures);
+		VsmrAviso::AppendProjectedRasterPoint(line, line.back(), 0.25, true);
+		Check(line.size() == 2U, "Exact consecutive raster duplicates are harmlessly discarded", failures);
 	}
 
 	class TestEvent final
@@ -495,6 +555,7 @@ namespace
 std::vector<std::string> RunAvisoRasterPipelineTests()
 {
 	Failures failures;
+	TestRotatedRasterGeometry(failures);
 	for (const double budget : { 18000000.0, 32000000.0 })
 	{
 		for (const auto size : { std::pair<double, double>{1920, 1080}, {2560, 1440}, {3840, 2160}, {2160, 3840} })
