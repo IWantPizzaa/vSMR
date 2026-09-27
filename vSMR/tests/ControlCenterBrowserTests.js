@@ -417,6 +417,25 @@
 
 	document.querySelector('[data-profile-tab="tags"]')?.click();
     sampleSharedList("#tagDefinitionList", "Tags");
+    const labelSizeInput = document.querySelector("#tagLabelFontSize");
+    expect(Number(labelSizeInput?.value) >= 6, "Tag font size shows pixels rather than a legacy slot number");
+    expect([6, 8, 10, 12, 14, 18, 24, 72].every(size =>
+      document.querySelector(`#tagLabelFontSizes option[value="${size}"]`)),
+      "Tag font size offers familiar numeric sizes");
+    for (const size of [14, 6, 11]) {
+      const saveStart = outbound.length;
+      labelSizeInput.value = String(size);
+      labelSizeInput.dispatchEvent(new Event("change", { bubbles: true }));
+      await waitFor(() => outbound.slice(saveStart).some(message => message.type === "state.save" &&
+        message.payload?.profiles?.some(profile => {
+          const slot = profile.font?.label_font_size;
+          return slot >= 1 && slot <= 5 &&
+            profile.font.sizes?.[["one", "two", "three", "four", "five"][slot - 1]] === size;
+        })), `Tag font size ${size} persists as pixels while retaining the compatible slot`);
+      document.querySelector('[data-profile-tab="colors"]')?.click();
+      document.querySelector('[data-profile-tab="tags"]')?.click();
+      expect(Number(labelSizeInput.value) === size, `Tag font size ${size} survives navigation`);
+    }
     const fitTagBackground = document.querySelector("#tagFitBackgroundToText");
     expect(Boolean(fitTagBackground), "Tags expose the fit-background option");
     const fitSaveStart = outbound.length;
