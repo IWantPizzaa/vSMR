@@ -30,6 +30,26 @@ void CSMRPlugin::OnTimer(int Counter)
 	BLINK = !BLINK;
 	VsmrRdf::OnTimer();
 
+	// Consume runway notifications after EuroScope's dialog callback has returned.
+	// Coalesce notifications and read the latest committed state for every ASR;
+	// never change a view's configured airport to match another open screen.
+	if (AirportRunwayRefreshPending.exchange(false, std::memory_order_acq_rel))
+	{
+		struct ActiveSectorSelectionGuard
+		{
+			CSMRPlugin* plugin;
+			~ActiveSectorSelectionGuard() { plugin->SelectActiveSectorfile(); }
+		} selectionGuard{ this };
+		Logger::info("Refreshing committed EuroScope airport/runway activity");
+		for (CSMRRadar* radar : RadarScreensOpened)
+		{
+			if (radar == nullptr || radar->IsShutdownRequested())
+				continue;
+			SelectScreenSectorfile(radar);
+			radar->RefreshAfterAirportRunwayActivityChange();
+		}
+	}
+
 	// ----- Cleaning airborne holding points -----
 	for (const std::string& callsign : VsmrHoldingPoint::KnownCallsigns())
 	{

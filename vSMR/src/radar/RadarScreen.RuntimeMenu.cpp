@@ -32,8 +32,8 @@ namespace
 	constexpr int kPanelCornerDiameter = 8;
 	constexpr int kInsetPopupWidth = 196;
 	constexpr int kVsidPopupWidth = 220;
-	constexpr int kVsidPopupHeight = 79;
-	constexpr int kVsidLfpgPopupHeight = 124;
+	constexpr int kVsidPopupHeight = 54;
+	constexpr int kVsidLfpgPopupHeight = 99;
 	constexpr int kStandardPopupWidth = 170;
 	constexpr int kCpdlcPopupHeight = 104;
 	constexpr int kIntegrationPopupGap = 6;
@@ -597,24 +597,6 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 	{
 		const std::string& normalizedAirport = vsidAirport;
 		const bool canSubmit = vsidState.providerReady && !vsidState.commandLineBusy;
-		const bool canSubmitAirport = canSubmit && !normalizedAirport.empty();
-		const auto& automatic = VsmrVsid::AirportRuntimeActions.front();
-		CRect automaticArea(radar.RuntimeMenuPopupArea.left + kPopupPadding, contentTop,
-			radar.RuntimeMenuPopupArea.right - kPopupPadding, contentTop + kPopupActionHeight);
-		const std::string autoState = vsidState.automaticMode.has_value()
-			? (*vsidState.automaticMode ? "Activated" : "Deactivated") : "Unknown - requires vSID automatic-mode status support";
-		drawRuntimeButton(automatic.objectId, automaticArea, "", canSubmitAirport,
-			false, false, "Toggle auto mode for " + normalizedAirport + ". " + autoState);
-		::SelectObject(hdc, actionFont);
-		DrawTextEllipsis(hdc, CRect(automaticArea.left + 10, automaticArea.top,
-			automaticArea.right - 108, automaticArea.bottom), "Auto mode",
-			canSubmitAirport ? palette.text : palette.disabledText);
-		DrawTextEllipsis(hdc, CRect(automaticArea.right - 104, automaticArea.top,
-			automaticArea.right - 30, automaticArea.bottom),
-			vsidState.automaticMode.has_value() ? autoState : "Unknown", palette.mutedText, DT_RIGHT);
-		drawStatusLamp(CRect(automaticArea.right - 30, automaticArea.top,
-			automaticArea.right - 8, automaticArea.bottom), vsidState.automaticMode);
-		contentTop += kPopupActionHeight + 3;
 		CRect reloadArea, syncArea;
 		twoColumnAreas(kPopupActionHeight, reloadArea, syncArea);
 		const auto& reload = VsmrVsid::GeneralRuntimeActions[2];
@@ -667,9 +649,12 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 					for (const auto& mode : VsmrVsid::LfpgModeActions)
 					{
 						const bool minimumTaxiing = mode.action == VsmrVsid::CommandAction::LfpgMinimumTaxiing;
-						const bool selected = VsmrVsid::IsLfpgTaxiActionSelected(mode.action, vsidState.lastSubmittedLfpgTaxiMode);
+						const auto taxiMode = vsidState.liveLfpgTaxiAvailable
+							? vsidState.lfpgTaxiMode : vsidState.lastSubmittedLfpgTaxiMode;
+						const bool selected = VsmrVsid::IsLfpgTaxiActionSelected(mode.action, taxiMode);
 						drawRuntimeButton(mode.objectId, minimumTaxiing ? leftArea : rightArea, mode.label, available,
-							selected, false, mode.tooltip);
+							selected, false, vsidState.liveLfpgTaxiAvailable ? mode.tooltip :
+							"Live area status unavailable in this vSID build. Highlight shows only the last command sent by vSMR.");
 					}
 					contentTop += kPopupActionHeight + 3;
 				}
