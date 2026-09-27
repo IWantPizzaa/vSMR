@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "shared/JsonDocument.hpp"
 #include "aviso/AvisoFeatureMetadata.hpp"
+#include "aviso/AvisoPolygonOutline.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.AvisoSupport.hpp"
@@ -1069,6 +1070,11 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		parsedFeature.lightStrokeColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "light", "stroke", parsedFeature.strokeColor);
 		parsedFeature.realFillColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "real", "fill", parsedFeature.fillColor);
 		parsedFeature.realStrokeColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "real", "stroke", parsedFeature.strokeColor);
+		parsedFeature.polygonOutline = VsmrAviso::ResolvePolygonOutline(sharedPaint, properties, nullptr, nullptr);
+		parsedFeature.lightPolygonOutline = VsmrAviso::ResolvePolygonOutline(sharedPaint, properties,
+			GetAvisoPalettePaint(sharedPaint, "light"), GetAvisoPalettePaint(properties, "light"));
+		parsedFeature.realPolygonOutline = VsmrAviso::ResolvePolygonOutline(sharedPaint, properties,
+			GetAvisoPalettePaint(sharedPaint, "real"), GetAvisoPalettePaint(properties, "real"));
 		parsedFeature.strokeWidth = ParseAvisoStrokeWidthResolved(sharedPaint, properties, 1.0f);
 		parsedFeature.minimumZoomLevel = ParseAvisoMinimumZoomLevel(sharedPaint, properties);
 		parsedFeature.minLongitude = (std::numeric_limits<double>::max)();

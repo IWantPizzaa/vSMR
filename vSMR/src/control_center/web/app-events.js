@@ -414,7 +414,7 @@
     });
 
     $("#tagLabelFontSize").addEventListener("change", event => {
-      event.target.value = String(Math.round(clamp(event.target.value, 1, 5)));
+      event.target.value = String(Math.round(clamp(event.target.value, 6, Number(event.target.max) || 72)));
     });
 
     $("#colorHex").addEventListener("input", event => {

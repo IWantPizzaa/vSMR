@@ -663,7 +663,8 @@
 
   function createState(bundle = DATA) {
     const { records, metadata, extras } = getProfileRecords(bundle.profiles);
-    const preferred = records.find(record => record.data.name === "Custom LFPG")
+    const preferred = records.find(record => record.data.name === "LFPG")
+      || records.find(record => record.data.name === "Custom LFPG")
       || records.find(record => record.data.name === metadata.last_active_profile)
       || records[0];
     const initialAirport = normalizeAirportCode(bundle.airport

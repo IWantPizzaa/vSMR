@@ -240,7 +240,11 @@
     $("#tagRoundedCorners").checked = Boolean(labels.rounded_corners);
     $("#tagFitBackgroundToText").checked = Boolean(labels.fit_background_to_text);
     $("#tagAutoDeconfliction").checked = Boolean(labels.auto_deconfliction);
-    const labelSize = Math.round(clamp(activeProfile().font?.label_font_size ?? 1, 1, 5));
+    const labelSlot = Math.round(clamp(activeProfile().font?.label_font_size ?? 1, 1, 5));
+    const labelKey = ["one", "two", "three", "four", "five"][labelSlot - 1];
+    const storedSize = Number(activeProfile().font?.sizes?.[labelKey] ?? (9 + labelSlot));
+    const labelSize = Number.isFinite(storedSize) ? Math.max(6, Math.round(storedSize)) : 9 + labelSlot;
+    $("#tagLabelFontSize").max = Math.max(72, labelSize);
     $("#tagLabelFontSize").value = labelSize;
 
     const profile = activeProfile();
@@ -286,10 +290,15 @@
     labels.fit_background_to_text = $("#tagFitBackgroundToText").checked;
     labels.auto_deconfliction = $("#tagAutoDeconfliction").checked;
     activeProfile().font ||= {};
-    activeProfile().font.label_font_size = Math.round(clamp($("#tagLabelFontSize").value, 1, 5));
+    // Keep the legacy slot identity so old profiles/ASRs remain compatible;
+    // the editor changes its actual pixel size, never the hidden 1-5 index.
+    const labelSlot = Math.round(clamp(activeProfile().font.label_font_size ?? 1, 1, 5));
+    const labelKey = ["one", "two", "three", "four", "five"][labelSlot - 1];
+    activeProfile().font.label_font_size = labelSlot;
     activeProfile().font.font_name = $("#profileFontName").value || "Arial";
     activeProfile().font.weight = $("#profileFontWeight").value || "Regular";
     activeProfile().font.sizes ||= { one: 10, two: 11, three: 12, four: 13, five: 14 };
+    activeProfile().font.sizes[labelKey] = Math.round(clamp($("#tagLabelFontSize").value, 6, Number($("#tagLabelFontSize").max) || 72));
 
     clearUnappliedEditorSection($("#tagDefinitionEditor"));
     markDirty(`${entries.length === 1 ? entry.label : `${entries.length} tag definitions`} updated`, ["profiles"]);

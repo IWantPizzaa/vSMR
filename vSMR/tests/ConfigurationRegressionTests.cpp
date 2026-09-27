@@ -3,6 +3,7 @@
 
 #include "ConfigurationRegressionTests.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
+#include "aviso/AvisoPolygonOutline.hpp"
 #include "config/RuntimeConfig.hpp"
 #include "config/ProfileNormalization.hpp"
 #include "control_center/RuntimeResourceFiles.hpp"
@@ -57,8 +58,41 @@ namespace
 		if (profiles.HasParseError())
 			return;
 
+		bool lfboProfileFound = false;
+		bool lfpgProfileFound = false;
+		bool lfmnProfileFound = false;
 		if (profiles.IsArray()) for (const auto& original : profiles.GetArray())
 		{
+			if (original.HasMember("name") && std::string(original["name"].GetString()) == "LFBO / LFLL")
+			{
+				lfboProfileFound = true;
+				Expect(std::string(original["targets"]["icon_style"].GetString()) == "diamond" &&
+					original["targets"]["symbol_scale"].GetDouble() == 0.6 &&
+					!original["targets"]["trail_enabled"].GetBool(), "LFBO uses compact, trail-free white targets");
+				Expect(original["rules"]["items"].Empty(), "LFBO does not inherit LFPG CDM text-colour overrides");
+				const auto& labels = original["labels"];
+				Expect(labels["departure"]["text_on_ground_color"]["b"].GetInt() == 207 &&
+					labels["arrival"]["text_on_ground_color"]["r"].GetInt() == 205,
+					"LFBO has blue departure and mauve arrival labels");
+				for (const char* family : { "departure", "arrival" })
+				{
+					const auto& lines = labels[family]["definition"];
+					const bool twoLines = lines.IsArray() && lines.Size() == 2U &&
+						lines[0].IsArray() && lines[0].Size() == 1U && lines[0][0].IsString() &&
+						lines[1].IsArray() && lines[1].Size() == 1U && lines[1][0].IsString();
+					Expect(twoLines, "LFBO ground tags contain two valid token rows");
+					if (twoLines) Expect(std::string(lines[0][0].GetString()) == "callsign" &&
+						std::string(lines[1][0].GetString()) == "actype", "LFBO ground tags show callsign above aircraft type");
+				}
+			}
+			if (original.HasMember("name"))
+			{
+				const std::string name = original["name"].GetString();
+				Expect(name != "LFLL" && name.find("Custom LF") != 0,
+					"No standalone LFLL or Custom-prefixed airport profiles remain");
+				lfpgProfileFound = lfpgProfileFound || name == "LFPG";
+				lfmnProfileFound = lfmnProfileFound || name == "LFMN";
+			}
 			rapidjson::Document normalized;
 			normalized.CopyFrom(original, normalized.GetAllocator());
 			VsmrProfile::Normalize(normalized, normalized.GetAllocator());
@@ -67,6 +101,8 @@ namespace
 			Expect(!VsmrProfile::Normalize(normalized, normalized.GetAllocator()) && normalized == snapshot,
 				"bundled profile normalization is idempotent");
 		}
+		Expect(lfboProfileFound, "LFBO / LFLL retains the LFBO profile configuration");
+		Expect(lfpgProfileFound && lfmnProfileFound, "Airport profiles use LFPG and LFMN names");
 
 		bool migrated = false;
 		std::string error;
@@ -191,6 +227,20 @@ namespace
 
 	void TestAviso(const std::filesystem::path& repositoryRoot)
 	{
+		rapidjson::Document outlineStyle;
+		outlineStyle.Parse<0>(R"json({"paint":{"fill":"#434C51","palette-overrides":{"real":{"polygon-outline":true,"stroke":"#727C82"}}},"feature":{"polygon-outline":false},"invalid":{"polygon-outline":"true"}})json");
+		const auto* outlinePaint = &outlineStyle["paint"];
+		const auto* real = &(*outlinePaint)["palette-overrides"]["real"];
+		Expect(!VsmrAviso::ResolvePolygonOutline(nullptr, nullptr, nullptr, nullptr) &&
+			!VsmrAviso::ResolvePolygonOutline(outlinePaint, nullptr, nullptr, nullptr),
+			"Existing polygon styles and LFBO Dark/Light remain fill-only");
+		Expect(VsmrAviso::ResolvePolygonOutline(outlinePaint, nullptr, real, nullptr),
+			"Real can opt into polygon boundaries independently");
+		Expect(!VsmrAviso::ResolvePolygonOutline(outlinePaint, &outlineStyle["feature"], real, nullptr) &&
+			VsmrAviso::ResolvePolygonOutline(outlinePaint, &outlineStyle["feature"], real, real),
+			"Feature base and palette outline overrides follow colour precedence");
+		Expect(!VsmrAviso::ResolvePolygonOutline(&outlineStyle["invalid"], nullptr, nullptr, nullptr),
+			"Non-boolean polygon outline flags do not enable outlines");
 		const std::filesystem::path avisoRoot = repositoryRoot / "vSMR" / "data" / "AVISO";
 		for (const auto& entry : std::filesystem::directory_iterator(avisoRoot))
 		{
@@ -208,7 +258,7 @@ namespace
 			const auto& document = model.GetDocument();
 			if (!document.HasMember("metadata") || !document["metadata"].HasMember("geometry_source")) continue;
 			const auto& metadata = document["metadata"];
-			const bool hasReal = airport == "LFPG" || airport == "LFPO" || airport == "LFML" || airport == "LFMN";
+			const bool hasReal = airport == "LFPG" || airport == "LFPO" || airport == "LFML" || airport == "LFMN" || airport == "LFBO" || airport == "LFLL";
 			const auto& palettes = metadata["color_palettes"];
 			Expect(palettes.Size() == (hasReal ? 3U : 2U) &&
 				std::string(palettes[rapidjson::SizeType(0)].GetString()) == "dark" &&
@@ -220,6 +270,91 @@ namespace
 			for (const auto& feature : document["features"].GetArray())
 				Expect(!feature["properties"].HasMember("color_palettes"),
 					"Every palette uses the same sector-pack geometry: " + airport);
+			if (airport == "LFLL")
+			{
+				Expect(model.FeatureCount() == 427U && document["styles"].MemberCount() == 21U,
+					"LFLL combines 405 supplied features with 22 retained terrain/safety features");
+				Expect(std::string(metadata["background_colors"]["real"].GetString()) == "#50595F",
+					"LFLL Real uses the lighter reference slate background");
+				const auto& styles = document["styles"];
+				for (auto style = styles.MemberBegin(); style != styles.MemberEnd(); ++style)
+				{
+					const auto& paint = style->value["paint"];
+					Expect(paint.HasMember("palette-overrides") && paint["palette-overrides"].HasMember("real"),
+						"Every LFLL style explicitly defines its Real colours");
+					Expect(!VsmrAviso::ResolvePolygonOutline(&paint, nullptr, nullptr, nullptr),
+						"LFLL Dark remains fill-only");
+					unsigned actualCount = 0;
+					for (const auto& feature : document["features"].GetArray())
+						if (std::string(feature["properties"]["style_id"].GetString()) == style->name.GetString()) ++actualCount;
+					Expect(style->value["feature_count"].GetUint() == actualCount, "LFLL detail style counts match the imported geometry");
+				}
+				Expect(styles["marking.surface"]["feature_count"].GetUint() == 152U &&
+					styles["polygon.building.394446"]["feature_count"].GetUint() == 35U &&
+					styles["line.stand_entry"]["feature_count"].GetUint() == 5U,
+					"LFLL includes supplied runway markings, detailed buildings and stand entry lines");
+				Expect(styles["polygon.stopbar.7e0000"]["feature_count"].GetUint() == 17U &&
+					styles["polygon.closurearea.ff0000"]["feature_count"].GetUint() == 4U &&
+					!styles.HasMember("restriction.prohibited_area"),
+					"LFLL retains the original stopbar/closure classification instead of importing ambiguous restrictions");
+				Expect(!styles.HasMember("label.circuit.rwy17") && !styles.HasMember("label.circuit.rwy35"),
+					"LFLL surface map omits overlapping traffic-circuit annotations");
+				unsigned distanceLabels = 0;
+				for (const auto& feature : document["features"].GetArray())
+				{
+					const auto& properties = feature["properties"];
+					const std::string styleId = properties["style_id"].GetString();
+					if (styleId.find("label.tora.") != 0) continue;
+					++distanceLabels;
+					const auto& groups = properties["vsmr_group_ids"];
+					Expect(groups.Size() == 1U && std::string(groups[0].GetString()) == "lfll-distance-labels",
+						"LFLL distance labels can be toggled without hiding other airport geometry");
+				}
+				Expect(distanceLabels == 9U && document["vsmr_groups"].Size() == 1U &&
+					document["vsmr_groups"][0]["visible"].GetBool(), "LFLL distance-label group is available and initially visible");
+				Expect(document["bbox"][0].GetDouble() > 5.0 && document["bbox"][2].GetDouble() < 5.2 &&
+					document["bbox"][1].GetDouble() > 45.6 && document["bbox"][3].GetDouble() < 45.8,
+					"LFLL bounds describe the actual airport instead of the stale supplied bbox");
+				const auto& gates = styles["label.gates"]["paint"];
+				Expect(std::string(gates["text-color"].GetString()) == "#CCCCCC" &&
+					std::string(gates["palette-overrides"]["real"]["text-color"].GetString()) == "#64CDD0",
+					"LFLL stand labels become cyan only in Real");
+				const auto& runway = styles["polygon.runwayconcrete.555555"]["paint"];
+				const auto& runwayReal = runway["palette-overrides"]["real"];
+				Expect(std::string(runwayReal["fill"].GetString()) == "#818C92" &&
+					VsmrAviso::ResolvePolygonOutline(&runway, nullptr, &runwayReal, nullptr),
+					"LFLL Real uses light runway surfaces with fine outlines");
+				Expect(std::string(styles["polygon.closurearea.ff0000"]["paint"]["palette-overrides"]["real"]["fill"].GetString()) == "#FF0000",
+					"LFLL Real preserves visible closure warnings");
+			}
+			if (airport == "LFBO")
+			{
+				Expect(model.FeatureCount() == 471U && document["styles"].MemberCount() == 17U,
+					"LFBO retains its 471 features with three reference-coloured gate styles");
+				Expect(std::string(metadata["background_colors"]["real"].GetString()) == "#434C51",
+					"LFBO Real uses the reference slate background");
+				const auto& styles = document["styles"];
+				for (auto style = styles.MemberBegin(); style != styles.MemberEnd(); ++style)
+				{
+					const auto& paint = style->value["paint"];
+					Expect(paint.HasMember("palette-overrides") && paint["palette-overrides"].HasMember("real"),
+						"Every LFBO style explicitly defines its Real palette");
+					unsigned count = 0;
+					for (const auto& feature : document["features"].GetArray())
+						if (std::string(feature["properties"]["style_id"].GetString()) == style->name.GetString()) ++count;
+					Expect(style->value["feature_count"].GetUint() == count, "LFBO style feature counts are accurate");
+				}
+				const char* gateStyles[] = { "label.gates", "label.gates.north", "label.gates.south", "label.gates.runways" };
+				const char* gateColors[] = { "#A2A5A7", "#4BC5CA", "#C8A442", "#C99185" };
+				for (int i = 0; i < 4; ++i)
+				{
+					const auto& paint = styles[gateStyles[i]]["paint"];
+					Expect(std::string(paint["text-color"].GetString()) == "#CCCCCC",
+						"LFBO directional gate styles preserve Dark and inherited Light text");
+					Expect(std::string(paint["palette-overrides"]["real"]["text-color"].GetString()) == gateColors[i],
+						"LFBO Real gate colours follow the supplied reference legend");
+				}
+			}
 			if (airport == "LFPG")
 			{
 				bool east = false, west = false;

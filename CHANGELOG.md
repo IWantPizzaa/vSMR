@@ -4,12 +4,16 @@
 
 ### Added
 
+- Added an LFLL Real AVISO palette based on supplied real-world screenshots, with a lighter slate-grey background, pale runways, fine outlines and cyan stand labels. Integrated supplied airport-detail geometry including 152 surface markings, 35 buildings, coloured guidance lines and nine independently grouped runway-distance labels. Dark/Light colours, existing stopbars/closures and runway settings are preserved; unrelated circuit annotations and ambiguous restriction classifications are excluded.
+- Added an LFBO Real AVISO palette based on supplied real-world screenshots, with slate-grey surfaces, thin polygon outlines, lighter buildings and reference-coloured stand labels, plus a shared LFBO / LFLL profile with compact white targets and blue/mauve callsign/type tags. Existing geometry and Dark/Light palettes are preserved; polygon outlines are opt-in per palette.
 - Added a Native RDF checkbox to Control Center Settings, synchronized with `.smr rdf on` / `.smr rdf off` and the saved EuroScope setting.
 - Added synchronization of the Line Up ground status between vSMR clients using TAXI plus a reserved controller-assigned speed value. Real speed assignments are preserved; shared Line Up state is cleared when the aircraft becomes airborne or another ground status is selected. Changes to aircraft tracked by another controller are declined with an explanation.
 - Added support for live LFPG taxi-area status from companion vSID bridge schema 1.4 (`lfpg_taxi`). Minimum Taxiing and Ground Crossing highlights use the published area state when available; older providers retain the last-completed-command fallback with an explanatory tooltip.
 
 ### Changed
 
+- Simplified airport profile names to LFPG and LFMN, and replaced the separate LFBO/LFLL profiles with LFBO / LFLL using the LFBO configuration. Default and numbered Custom profiles are unchanged.
+- Replaced the tag Label font size editor's 1-5 preset numbers with actual pixel sizes, common size suggestions and direct numeric entry. Existing profiles retain their selected preset and appearance; changes update its size for main-view, AVISO and SRW tags.
 - Replaced the METAR compass arrow with a wind-strength-colored band fading inward from the reported wind-from bearing to the centre. Wind-variation arcs use the same wind-from orientation; calm and variable winds retain their existing non-directional display.
 - Refreshed all 160 bundled AVISO GeoJSON maps from the converter's official GNG layouts and current settings, and updated the map hash inventory, provenance and validation fixtures.
 - Restored LFPG's 89 East arrows and 97 West arrows in two independently selectable groups.
