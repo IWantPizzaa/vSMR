@@ -14,6 +14,7 @@
 
 ### Changed
 
+- Removed one-off updater-test packaging scripts and the superseded dated audit report; scratch directories and Python caches are now explicitly ignored. Maintained build, release, migration and regression tooling remains available.
 - Simplified airport profile names to LFPG and LFMN, and replaced the separate LFBO/LFLL profiles with LFBO / LFLL using the LFBO configuration. Default and numbered Custom profiles are unchanged.
 - Replaced the tag Label font size editor's 1-5 preset numbers with actual pixel sizes, common size suggestions and direct numeric entry. Existing profiles retain their selected preset and appearance; changes update its size for main-view, AVISO and SRW tags.
 - Replaced the METAR compass arrow with a wind-strength-colored band fading inward from the reported wind-from bearing to the centre. Wind-variation arcs use the same wind-from orientation; calm and variable winds retain their existing non-directional display.
@@ -27,6 +28,7 @@
 
 ### Fixed
 
+- Made layered-configuration tests stop on failed setup instead of dereferencing missing fixture data, and added file/Windows error details to updater test staging failures. Release-input validation now also accepts stable semantic versions.
 - Fixed small AVISO rectangles and building corners turning into triangles when zoomed out with Rotate Screen enabled. Projection scale now includes both rotated axes, polygon corners are preserved, and line simplification uses final raster coordinates.
 - Made the entire Timer inset follow the interface Day/Night setting, including idle, hover, running and expired cells, text and borders, without resetting countdowns.
 - Fixed the PDC/CPDLC title bar intercepting close-button clicks; X now uses the Cancel path. Prevented decorative panels from painting over fields and filled multiline backgrounds completely. Fields retain Control Center input styling, with light-grey backgrounds for editable values and dark-grey backgrounds with muted text for read-only information.
