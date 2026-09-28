@@ -223,6 +223,7 @@ struct AvisoViewportState
 	unsigned long long cacheGroupGeneration = 0;
 	int cacheWidth = 0;
 	int cacheHeight = 0;
+	int cacheLabelZoomLevel = -1;
 	double displayMinLongitude = 0.0;
 	double displayMinLatitude = 0.0;
 	double displayMaxLongitude = 0.0;
@@ -324,6 +325,7 @@ struct CInsetWindow::InsetAvisoCacheView
 	const Gdiplus::PointF& projectedTopRight;
 	const Gdiplus::PointF& projectedBottomLeft;
 	const Gdiplus::PointF& projectedBottomRight;
+	int labelZoomLevel;
 
 	Gdiplus::PointF projectPoint(double longitude, double latitude) const
 	{
@@ -343,6 +345,8 @@ struct CInsetWindow::InsetAvisoCacheView
 		if (inset.m_AvisoState->cacheBitmap == nullptr || !inset.m_AvisoState->anchorValid)
 			return false;
 		if (inset.m_AvisoState->cacheGroupGeneration != groupGeneration)
+			return false;
+		if (inset.m_AvisoState->cacheLabelZoomLevel != labelZoomLevel)
 			return false;
 
 		const double cachedLongitudeSpan =
@@ -367,6 +371,7 @@ struct CInsetWindow::InsetAvisoCacheView
 	bool completedResultMatchesCurrentView(const CSMRRadar::AvisoRasterRenderResult& result)
 	{
 		if (result.bitmap == nullptr ||
+			result.labelZoomLevel != labelZoomLevel ||
 			result.path != path ||
 			result.groupGeneration != groupGeneration ||
 			result.rasterWidth <= 0 ||
@@ -1106,6 +1111,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	viewportRect.NormalizeRect();
 	const int viewportWidth = viewportRect.Width();
 	const int viewportHeight = viewportRect.Height();
+	const double labelVisibilityRatio = VsmrAviso::InsetLabelVisibilityRatio(
+		viewportWidth, viewportHeight, layoutBounds.Width(), layoutBounds.Height());
 	if (viewportWidth <= 0 || viewportHeight <= 0)
 	{
 		dc.Detach();
@@ -1236,7 +1243,17 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	const Gdiplus::PointF projectedBottomLeft = rotateViewportPoint(viewportRect.left, viewportRect.bottom);
 	const Gdiplus::PointF projectedBottomRight = rotateViewportPoint(viewportRect.right, viewportRect.bottom);
 
-	InsetAvisoCacheView cacheView{ *this, hDC, gdi, viewportRect, path, groupGeneration, displayMinLon, displayMaxLon, displayMinLat, displayMaxLat, lonSpan, latSpan, projectedTopLeft, projectedTopRight, projectedBottomLeft, projectedBottomRight };
+	CPosition insetDownLeft;
+	insetDownLeft.m_Latitude = displayMinLat;
+	insetDownLeft.m_Longitude = displayMinLon;
+	CPosition insetUpRight;
+	insetUpRight.m_Latitude = displayMaxLat;
+	insetUpRight.m_Longitude = displayMaxLon;
+	const double crossDistance = SMRGeometry::DistanceMeters(insetDownLeft, insetUpRight);
+	// Normalize the visible ground distance to the current host dimensions.
+	// A small inset must not reveal dense text merely because its diagonal is shorter.
+	const int labelZoomLevel = SMRGeometry::ZoomLevelFromCrossDistance(crossDistance / labelVisibilityRatio);
+	InsetAvisoCacheView cacheView{ *this, hDC, gdi, viewportRect, path, groupGeneration, displayMinLon, displayMaxLon, displayMinLat, displayMaxLat, lonSpan, latSpan, projectedTopLeft, projectedTopRight, projectedBottomLeft, projectedBottomRight, labelZoomLevel };
 
 
 	bool completedResultApplied = false;
@@ -1253,6 +1270,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			m_AvisoState->cacheGroupGeneration = completedRenderResult->groupGeneration;
 			m_AvisoState->cacheWidth = completedRenderResult->rasterWidth;
 			m_AvisoState->cacheHeight = completedRenderResult->rasterHeight;
+			m_AvisoState->cacheLabelZoomLevel = completedRenderResult->labelZoomLevel;
 			m_AvisoState->displayMinLongitude = completedRenderResult->displayMinLongitude;
 			m_AvisoState->displayMinLatitude = completedRenderResult->displayMinLatitude;
 			m_AvisoState->displayMaxLongitude = completedRenderResult->displayMaxLongitude;
@@ -1332,6 +1350,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			request.rasterHeight = (std::max)(1, static_cast<int>(std::floor(renderPixelHeight * rasterScale)));
 			request.rasterScale = rasterScale;
 			request.displayScale = radar_screen->GetDisplayScale();
+			request.labelZoomLevel = labelZoomLevel;
 			request.displayMinLongitude = displayMinLon;
 			request.displayMinLatitude = displayMinLat;
 			request.displayMaxLongitude = displayMaxLon;
@@ -1344,14 +1363,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			request.renderScreenTop = renderScreenTop;
 			request.scaleX = scaleX;
 			request.scaleY = scaleY;
-			CPosition insetDownLeft;
-			insetDownLeft.m_Latitude = displayMinLat;
-			insetDownLeft.m_Longitude = displayMinLon;
-			CPosition insetUpRight;
-			insetUpRight.m_Latitude = displayMaxLat;
-			insetUpRight.m_Longitude = displayMaxLon;
-			request.viewportZoomLevel = SMRGeometry::ZoomLevelFromCrossDistance(
-				SMRGeometry::DistanceMeters(insetDownLeft, insetUpRight));
+			request.viewportZoomLevel = SMRGeometry::ZoomLevelFromCrossDistance(crossDistance);
 			request.projectedTopLeft = projectedTopLeft;
 			request.projectedTopRight = projectedTopRight;
 			request.projectedBottomLeft = projectedBottomLeft;

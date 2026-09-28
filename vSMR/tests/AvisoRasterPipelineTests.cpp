@@ -6,11 +6,13 @@
 #include "aviso/AvisoRasterPipeline.hpp"
 #include "aviso/AvisoRasterSizing.hpp"
 #include "aviso/AvisoRasterGeometry.hpp"
+#include "radar/RadarGeometry.hpp"
 
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <memory>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -186,6 +188,7 @@ namespace
 		result->requestId = request.requestId;
 		result->groupGeneration = request.groupGeneration;
 		result->colorPalette = request.colorPalette;
+		result->labelZoomLevel = request.labelZoomLevel;
 		result->path = request.path;
 		result->rasterWidth = request.rasterWidth;
 		result->rasterHeight = request.rasterHeight;
@@ -273,6 +276,16 @@ namespace
 		pipeline.TakeCompleted();
 		Check(pipeline.Queue(scaledRequest, false) == Pipeline::QueueStatus::Coalesced,
 			"unchanged resolution still coalesces duplicate AVISO requests", failures);
+		Pipeline::Request resizedLabels = scaledRequest;
+		resizedLabels.labelZoomLevel = 10;
+		Check(pipeline.Queue(resizedLabels, false) == Pipeline::QueueStatus::Queued,
+			"label visibility threshold changes cannot coalesce with older text", failures);
+		Check(completed.Wait([&]() { return refreshCalls.load(std::memory_order_relaxed) == 4; }),
+			"visibility-adjusted label raster completes", failures);
+		const auto visibilityResult = pipeline.TakeCompleted();
+		Check(visibilityResult && visibilityResult->labelZoomLevel == 10 &&
+			pipeline.Queue(resizedLabels, false) == Pipeline::QueueStatus::Coalesced,
+			"matching visibility reuses the completed raster", failures);
 		pipeline.Stop();
 	}
 
@@ -555,6 +568,26 @@ namespace
 std::vector<std::string> RunAvisoRasterPipelineTests()
 {
 	Failures failures;
+	using VsmrAviso::InsetLabelVisibilityRatio;
+	Check(InsetLabelVisibilityRatio(1200, 800, 1200, 800) == 1.0 &&
+		InsetLabelVisibilityRatio(600, 400, 1200, 800) == 0.5,
+		"label visibility uses the drawable diagonal ratio", failures);
+	Check(InsetLabelVisibilityRatio(600, 400, 1200, 800) == InsetLabelVisibilityRatio(1200, 800, 2400, 1600) &&
+		InsetLabelVisibilityRatio(400, 600, 800, 1200) == 0.5,
+		"inset label visibility is resolution- and orientation-independent", failures);
+	Check(InsetLabelVisibilityRatio(300, 200, 1200, 800) < InsetLabelVisibilityRatio(600, 400, 1200, 800) &&
+		InsetLabelVisibilityRatio(1200, 800, 600, 400) == 1.0,
+		"smaller insets tighten visibility without exceeding full-view visibility", failures);
+	Check(InsetLabelVisibilityRatio(0, 400, 1200, 800) == 1.0 &&
+		InsetLabelVisibilityRatio(600, 400, 0, 800) == 1.0 &&
+		InsetLabelVisibilityRatio(std::numeric_limits<double>::quiet_NaN(), 400, 1200, 800) == 1.0,
+		"invalid transient layout dimensions do not produce invalid visibility ratios", failures);
+	const double halfSize = InsetLabelVisibilityRatio(600, 400, 1200, 800);
+	Check(SMRGeometry::ZoomLevelFromCrossDistance(2000.0 / halfSize) <
+		SMRGeometry::ZoomLevelFromCrossDistance(2000.0) &&
+		SMRGeometry::ZoomLevelFromCrossDistance(1000.0 / halfSize) ==
+		SMRGeometry::ZoomLevelFromCrossDistance(2000.0),
+		"a half-sized inset must zoom twice as close for the same configured label visibility", failures);
 	TestRotatedRasterGeometry(failures);
 	for (const double budget : { 18000000.0, 32000000.0 })
 	{
