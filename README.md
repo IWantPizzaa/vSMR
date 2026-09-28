@@ -168,6 +168,14 @@ Build outputs (`Release/`, `Debug/`, `bin/`, `obj/`), `.vs/`, `.tmp/`, `artifact
 
 `vSMR/tools/build_project.ps1` rebuilds Release/Win32 and runs the native and browser regression suites. The installer, migration helpers and legacy updater recovery code remain necessary for existing installations; they are not disposable build artifacts.
 
+### CoFrance insets
+
+vSMR also attaches to the geo-referenced `CoFrance radar display` type. CoFrance continues to own the main radar; vSMR draws its AVISO, SRW, METAR and timer insets plus their existing runtime controls. Other third-party and standard EuroScope views are not opted in.
+
+Load vSMR together with CoFrance, then reopen a CoFrance ASR (an already-open screen must be recreated). The vSMR rail starts expanded on a new CoFrance view: select the airport, then open **Insets** and enable the desired windows. `.smr insets` expands and recenters the rail on all attached CoFrance views and reports received refresh phases and radar bounds; if no view is attached, it reports that explicitly. `.smr editor` opens the Control Center. Saving the ASR stores vSMR's inset state in its own plugin namespace. Keep a backup/test copy of the ASR and test disconnected from VATSIM first.
+
+The adapter skips the main vSMR map, targets, tags, RDF, RIMCAS panels and FPS overlay. AVISO presets cannot recenter the CoFrance map, and linked main/inset movement is unavailable on this host. The shared vSMR profiles and maps remain available to the insets. Custom displays with `DisplayTypeNeedRadarContent:0` use EuroScope's before-TAG phase rather than depending on native TAG/list phases; hosts enabling native radar content use the after-lists phase. If the rail is missing, enable `.smr log normal`, reopen the ASR, run `.smr insets`, and export `.smr diagnostics`. This feature is integrated in `dev` for the upcoming release; integration does not publish a release or update feed.
+
 ## License
 
 vSMR source code is licensed under the [GNU General Public License v3.0](LICENSE). Bundled dependencies and data assets retain their own terms; notices and provenance records are under `vSMR/data/Licenses/`.

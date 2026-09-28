@@ -4,6 +4,36 @@
 
 namespace VsmrRadarInteraction
 {
+	class InsetCursorOverride
+	{
+	public:
+		bool Active() const noexcept { return active_; }
+		void Apply(HCURSOR previous, HCURSOR temporary) noexcept
+		{
+			if (!active_) previous_ = previous;
+			temporary_ = temporary;
+			active_ = true;
+		}
+		HCURSOR Release(HCURSOR current) noexcept
+		{
+			const HCURSOR restore = active_ && current == temporary_ ? previous_ : nullptr;
+			active_ = false;
+			previous_ = temporary_ = nullptr;
+			return restore;
+		}
+	private:
+		bool active_ = false;
+		HCURSOR previous_ = nullptr;
+		HCURSOR temporary_ = nullptr;
+	};
+
+	inline bool IsActionableMouseHook(int code) noexcept
+	{
+		// HC_NOREMOVE is only a PeekMessage notification. Mutating zoom here
+		// would process the same queued wheel event again when it is removed.
+		return code == HC_ACTION;
+	}
+
 	// EuroScope may render into a memory DC. Its owning frame is not necessarily
 	// the radar view, so calibrate the coordinate space from an SDK mouse event.
 	class HoverPointer

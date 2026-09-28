@@ -44,6 +44,24 @@ bool VsmrPluginCommandHandler::Handle(
 		return true;
 	}
 
+	if (commandLower == ".smr insets")
+	{
+		bool found = false;
+		for (CSMRRadar* radar : radarScreens)
+		{
+			if (radar == nullptr || radar->IsShutdownRequested() || !radar->IsInsetsOnly())
+				continue;
+			found = true;
+			const std::string status = radar->ShowInsetHostMenu();
+			plugin.DisplayUserMessage("vSMR", "Insets", status.c_str(), true, true, false, true, false);
+		}
+		if (!found)
+			plugin.DisplayUserMessage("vSMR", "Insets",
+				"No CoFrance inset host attached. Reopen the CoFrance ASR after loading vSMR.",
+				true, true, false, true, false);
+		return true;
+	}
+
 	if (commandLower == ".smr reload")
 	{
 		for (CSMRRadar* radar : radarScreens)

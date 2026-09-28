@@ -727,13 +727,14 @@ bool CSMRRadar::SaveAvisoPreset(
 
 	AvisoPreset preset;
 	preset.name = presetName;
-	preset.linkedMovement = linkedMovementOverride.value_or(AvisoViewsLinked);
+	preset.linkedMovement = !IsInsetsOnly() && linkedMovementOverride.value_or(AvisoViewsLinked);
 
 	// Capturing the main AVISO view
 	CPosition displayA;
 	CPosition displayB;
-	GetDisplayArea(&displayA, &displayB);
-	preset.mainView.valid = true;
+	if (!IsInsetsOnly())
+		GetDisplayArea(&displayA, &displayB);
+	preset.mainView.valid = !IsInsetsOnly();
 	preset.mainView.minLatitude = (std::min)(displayA.m_Latitude, displayB.m_Latitude);
 	preset.mainView.maxLatitude = (std::max)(displayA.m_Latitude, displayB.m_Latitude);
 	preset.mainView.minLongitude = (std::min)(displayA.m_Longitude, displayB.m_Longitude);
@@ -816,6 +817,16 @@ bool CSMRRadar::SaveAvisoPreset(
 			}
 
 			rapidjson::Value presetValue;
+			if (IsInsetsOnly() && existingIndex != kInvalidPresetIndex)
+			{
+				AvisoPreset previous;
+				if (!ParseAvisoPreset(items[existingIndex], previous))
+					return CConfig::AvisoPresetTransactionAction::Abort;
+				// Updating inset geometry must not replace a native preset's
+				// main AVISO extent with the unrelated CoFrance radar extent.
+				preset.mainView = previous.mainView;
+				preset.linkedMovement = previous.linkedMovement;
+			}
 			WriteAvisoPreset(preset, presetValue, allocator);
 			if (existingIndex != kInvalidPresetIndex)
 				items[existingIndex] = presetValue;
@@ -861,7 +872,7 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 	CancelInsetWindowInteractions();
 
 	// Restoring the main AVISO view
-	if (preset.mainView.valid)
+	if (preset.mainView.valid && !IsInsetsOnly())
 	{
 		CPosition downLeft;
 		downLeft.m_Latitude = preset.mainView.minLatitude;
@@ -1270,6 +1281,10 @@ bool CSMRRadar::ResetActiveAvisoPreset()
 
 bool CSMRRadar::SetActiveAvisoPresetLinkedMovement(bool linked)
 {
+	// Linking is a native main-AVISO feature, not a CoFrance map control.
+	// Do not rewrite shared presets just because they are opened as insets.
+	if (IsInsetsOnly())
+		return false;
 	if (ActiveAvisoPresetName.empty())
 	{
 		AvisoViewsLinked = linked;
@@ -1319,12 +1334,12 @@ bool CSMRRadar::SetActiveAvisoPresetLinkedMovement(bool linked)
 
 bool CSMRRadar::IsAvisoPresetLinkedMovementEnabled() const
 {
-	return AvisoViewsLinked;
+	return !IsInsetsOnly() && AvisoViewsLinked;
 }
 
 void CSMRRadar::SyncLinkedAvisoSecondaryToMainView()
 {
-	if (!AvisoViewsLinked)
+	if (IsInsetsOnly() || !AvisoViewsLinked)
 		return;
 
 	CInsetWindow* avisoWindow = VsmrRadarPresetAccess::GetSecondaryAvisoWindow(this);
