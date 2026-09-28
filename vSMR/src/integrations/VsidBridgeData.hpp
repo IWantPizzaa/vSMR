@@ -56,6 +56,13 @@ namespace VsmrVsid
 
 	enum class LfpgTaxiMode { MinimumTaxiing, GroundCrossing };
 
+	inline std::optional<LfpgTaxiMode> ParseLfpgTaxiMode(std::string_view value) noexcept
+	{
+		if (value == "M") return LfpgTaxiMode::MinimumTaxiing;
+		if (value == "G") return LfpgTaxiMode::GroundCrossing;
+		return std::nullopt;
+	}
+
 	inline bool IsLfpgTaxiAction(CommandAction action) noexcept
 	{
 		return action == CommandAction::LfpgMinimumTaxiing || action == CommandAction::LfpgGroundCrossing;
@@ -266,19 +273,19 @@ namespace VsmrVsid
 	inline constexpr std::array<RuntimeActionDefinition, 2> LfpgModeActions = { {
 		{ CommandAction::LfpgMinimumTaxiing,
 			"runtime.vsid.lfpg-minimum-taxiing", "Minimum Taxiing",
-			"Enable LFPG NORTH and SOUTH areas (Minimum Taxiing). Highlight = last command sent by vSMR, not live vSID status." },
+			"Enable LFPG NORTH and SOUTH areas (Minimum Taxiing). Highlight follows live vSID area state when available." },
 		{ CommandAction::LfpgGroundCrossing,
 			"runtime.vsid.lfpg-ground-crossing", "Ground Crossing",
-			"Disable LFPG areas (Ground Crossing). Highlight = last command sent by vSMR, not live vSID status." }
+			"Disable LFPG areas (Ground Crossing). Highlight follows live vSID area state when available." }
 	} };
 
 	inline constexpr std::array<RuntimeActionDefinition, 2> LfpgLinkActions = { {
 		{ CommandAction::LfpgLinked,
 			"runtime.vsid.lfpg-linked", "Linked",
-			"Set linked rules for this airport; changed only by manual selection" },
+			"Select Linked manually. Highlight follows the current vSID rules, including Auto changes." },
 		{ CommandAction::LfpgUnlinked,
 			"runtime.vsid.lfpg-unlinked", "Unlinked",
-			"Set unlinked rules for this airport; changed only by manual selection" }
+			"Select Unlinked manually. Highlight follows the current vSID rules, including Auto changes." }
 	} };
 
 	inline constexpr std::array<RuntimeActionDefinition, 4> RegionalActions = { {

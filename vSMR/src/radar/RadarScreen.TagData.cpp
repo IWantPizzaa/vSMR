@@ -62,8 +62,9 @@ namespace
 				input.origin = CopyTagText(data.GetOrigin());
 				input.destination = CopyTagText(data.GetDestination());
 				input.groundState = CopyTagText(fp.GetGroundState());
-				if (correlated) input.lineup = VsmrGroundState::IsLineupOverrideActive(input.callsign.c_str(),
-					classifyGroundState(input.groundState, input.groundSpeed, false));
+				// A shared ground state wins over the EuroScope status here as well.
+				if (correlated) input.lineup = classifyGroundStateWithSharedState(
+					input.groundState.c_str(), input.groundSpeed, false, assigned.GetAssignedSpeed()) == GroundStateCategory::Lnup;
 			}
 		}
 		const std::string holdingCallsign = !stableCallsign.empty() ? stableCallsign : (input.hasFlightPlan ? CopyTagText(fp.GetCallsign()) : "");

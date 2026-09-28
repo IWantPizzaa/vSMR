@@ -65,6 +65,7 @@ public:
 	VsmrBridgeHostCallbacks Callbacks;
 	unsigned long long NativeMessageSequence = 0;
 	mutable std::string AvisoHealthCachePath;
+	mutable std::string AvisoHealthCacheConfigRevision;
 	mutable std::filesystem::file_time_type AvisoHealthCacheWriteTime{};
 	mutable std::uintmax_t AvisoHealthCacheSize = 0;
 	mutable bool AvisoHealthCacheExists = false;
@@ -103,11 +104,13 @@ public:
 		const std::string& path);
 	std::string ContentRevision(const std::string& contents);
 	std::string FileRevision(const std::string& path);
+	std::string AvisoRevision(const std::string& path);
 	void EvaluateAvisoHealth(
 		const std::string& path,
 		bool& healthy,
 		std::string& message) const;
 	CSMRPlugin* OwnerPlugin() const;
+	void ApplyRdfEnabled(bool enabled);
 	void BuildSettings(
 		rapidjson::Value& settings,
 		VsmrControlCenterBridgeInternal::Allocator& allocator) const;

@@ -13,38 +13,42 @@
 
 namespace
 {
-	const COLORREF kBackgroundColor = RGB(37, 48, 51);
-	const COLORREF kFooterColor = RGB(36, 47, 50);
-	const COLORREF kPanelColor = RGB(41, 54, 57);
-	const COLORREF kPanelTitleColor = RGB(34, 45, 48);
-	const COLORREF kControlColor = RGB(32, 41, 44);
-	const COLORREF kReadOnlyColor = RGB(36, 48, 51);
-	const COLORREF kBorderColor = RGB(5, 7, 8);
-	const COLORREF kInnerBorderColor = RGB(17, 23, 25);
-	const COLORREF kTextColor = RGB(201, 212, 215);
-	const COLORREF kLabelTextColor = RGB(168, 183, 188);
-	const COLORREF kMutedTextColor = RGB(145, 161, 166);
-	const COLORREF kAccentColor = RGB(80, 150, 180);
+	// Reference charcoal/slate palette; retain the standard vSMR component chrome.
+	const COLORREF kBackgroundColor = RGB(35, 38, 42);
+	const COLORREF kFooterColor = RGB(35, 38, 42);
+	const COLORREF kPanelColor = RGB(39, 43, 46);
+	const COLORREF kPanelTitleColor = RGB(36, 40, 43);
+	const COLORREF kControlColor = RGB(79, 89, 92);
+	const COLORREF kReadOnlyColor = RGB(32, 41, 44);
+	const COLORREF kEditBorderColor = RGB(5, 7, 8);
+	const COLORREF kEditTextColor = RGB(208, 217, 220);
+	const COLORREF kBorderColor = RGB(24, 28, 31);
+	const COLORREF kInnerBorderColor = RGB(48, 53, 57);
+	const COLORREF kTextColor = RGB(220, 225, 225);
+	const COLORREF kLabelTextColor = RGB(203, 209, 210);
+	const COLORREF kMutedTextColor = RGB(163, 174, 178);
+	const COLORREF kAccentColor = RGB(119, 180, 200);
 	const COLORREF kAccentFocusColor = RGB(112, 171, 197);
-	const COLORREF kAccentHoverColor = RGB(148, 196, 223);
-	const COLORREF kAccentPressedColor = RGB(65, 126, 151);
-	const COLORREF kButtonColor = RGB(42, 56, 59);
-	const COLORREF kButtonHoverColor = RGB(53, 71, 75);
-	const COLORREF kButtonPressedColor = RGB(45, 61, 65);
-	const COLORREF kDisabledBackgroundColor = RGB(31, 42, 45);
-	const COLORREF kDisabledTextColor = RGB(91, 107, 112);
-	const COLORREF kTitleBackgroundColor = RGB(9, 12, 13);
-	const COLORREF kTitleStripeColor = RGB(23, 29, 31);
-	const COLORREF kTitleTextColor = RGB(211, 221, 224);
-	const COLORREF kCloseBackgroundColor = RGB(21, 27, 29);
-	const COLORREF kCloseHoverColor = RGB(57, 69, 74);
-	const COLORREF kCloseBorderColor = RGB(104, 117, 122);
-	const COLORREF kCloseTextColor = RGB(188, 200, 204);
-	const COLORREF kScrollTrackColor = RGB(41, 50, 53);
-	const COLORREF kScrollThumbColor = RGB(146, 146, 146);
-	const int kMessageModeDialogUnitReduction = 64;
-	const int kPanelHeaderHeightAt96Dpi = 19;
-	const int kPanelCornerRadiusAt96Dpi = 6;
+	const COLORREF kAccentHoverColor = RGB(141, 198, 216);
+	const COLORREF kAccentPressedColor = RGB(96, 157, 177);
+	const COLORREF kAccentTextColor = RGB(22, 35, 41);
+	const COLORREF kButtonColor = RGB(67, 76, 80);
+	const COLORREF kButtonHoverColor = RGB(83, 94, 99);
+	const COLORREF kButtonPressedColor = RGB(52, 61, 65);
+	const COLORREF kDisabledBackgroundColor = RGB(49, 55, 59);
+	const COLORREF kDisabledTextColor = RGB(133, 144, 148);
+	const COLORREF kTitleBackgroundColor = RGB(21, 25, 29);
+	const COLORREF kTitleStripeColor = RGB(35, 41, 45);
+	const COLORREF kTitleTextColor = RGB(220, 225, 225);
+	const COLORREF kCloseBackgroundColor = RGB(67, 76, 80);
+	const COLORREF kCloseHoverColor = RGB(83, 94, 99);
+	const COLORREF kCloseBorderColor = RGB(24, 28, 31);
+	const COLORREF kCloseTextColor = RGB(220, 225, 225);
+	const COLORREF kScrollTrackColor = RGB(64, 73, 77);
+	const COLORREF kScrollThumbColor = RGB(135, 150, 156);
+	const int kMessageModeDialogUnitReduction = 92;
+	const int kPanelHeaderHeightAt96Dpi = 23;
+	const int kPanelCornerRadiusAt96Dpi = 8;
 	const int kButtonCornerRadiusAt96Dpi = 6;
 	const UINT_PTR kDatalinkEditSubclassId = 1;
 
@@ -266,9 +270,10 @@ namespace
 
 		const int savedDc = ::SaveDC(deviceContext);
 		const int radius = ScaleForDpi(deviceContext, kButtonCornerRadiusAt96Dpi);
-		const COLORREF borderColor = ::GetFocus() == editWindow
+		const bool readOnly = (::GetWindowLongPtr(editWindow, GWL_STYLE) & ES_READONLY) != 0;
+		const COLORREF borderColor = !readOnly && ::GetFocus() == editWindow
 			? kAccentFocusColor
-			: kBorderColor;
+			: kEditBorderColor;
 		HPEN borderPen = ::CreatePen(PS_SOLID, 1, borderColor);
 		HGDIOBJ previousPen = ::SelectObject(deviceContext, borderPen);
 		HGDIOBJ previousBrush = ::SelectObject(deviceContext, ::GetStockObject(NULL_BRUSH));
@@ -327,6 +332,19 @@ namespace
 	{
 		DatalinkEditSubclassState* state =
 			reinterpret_cast<DatalinkEditSubclassState*>(referenceData);
+		if (message == WM_ERASEBKGND)
+		{
+			// Native multiline edits may otherwise erase only their text area.
+			// Paint the entire field, including empty lines below the last text.
+			HDC dc = reinterpret_cast<HDC>(wParam);
+			RECT rect{};
+			::GetClientRect(editWindow, &rect);
+			const bool readOnly = (::GetWindowLongPtr(editWindow, GWL_STYLE) & ES_READONLY) != 0;
+			const COLORREF oldColor = ::SetDCBrushColor(dc, readOnly ? kReadOnlyColor : kControlColor);
+			::FillRect(dc, &rect, static_cast<HBRUSH>(::GetStockObject(DC_BRUSH)));
+			::SetDCBrushColor(dc, oldColor);
+			return TRUE;
+		}
 		if (message == WM_NCDESTROY)
 		{
 			if (::GetCapture() == editWindow)
@@ -610,9 +628,9 @@ BOOL CDataLinkDialog::OnInitDialog()
 		GetFont()->GetLogFont(&interfaceLogFont);
 	CClientDC fontDc(this);
 	interfaceLogFont.lfHeight = -::MulDiv(
-		8,
+		11,
 		fontDc.GetDeviceCaps(LOGPIXELSY),
-		72);
+		96);
 	interfaceLogFont.lfWeight = FW_NORMAL;
 	_tcscpy_s(interfaceLogFont.lfFaceName, LF_FACESIZE, _T("Tahoma"));
 	m_InterfaceFont.CreateFontIndirect(&interfaceLogFont);
@@ -620,7 +638,38 @@ BOOL CDataLinkDialog::OnInitDialog()
 	m_BoldFont.CreateFontIndirect(&interfaceLogFont);
 
 	for (CWnd* child = GetWindow(GW_CHILD); child != NULL; child = child->GetNextWindow())
+	{
 		child->SetFont(&m_InterfaceFont, FALSE);
+		child->ModifyStyle(0, WS_CLIPSIBLINGS);
+	}
+	// Owner-drawn decorative statics must sit behind the controls they surround.
+	// Otherwise the title swallows X clicks and panels can repaint over edits.
+	for (int id : { IDC_DATALINK_TITLEBAR, IDC_DATALINK_FLIGHT_PANEL,
+		IDC_DATALINK_CLEARANCE_PANEL, IDC_DATALINK_MESSAGE_PANEL })
+		GetDlgItem(id)->SetWindowPos(&CWnd::wndBottom, 0, 0, 0, 0,
+			SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+	GetDlgItem(IDC_DATALINK_CLOSE)->SetWindowPos(&CWnd::wndTop, 0, 0, 0, 0,
+		SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
+	// CSS-equivalent dimensions, scaled once for this native dialog's DPI:
+	// 18 px title, 13 px close button, and 22 px fields/actions.
+	CRect client;
+	GetClientRect(&client);
+	const auto px = [&](int value) { return ScaleForDpi(fontDc.GetSafeHdc(), value); };
+	GetDlgItem(IDC_DATALINK_TITLEBAR)->MoveWindow(0, 0, client.Width(), px(18), FALSE);
+	GetDlgItem(IDC_DATALINK_CLOSE)->MoveWindow(client.right - px(16), px(2), px(13), px(13), FALSE);
+	for (CWnd* child = GetWindow(GW_CHILD); child != nullptr; child = child->GetNextWindow())
+	{
+		const int id = child->GetDlgCtrlID();
+		if ((IsDatalinkEditControl(id) && (child->GetStyle() & ES_MULTILINE) == 0) || id == IDOK || id == IDCANCEL)
+		{
+			CRect bounds;
+			child->GetWindowRect(&bounds);
+			ScreenToClient(&bounds);
+			bounds.bottom = bounds.top + px(22);
+			child->MoveWindow(bounds, FALSE);
+		}
+	}
 
 	const int boldControls[] = {
 		IDC_DATALINK_FLIGHT_PANEL,
@@ -660,10 +709,10 @@ BOOL CDataLinkDialog::OnInitDialog()
 		const LONG_PTR editStyle = ::GetWindowLongPtr(
 			child->GetSafeHwnd(),
 			GWL_STYLE);
-		const int leftMargin = ScaleForDpi(editDc.GetSafeHdc(), 4);
+		const int leftMargin = ScaleForDpi(editDc.GetSafeHdc(), 5);
 		const int rightMargin = ScaleForDpi(
 			editDc.GetSafeHdc(),
-			(editStyle & ES_MULTILINE) != 0 ? 12 : 4);
+			(editStyle & ES_MULTILINE) != 0 ? 12 : 5);
 		child->SendMessage(
 			EM_SETMARGINS,
 			EC_LEFTMARGIN | EC_RIGHTMARGIN,
@@ -672,7 +721,7 @@ BOOL CDataLinkDialog::OnInitDialog()
 		child->GetClientRect(&editClient);
 		if ((editStyle & ES_MULTILINE) != 0)
 		{
-			const int verticalMargin = ScaleForDpi(editDc.GetSafeHdc(), 2);
+			const int verticalMargin = ScaleForDpi(editDc.GetSafeHdc(), 3);
 			RECT formatRect = {
 				editClient.left + leftMargin,
 				editClient.top + verticalMargin,
@@ -854,8 +903,8 @@ void CDataLinkDialog::ConfigureModeLayout()
 	SetWindowText(windowTitle);
 	SetDlgItemText(IDOK, messageMode ? _T("Send Message") : _T("Send PDC"));
 	SetDlgItemText(IDC_DATALINK_MESSAGE_PANEL, messageMode ? _T("Message") : _T("Request and message"));
-	SetDlgItemText(IDC_DATALINK_REQUEST_LABEL, messageMode ? _T("Received message") : _T("Pilot request"));
-	SetDlgItemText(IDC_DATALINK_ADDITIONAL_LABEL, messageMode ? _T("Reply") : _T("Additional message"));
+	SetDlgItemText(IDC_DATALINK_REQUEST_LABEL, messageMode ? _T("RECEIVED MESSAGE") : _T("PILOT REQUEST"));
+	SetDlgItemText(IDC_DATALINK_ADDITIONAL_LABEL, messageMode ? _T("REPLY") : _T("ADDITIONAL MESSAGE"));
 
 	if (!messageMode)
 		return;
@@ -1022,12 +1071,12 @@ void CDataLinkDialog::DrawPanel(LPDRAWITEMSTRUCT drawItem, const CString& captio
 	dc.SelectObject(oldPen);
 
 	CRect captionRect(
-		rect.left + ScaleForDpi(drawItem->hDC, 6),
+		rect.left + ScaleForDpi(drawItem->hDC, 8),
 		rect.top + 1,
 		rect.right - ScaleForDpi(drawItem->hDC, 6),
 		rect.top + headerHeight - 1);
 	dc.SetBkMode(TRANSPARENT);
-	dc.SetTextColor(RGB(214, 224, 226));
+	dc.SetTextColor(kTextColor);
 	CFont* oldFont = dc.SelectObject(&m_BoldFont);
 	dc.DrawText(caption, captionRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
 	dc.SelectObject(oldFont);
@@ -1066,7 +1115,7 @@ void CDataLinkDialog::DrawButton(LPDRAWITEMSTRUCT drawItem, const CString& capti
 	dc.SelectObject(oldBrush);
 	dc.SelectObject(oldPen);
 	dc.SetBkMode(TRANSPARENT);
-	dc.SetTextColor(disabled ? kDisabledTextColor : (primary ? RGB(242, 247, 248) : kTextColor));
+	dc.SetTextColor(disabled ? kDisabledTextColor : (primary ? kAccentTextColor : kTextColor));
 	CFont* oldFont = dc.SelectObject(primary ? &m_BoldFont : &m_InterfaceFont);
 	if (pressed)
 		rect.OffsetRect(0, 1);
@@ -1148,7 +1197,7 @@ HBRUSH CDataLinkDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		const COLORREF background = readOnly ? kReadOnlyColor : kControlColor;
 		pDC->SetBkMode(OPAQUE);
 		pDC->SetBkColor(background);
-		pDC->SetTextColor(readOnly ? kMutedTextColor : kTextColor);
+		pDC->SetTextColor(readOnly ? kMutedTextColor : kEditTextColor);
 		return static_cast<HBRUSH>((readOnly ? m_ReadOnlyBrush : m_EditBrush).GetSafeHandle());
 	}
 	case CTLCOLOR_BTN:
@@ -1200,12 +1249,13 @@ void CDataLinkDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 
 		CPen stripePen(PS_SOLID, 1, kTitleStripeColor);
 		CPen* oldPen = dc.SelectObject(&stripePen);
-		for (int x = rect.left - rect.Height(); x < rect.right; x += 5)
+		for (int x = rect.left - rect.Height(); x < rect.right; x += ScaleForDpi(lpDrawItemStruct->hDC, 7))
 		{
-			dc.MoveTo(x, rect.bottom - 1);
-			dc.LineTo(x + rect.Height(), rect.top);
-			dc.MoveTo(x + 1, rect.bottom - 1);
-			dc.LineTo(x + rect.Height() + 1, rect.top);
+			for (int stripe = 0; stripe < ScaleForDpi(lpDrawItemStruct->hDC, 3); ++stripe)
+			{
+				dc.MoveTo(x + stripe, rect.bottom - 1);
+				dc.LineTo(x + stripe + rect.Height(), rect.top);
+			}
 		}
 		dc.SelectObject(oldPen);
 
@@ -1303,5 +1353,5 @@ void CDataLinkDialog::OnBnClickedOk()
 
 void CDataLinkDialog::OnBnClickedClose()
 {
-	EndDialog(IDCANCEL);
+	OnCancel();
 }

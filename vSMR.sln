@@ -11,12 +11,18 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vSMRCrashHandler", "vSMR\sr
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vSMR.Tests", "vSMR\tests\vSMR.Tests.vcxproj", "{39545C60-6C94-4BC7-B1E4-EA834EBDAFA0}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vSMR.ApplyUpdate", "vSMR\src\bootstrap\apply\vSMRApplyUpdate.vcxproj", "{640AE610-885E-4864-AB13-890560928AD9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
 		Release|Win32 = Release|Win32
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{640AE610-885E-4864-AB13-890560928AD9}.Debug|Win32.ActiveCfg = Debug|Win32
+		{640AE610-885E-4864-AB13-890560928AD9}.Debug|Win32.Build.0 = Debug|Win32
+		{640AE610-885E-4864-AB13-890560928AD9}.Release|Win32.ActiveCfg = Release|Win32
+		{640AE610-885E-4864-AB13-890560928AD9}.Release|Win32.Build.0 = Release|Win32
 		{6DE02EC4-F0B1-4BA2-AED5-D261FEC4D758}.Debug|Win32.ActiveCfg = Debug|Win32
 		{6DE02EC4-F0B1-4BA2-AED5-D261FEC4D758}.Debug|Win32.Build.0 = Debug|Win32
 		{7AB341C5-3BCB-4591-AB16-D9A673E77438}.Debug|Win32.ActiveCfg = Debug|Win32

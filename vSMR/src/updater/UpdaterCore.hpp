@@ -54,6 +54,9 @@ namespace vsmr::updater
 		std::filesystem::path testFeedDirectory;
 		std::filesystem::path testStorageDirectory;
 		bool allowUnsignedTestManifest = false;
+		// Internal transition seam: recover an existing ZIP-era journal without
+		// discovering or installing another legacy archive.
+		bool legacyRecoveryOnly = false;
 	};
 
 	enum class StartupStatus
@@ -83,6 +86,11 @@ namespace vsmr::updater
 		std::wstring message;
 		bool updateActivated = false;
 		bool loaderUpdateDeferred = false;
+		// Revalidated after the loader takes its shared installation lease, closing
+		// the small prepare-to-load race with another EuroScope process.
+		bool fileProtocol = false;
+		std::string selectedRuntimeSha256;
+		std::string selectedManifestSha256;
 	};
 
 	// Checks, downloads, verifies, and activates a compatible runtime before the

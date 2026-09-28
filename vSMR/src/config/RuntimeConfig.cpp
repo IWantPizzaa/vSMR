@@ -321,6 +321,7 @@ bool CConfig::validateAndMigratePrevalidatedProfilesDocument(
 CConfig::CConfig(std::string configPath, std::string mapPath)
 {
 	config_path = configPath;
+	configureLayeredPaths(configPath);
 	map_path = mapPath;
 	invalid_profile.SetObject();
 	loadConfig();
@@ -435,6 +436,7 @@ std::vector<CConfig::mapData> CConfig::getMapElementsForZoomLevel(int zoomLevel)
 }
 
 bool CConfig::loadConfig() {
+	if (layered_config) return loadLayeredConfig();
 	const bool hadUsableConfiguration = !profiles.empty() && document.IsArray();
 	config_revision = FileRevision(config_path);
 	config_healthy = false;
@@ -837,9 +839,19 @@ bool CConfig::saveConfig(
 	const std::vector<ProfileSaveIdentity>& profileIdentities,
 	const std::string& expectedRevision,
 	std::string* error,
-	bool allowRecoveryReplacement)
+	bool allowRecoveryReplacement,
+	const rapidjson::Value* userSections,
+	bool resetProfiles)
 {
 	std::lock_guard<std::mutex> writeGuard(ConfigSaveMutex());
+	if (layered_config)
+	{
+		std::string layeredError;
+		const bool saved = saveLayeredConfig(profileIdentities, expectedRevision,
+			layeredError, allowRecoveryReplacement, userSections, resetProfiles);
+		if (error != nullptr) *error = layeredError;
+		return saved;
+	}
 	if (error != nullptr)
 		error->clear();
 	if (!document.IsArray())
@@ -969,14 +981,13 @@ bool CConfig::transactAvisoPresetStore(
 
 	// Deliberately load only the profiles document. A malformed or unavailable
 	// maps file must not make an otherwise valid preset transaction fail.
-	std::string latestJson;
 	Document latestDocument;
-	if (!ReadFileContents(config_path, latestJson) ||
-		!ParseSizeBoundedArray(latestJson, latestDocument))
+	std::string previousRevision;
+	std::string transactionError;
+	if (!readRuntimeConfigForTransaction(latestDocument, previousRevision, transactionError))
 	{
 		return false;
 	}
-	const std::string previousRevision = ContentRevision(latestJson);
 	bool schemaMigrated = false;
 	std::string validationError;
 	if (!validateAndMigratePrevalidatedProfilesDocument(
@@ -999,12 +1010,12 @@ bool CConfig::transactAvisoPresetStore(
 	if (action == AvisoPresetTransactionAction::Abort)
 		return false;
 
+	std::string persistedRevision = previousRevision;
 	if ((schemaMigrated || migrated || action == AvisoPresetTransactionAction::Save) &&
-		!PersistConfigDocument(config_path, latestDocument))
+		!persistRuntimeConfigTransaction(latestDocument, previousRevision, transactionError, &persistedRevision))
 	{
 		return false;
 	}
-	const std::string persistedRevision = FileRevision(config_path);
 
 	bool ownerMerged = false;
 	for (CConfig* liveConfig : LiveConfigs())
@@ -1023,7 +1034,10 @@ bool CConfig::transactAvisoPresetStore(
 			return false;
 		}
 		if (revisionWasCurrent)
+		{
 			liveConfig->config_revision = persistedRevision;
+			liveConfig->refreshLayeredSnapshotsAfterPresetTransaction(latestDocument, persistedRevision);
+		}
 		if (liveConfig == this)
 			ownerMerged = true;
 	}
@@ -1050,15 +1064,13 @@ bool CConfig::assignUnscopedAvisoPresetsToAirport(
 	}
 
 	std::lock_guard<std::mutex> writeGuard(ConfigSaveMutex());
-	std::string latestJson;
 	Document latestDocument;
-	if (!ReadFileContents(config_path, latestJson) ||
-		!ParseSizeBoundedArray(latestJson, latestDocument))
+	std::string previousRevision;
+	if (!readRuntimeConfigForTransaction(latestDocument, previousRevision, error))
 	{
 		error = "The current profiles file is unavailable or invalid.";
 		return false;
 	}
-	const std::string previousRevision = ContentRevision(latestJson);
 	bool schemaMigrated = false;
 	if (!validateAndMigratePrevalidatedProfilesDocument(
 		latestDocument,
@@ -1144,12 +1156,12 @@ bool CConfig::assignUnscopedAvisoPresetsToAirport(
 		latestDocument,
 		trimProfileName(preferredProfileName),
 		airportKey);
-	if (!PersistConfigDocument(config_path, latestDocument))
+	std::string persistedRevision;
+	if (!persistRuntimeConfigTransaction(latestDocument, previousRevision, error, &persistedRevision))
 	{
 		error = "Unable to save the airport assignment atomically.";
 		return false;
 	}
-	const std::string persistedRevision = FileRevision(config_path);
 	for (CConfig* liveConfig : LiveConfigs())
 	{
 		if (liveConfig == nullptr ||
@@ -1167,7 +1179,10 @@ bool CConfig::assignUnscopedAvisoPresetsToAirport(
 			continue;
 		}
 		if (revisionWasCurrent)
+		{
 			liveConfig->config_revision = persistedRevision;
+			liveConfig->refreshLayeredSnapshotsAfterPresetTransaction(latestDocument, persistedRevision);
+		}
 	}
 	return true;
 }

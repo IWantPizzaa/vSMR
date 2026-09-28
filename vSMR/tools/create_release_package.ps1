@@ -18,9 +18,9 @@ param(
     [ValidatePattern("^(|[0-9a-fA-F]{64})$")]
     [string]$UpdateSignerCertSha256 = "",
     [ValidatePattern("^\d+\.\d+\.\d+$")]
-    [string]$LoaderVersion = "1.2.0",
+    [string]$LoaderVersion = "1.3.0",
     [ValidatePattern("^\d+\.\d+\.\d+$")]
-    [string]$MinimumLoaderVersion = "1.2.0",
+    [string]$MinimumLoaderVersion = "1.3.0",
     [ValidateRange(1, 65535)]
     [int]$RuntimeAbi = 1,
     [string]$TimestampUrl = "http://timestamp.digicert.com",
@@ -38,6 +38,7 @@ if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
     $RepositoryRoot = Join-Path $PSScriptRoot "..\.."
 }
 $RepositoryRoot = [System.IO.Path]::GetFullPath($RepositoryRoot)
+& (Join-Path $PSScriptRoot 'build_config_defaults.ps1') -RepositoryRoot $RepositoryRoot -Check
 
 if ([string]::IsNullOrWhiteSpace($BuildOutputDirectory)) {
     $BuildOutputDirectory = Join-Path $RepositoryRoot "Release"
@@ -407,6 +408,13 @@ try {
 
     Copy-Item -LiteralPath $dllPath -Destination (Join-Path $packageStage "vSMR.dll")
     Copy-Item -LiteralPath $dataPath -Destination (Join-Path $packageStage "vSMR_Data") -Recurse
+    foreach ($item in @(Get-ChildItem -LiteralPath (Join-Path $packageStage 'vSMR_Data') -Force -Recurse)) {
+        if ($item.Name -ieq 'config.json' -or $item.Name -ieq 'UserData' -or $item.Name -ieq '.update') {
+            throw "User-owned configuration or updater state must never enter a release package: $($item.Name)"
+        }
+    }
+    Assert-File (Join-Path $packageStage 'vSMR_Data/default.json')
+    Assert-File (Join-Path $packageStage 'vSMR_Data/Tools/vSMR.ApplyUpdate.exe')
     $packagedDllPath = Join-Path $packageStage "vSMR.dll"
     $packagedRuntimePath = Join-Path $packageStage "vSMR_Data\Runtime\vSMR.Runtime.dll"
     $packagedCrashHandlerPath = Join-Path $packageStage "vSMR_Data\CrashReporter\vSMRCrashHandler.dll"
@@ -723,7 +731,7 @@ Write-Host "Created update manifest: $updateManifestPath"
 if (Test-Path -LiteralPath $updateSignaturePath -PathType Leaf) {
     Write-Host "Created detached update signature: $updateSignaturePath"
 } elseif ($updatePublishable) {
-    Write-Host "Unsigned update package: upload the ZIP and update.json together. Requires loader 1.2.0 or later without a signer pin."
+    Write-Host "Unsigned full package includes loader $LoaderVersion. Older loaders require the complete bridge installation before using the raw per-file feed."
 } else {
     Write-Warning "Non-publishable validation artifact; automatic updating will ignore it."
 }

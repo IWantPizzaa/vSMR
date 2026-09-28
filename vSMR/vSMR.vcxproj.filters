@@ -40,6 +40,13 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\config\ProfileNormalization.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\config\RuntimeConfig.Layered.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\aviso\AvisoOverrides.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\aviso\AvisoSharedConfig.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\updater\UpdaterVerification.cpp"><Filter>Source</Filter></ClCompile>
+    <ClInclude Include="src\config\LayeredConfig.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\AvisoOverrides.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\AvisoSharedConfig.hpp"><Filter>Headers</Filter></ClInclude>
     <ClCompile Include="src\tags\TagDataFormatting.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\aircraft\CallsignLookup.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\app\PluginEntry.cpp"><Filter>Source</Filter></ClCompile>
@@ -152,6 +159,8 @@
     <ClInclude Include="src\aviso\AvisoRasterBlitter.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoRasterPipeline.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoRasterSizing.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\AvisoRasterGeometry.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\AvisoPolygonOutline.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RecentAirports.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\config\RuntimeConfig.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\config\RuntimeConfig.Internal.hpp"><Filter>Headers</Filter></ClInclude>

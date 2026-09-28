@@ -42,20 +42,8 @@ void CSMRPlugin::OnAirportRunwayActivityChanged()
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
 
-	Logger::info("EuroScope airport/runway activity changed");
-	for (CSMRRadar* radar : RadarScreensOpened)
-	{
-		if (radar == nullptr || radar->IsShutdownRequested())
-			continue;
-
-		// EuroScope exposes airport/runway activity as read-only sector data.
-		// The ASR/runtime airport remains authoritative even when another airport
-		// is the only one with selected runways.
-		SelectScreenSectorfile(radar);
-		radar->RefreshAfterAirportRunwayActivityChange();
-	}
-
-	// Leave the plug-in enumeration source in EuroScope's normal active-file
-	// state for callbacks that are not associated with a particular screen.
-	SelectActiveSectorfile();
+	// EuroScope invokes this while closing its runway activity dialog with OK.
+	// Do not switch sector sources, enumerate partially committed selections or
+	// re-enter rendering/UI synchronization from the host's save callback.
+	AirportRunwayRefreshPending.store(true, std::memory_order_release);
 }

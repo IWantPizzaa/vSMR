@@ -1,12 +1,14 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "shared/JsonDocument.hpp"
 #include "aviso/AvisoFeatureMetadata.hpp"
+#include "aviso/AvisoPolygonOutline.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.AvisoSupport.hpp"
 #include "radar/RadarScreenSupport.hpp"
 #include "insets/InsetWindow.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
+#include "aviso/AvisoOverrides.hpp"
 
 #include <cctype>
 #include <limits>
@@ -602,6 +604,14 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 	{
 		return overridePath->second;
 	}
+	if (CurrentConfig != nullptr)
+	{
+		const std::string customPath = VsmrAvisoOverrides::CustomSource(
+			*CurrentConfig, airportUpper, fs::u8path(DataPath));
+		// A missing custom file is an error, not permission to silently load a
+		// different official map and later overwrite the user's source choice.
+		if (!customPath.empty()) return customPath;
+	}
 
 	const std::string resolutionKey = DllPath + "|" + DataPath;
 	if (AvisoGeoJsonResolvedAirport == airportUpper &&
@@ -691,6 +701,13 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 
 	if (path.empty())
 		return false;
+	const std::string configRevision = GetAvisoOverridesRevision();
+	if (AvisoGeoJsonLoadedConfigRevision != configRevision)
+	{
+		AvisoGeoJsonLoadAttempted = false;
+		AvisoGeoJsonLastFailedWriteTimeValid = false;
+		AvisoGeoJsonLastFailedTick = 0;
+	}
 	const unsigned long nowTick = ::GetTickCount();
 	const unsigned long statRefreshIntervalMs = 500;
 
@@ -803,8 +820,9 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	const double readStartMilliseconds = RefreshPerfNowMs();
 	std::string json;
 	std::string readError;
-	if (!AvisoDocumentModel::ReadBoundedSourceFile(
-		fs::u8path(path),
+	const std::string defaultSource = GetAvisoDefaultSource(path, readError);
+	if (defaultSource.empty() || !AvisoDocumentModel::ReadBoundedSourceFile(
+		fs::u8path(defaultSource),
 		json,
 		readError))
 	{
@@ -847,6 +865,12 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	}
 
 	const double validationStartMilliseconds = RefreshPerfNowMs();
+	std::string overrideError;
+	if (!ApplyAvisoUserOverrides(path, parsedDocument, overrideError))
+	{
+		Logger::info("AVISO user overrides failed: " + overrideError);
+		return rememberFailedAttempt(&writeTime);
+	}
 	const AvisoValidationResult validation =
 		validationModel.ValidateAndRecalculate();
 	loadPerformance.validateMilliseconds = AvisoMax(
@@ -1069,6 +1093,11 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		parsedFeature.lightStrokeColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "light", "stroke", parsedFeature.strokeColor);
 		parsedFeature.realFillColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "real", "fill", parsedFeature.fillColor);
 		parsedFeature.realStrokeColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "real", "stroke", parsedFeature.strokeColor);
+		parsedFeature.polygonOutline = VsmrAviso::ResolvePolygonOutline(sharedPaint, properties, nullptr, nullptr);
+		parsedFeature.lightPolygonOutline = VsmrAviso::ResolvePolygonOutline(sharedPaint, properties,
+			GetAvisoPalettePaint(sharedPaint, "light"), GetAvisoPalettePaint(properties, "light"));
+		parsedFeature.realPolygonOutline = VsmrAviso::ResolvePolygonOutline(sharedPaint, properties,
+			GetAvisoPalettePaint(sharedPaint, "real"), GetAvisoPalettePaint(properties, "real"));
 		parsedFeature.strokeWidth = ParseAvisoStrokeWidthResolved(sharedPaint, properties, 1.0f);
 		parsedFeature.minimumZoomLevel = ParseAvisoMinimumZoomLevel(sharedPaint, properties);
 		parsedFeature.minLongitude = (std::numeric_limits<double>::max)();
@@ -1172,6 +1201,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	AvisoGeoJsonLoadedPath = path;
 	AvisoGeoJsonViewInitializedPath.clear();
 	AvisoGeoJsonLoadedWriteTime = writeTime;
+	AvisoGeoJsonLoadedConfigRevision = configRevision;
 	AvisoGeoJsonLastViewValid = false;
 	AvisoGeoJsonLastViewPath.clear();
 	AvisoGeoJsonLastViewChangeTick = 0;

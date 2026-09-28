@@ -35,7 +35,7 @@ namespace vsmr::updater::url_policy
 		bool IsAllowedDownloadHost(const std::wstring& host)
 		{
 			const std::wstring normalized = ToLowerWide(host);
-			return normalized == L"api.github.com" ||
+			return normalized == L"raw.githubusercontent.com" || normalized == L"api.github.com" ||
 				normalized == L"github.com" ||
 				normalized == L"release-assets.githubusercontent.com" ||
 				normalized == L"objects.githubusercontent.com" ||
@@ -78,6 +78,22 @@ namespace vsmr::updater::url_policy
 			parsed.resource.assign(components.lpszUrlPath, components.dwUrlPathLength);
 		if (components.dwExtraInfoLength > 0)
 			parsed.resource.append(components.lpszExtraInfo, components.dwExtraInfoLength);
+		if (ToLowerWide(parsed.host) == L"raw.githubusercontent.com")
+		{
+			// The raw feed may only serve this project's channel manifests or
+			// immutable commit payloads; arbitrary raw-hosted code is not allowed.
+			const std::wstring prefix = L"/IWantPizzaa/vSMR/";
+			if (parsed.resource.rfind(prefix, 0) != 0)
+				return false;
+			const std::wstring suffix = parsed.resource.substr(prefix.size());
+			const bool channel = suffix == L"update-feed/stable/version.json" || suffix == L"update-feed/beta/version.json";
+			const bool commit = suffix.size() > 49 && suffix.substr(40, 9) == L"/payload/" &&
+				std::all_of(suffix.begin(), suffix.begin() + 40, [](wchar_t c) {
+					return (c >= L'0' && c <= L'9') || (c >= L'a' && c <= L'f');
+				});
+			if ((!channel && !commit) || suffix.find(L"..") != std::wstring::npos || suffix.find_first_of(L"?\\") != std::wstring::npos)
+				return false;
+		}
 		if (parsed.resource.empty())
 			parsed.resource = L"/";
 		parsed.port = static_cast<std::uint16_t>(components.nPort);
@@ -110,6 +126,11 @@ namespace vsmr::updater::url_policy
 		ParsedHttpsUrl parsedLocation;
 		if (TryParseAllowedHttpsUrl(location, parsedLocation))
 		{
+			ParsedHttpsUrl source;
+			if (!TryParseAllowedHttpsUrl(currentUrl, source) ||
+				(ToLowerWide(source.host) == L"raw.githubusercontent.com" &&
+					(ToLowerWide(parsedLocation.host) != L"raw.githubusercontent.com" || parsedLocation.resource != source.resource)))
+				return false;
 			result = location;
 			return true;
 		}
@@ -122,6 +143,8 @@ namespace vsmr::updater::url_policy
 
 		std::wstring resolved = L"https://" + parsedCurrent.host + location;
 		if (!TryParseAllowedHttpsUrl(resolved, parsedLocation))
+			return false;
+		if (ToLowerWide(parsedCurrent.host) == L"raw.githubusercontent.com" && parsedLocation.resource != parsedCurrent.resource)
 			return false;
 		result = std::move(resolved);
 		return true;

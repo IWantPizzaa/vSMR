@@ -18,11 +18,13 @@ namespace
 		HWND editControl = nullptr;
 		std::string command;
 		std::chrono::steady_clock::time_point startedAt;
+		VsmrEuroScopeCommandLine::ProgressCallback progress = nullptr;
 	};
 
 	PendingSubmission ActiveSubmission;
 	bool SubmissionActive = false;
 	constexpr UINT_PTR QuietVsidEnterSubclassId = 0x56534944U;
+	constexpr UINT_PTR CommandProgressTimerId = 0x56534350U;
 
 	LRESULT CALLBACK QuietVsidEnterSubclass(
 		HWND window,
@@ -33,6 +35,20 @@ namespace
 		DWORD_PTR referenceData)
 	{
 		(void)referenceData;
+		if (message == WM_TIMER && wParam == CommandProgressTimerId)
+		{
+			if (SubmissionActive && ActiveSubmission.editControl == window && ActiveSubmission.progress)
+			{
+				// Use only the registered host refresh path. Invalidating all child
+				// windows directly can repaint without rebuilding SDK screen objects.
+				try { (void)ActiveSubmission.progress(); }
+				catch (...)
+				{
+					VsmrEuroScopeCommandLine::Cancel(Owner::Vsid);
+				}
+			}
+			return 0;
+		}
 		if (message == WM_CHAR && wParam == VK_RETURN &&
 			SubmissionActive && ActiveSubmission.owner == Owner::Vsid &&
 			ActiveSubmission.editControl == window)
@@ -42,7 +58,10 @@ namespace
 			return 0;
 		}
 		if (message == WM_NCDESTROY)
+		{
+			::KillTimer(window, CommandProgressTimerId);
 			::RemoveWindowSubclass(window, QuietVsidEnterSubclass, subclassId);
+		}
 		return ::DefSubclassProc(window, message, wParam, lParam);
 	}
 
@@ -182,6 +201,7 @@ namespace
 			ActiveSubmission.editControl != nullptr &&
 			::IsWindow(ActiveSubmission.editControl))
 		{
+			::KillTimer(ActiveSubmission.editControl, CommandProgressTimerId);
 			::RemoveWindowSubclass(
 				ActiveSubmission.editControl,
 				QuietVsidEnterSubclass,
@@ -205,7 +225,8 @@ namespace
 bool VsmrEuroScopeCommandLine::Begin(
 	Owner owner,
 	const std::string& command,
-	std::string* outError)
+	std::string* outError,
+	ProgressCallback progress)
 {
 	auto fail = [&](const char* message)
 	{
@@ -246,7 +267,12 @@ bool VsmrEuroScopeCommandLine::Begin(
 	ActiveSubmission.editControl = editControl;
 	ActiveSubmission.command = command;
 	ActiveSubmission.startedAt = std::chrono::steady_clock::now();
+	ActiveSubmission.progress = progress;
 	SubmissionActive = true;
+	// If Windows cannot create the timer, the regular EuroScope timer remains
+	// the fallback. No worker thread or callback survives cancellation/unload.
+	if (progress != nullptr)
+		::SetTimer(editControl, CommandProgressTimerId, 50U, nullptr);
 
 	const bool keyDownPosted =
 		::PostMessageA(editControl, WM_KEYDOWN, VK_RETURN, 0) != FALSE;

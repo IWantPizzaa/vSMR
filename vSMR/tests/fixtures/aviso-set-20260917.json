@@ -22,7 +22,7 @@
     "LFBL.geojson": "9d47a2c37b7e9b1f6ef7f2ad7085994acbb0f6a8d72e4db3a2aac8eb5092c1f3",
     "LFBM.geojson": "ec49574e91adf794768396b8c58c7962f37291914b2d1fddcee4b82f21cba4c2",
     "LFBN.geojson": "d63422e61440b2a1554fed62925447d06a9a4ace17e75f517e008ffd40a08179",
-    "LFBO.geojson": "de93865ffb9670653991a865c709850feefe2c6169a81ffbb63c1c5f777cc56d",
+    "LFBO.geojson": "40d3dfde4f2db307b5e1fd0ee66c91e846969642f2c8597f9577bd8aa378adbb",
     "LFBP.geojson": "a50ed287fc2cae70335b1248c3d2ed4d16b6fa305dcd183df19618617f307680",
     "LFBR.geojson": "99ab47bc51dac70aac4c49dc9c5448b42e416bfff478e2b535ccfc1c06bedcdb",
     "LFBS.geojson": "ac4de642ee934ace82f0efe170ab8ae34243730e16cf9d4b1364669d40539e0b",
@@ -64,7 +64,7 @@
     "LFLG.geojson": "259d378b766f97b1dc7f4dae62b051d6872931a134d278150c64f7154c7b8b0c",
     "LFLH.geojson": "5ec23cd246b3193284700c93de96dac0e5a1536dc06485de81bdab9f06cdccfd",
     "LFLJ.geojson": "bfcb74d02093a319fd12d16d9c9b7cc118eadb93b3d465d006fc1459edd81ee5",
-    "LFLL.geojson": "aa70927bba64067a269de1b7ca79548fc7e6d5448fa546b1a6fa7e301e7303e3",
+    "LFLL.geojson": "f287c773ef2247d8004e958b4c6719c6a0d62e535d3f18b928d1e19f1847c9d2",
     "LFLN.geojson": "63a0c603a239750f1889a86097e3af7e5cf5f1338bf546da05c101043cf1fdf1",
     "LFLO.geojson": "dc64f96efe7c9db85ed5ee5c617a2fe1e8e2678036e47e8de6ce53bfc34a5b2e",
     "LFLP.geojson": "f18e80daea2537f40d4a65682fe29cb4f69386f1d25fd738e45e6d00a2a0f00a",
@@ -205,5 +205,18 @@
     "LFRJ.geojson"
   ],
   "corrections": [],
-  "post_import_changes": []
+  "post_import_changes": [
+    {
+      "airport": "LFBO",
+      "description": "Added a screenshot-reference Real palette with opt-in polygon outlines and three gate-label style variants for 39 legible stands. All 471 geometries and effective Dark/Light styling preserved; unclassified stands retain neutral grey in Real.",
+      "subsequent_update": "Synced with reproducible GNG conversion in commit 1068e8d; hash reflects that committed map."
+    },
+    {
+      "airport": "LFLL",
+      "description": "Added a screenshot-reference Real palette and merged 405 airport-detail features from user-provided LFLL.geojson with 22 retained terrain/stopbar/closure features. Includes 152 surface markings, 35 buildings and nine grouped distance labels. Original Dark/Light colours and runway settings retained; traffic-circuit annotations and ambiguous prohibited-area classifications excluded; stale source bounds recomputed.",
+      "source_file": "LFLL.geojson",
+      "source_sha256": "2c7c31ff0df02c8f2188a5a0a2d650da60387662d917130e1457d04fbfabd5c7",
+      "subsequent_update": "Synced with reproducible GNG conversion in commit 1068e8d: 420 features, with stand-entry and taxiway guidance consolidated into multiline features and canonical style IDs."
+    }
+  ]
 }

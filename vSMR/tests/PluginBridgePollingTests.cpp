@@ -18,6 +18,8 @@ namespace
 	std::string SubmittedCommand;
 	std::vector<std::string> SubmittedCommands;
 	bool AcceptCommand = true;
+	VsmrEuroScopeCommandLine::ProgressCallback CommandProgress = nullptr;
+	const ESB_Api_v1* UiApi = nullptr;
 	VsmrEuroScopeCommandLine::SubmissionStatus SubmissionResult = VsmrEuroScopeCommandLine::SubmissionStatus::Idle;
 	struct PublishedField
 	{
@@ -31,6 +33,8 @@ namespace
 	std::map<std::string, std::uint32_t> Providers;
 	std::uint64_t Revision = 1U;
 	int Reads = 0;
+	int AircraftReads = 0;
+	int UiRefreshes = 0;
 
 	ESB_Status __cdecl Version(const char* provider, std::uint32_t* major, std::uint32_t* minor)
 	{
@@ -93,6 +97,7 @@ namespace
 
 	ESB_Status __cdecl ReadAircraft(ESB_Aircraft, ESB_FieldId field, ESB_Value* out, void* buffer, std::uint32_t* bytes)
 	{
+		++AircraftReads;
 		return Read(field, out, buffer, bytes);
 	}
 
@@ -106,6 +111,7 @@ std::atomic<Logger::Mode> Logger::CURRENT_MODE{ Logger::Mode::Normal };
 std::string Logger::DLL_PATH;
 void VsmrCrashReporter::RecordLog(const char*) noexcept {}
 VsmrPluginBridge::AttachState VsmrPluginBridge::GetAttachState() noexcept { return HostAttachState; }
+const ESB_Api_v1* VsmrPluginBridge::AttachForUi() { return UiApi; }
 const char* VsmrPluginBridge::MissingBridgeMessage() noexcept { return ESB_MISSING_MESSAGE; }
 std::string VsmrPluginBridge::NormalizeCallsign(const std::string& callsign)
 {
@@ -113,9 +119,10 @@ std::string VsmrPluginBridge::NormalizeCallsign(const std::string& callsign)
 }
 void VsmrPluginBridge::ProviderDiagnostics::Report(const ProviderBinding&) {}
 void VsmrPluginBridge::ProviderDiagnostics::Reset() noexcept {}
-bool VsmrEuroScopeCommandLine::Begin(Owner, const std::string& command, std::string*)
+bool VsmrEuroScopeCommandLine::Begin(Owner, const std::string& command, std::string*, ProgressCallback progress)
 {
 	if (!AcceptCommand) return false;
+	CommandProgress = progress;
 	SubmittedCommand = command;
 	SubmittedCommands.push_back(command);
 	SubmissionResult = SubmissionStatus::Pending;
@@ -124,13 +131,18 @@ bool VsmrEuroScopeCommandLine::Begin(Owner, const std::string& command, std::str
 VsmrEuroScopeCommandLine::SubmissionStatus VsmrEuroScopeCommandLine::Poll(Owner)
 {
 	const auto result = SubmissionResult;
-	if (result != SubmissionStatus::Pending) SubmissionResult = SubmissionStatus::Idle;
+	if (result != SubmissionStatus::Pending)
+	{
+		SubmissionResult = SubmissionStatus::Idle;
+		CommandProgress = nullptr;
+	}
 	return result;
 }
 bool VsmrEuroScopeCommandLine::IsBusy() noexcept { return SubmissionResult == SubmissionStatus::Pending; }
 void VsmrEuroScopeCommandLine::Cancel(Owner) noexcept
 {
 	SubmittedCommand.clear();
+	CommandProgress = nullptr;
 	SubmissionResult = SubmissionStatus::Idle;
 }
 
@@ -159,6 +171,8 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 	api.get_global = Read;
 	api.get_ac = ReadAircraft;
 	api.provider_revision = ProviderRevision;
+	UiApi = &api;
+	VsmrVsid::SetUiRefreshCallback([] { ++UiRefreshes; });
 	VsmrPluginBridge::Tick tick{ &api, { "AFR123" } };
 	const auto poll = [&] {
 		(void)VsmrVsid::Poll(tick);
@@ -197,7 +211,21 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 		SubmissionResult = VsmrEuroScopeCommandLine::SubmissionStatus::Confirmed;
 		poll();
 	};
-	completeCommand();
+	const auto completeQuickly = [&] {
+		const auto progress = CommandProgress;
+		check(progress != nullptr, "vSID commands install a fast UI-thread progress pump");
+		const int beforeRefresh = UiRefreshes;
+		SubmissionResult = VsmrEuroScopeCommandLine::SubmissionStatus::Confirmed;
+		if (progress) check(progress(), "fast command completion requests a popup repaint");
+		check(UiRefreshes == beforeRefresh + 1, "fast completion requests a real radar refresh, not just native repainting");
+	};
+	completeQuickly();
+	check(!VsmrVsid::GetInterfaceState("LFPT").commandLineBusy,
+		"single commands unlock without waiting for the EuroScope timer");
+	check(VsmrVsid::Poll(tick),
+		"EuroScope timer must still receive a completion refresh after the native timer consumed it");
+	check(!VsmrVsid::Poll(tick),
+		"completion refresh is acknowledged once, not requested forever");
 	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgGroundCrossing, "LFPG", error) && SubmittedCommand == ".vsid area LFPG OFF",
 		"LFPG Ground Crossing uses the native area command without a new bridge schema");
 	state = VsmrVsid::GetInterfaceState("LFPG");
@@ -219,10 +247,12 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 		"clicking the published Linked selection does not toggle opposing");
 	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgUnlinked, "LFPG", error) && SubmittedCommand == ".vsid rule LFPG opposing",
 		"changing link state uses only the opposing rule");
-	completeCommand();
 	Published[4].text = "LFPG=?UM;";
 	++Revision;
-	poll();
+	const int beforeFastAircraftReads = AircraftReads;
+	completeQuickly();
+	check(AircraftReads == beforeFastAircraftReads,
+		"fast completion refreshes button selections without reading aircraft");
 	state = VsmrVsid::GetInterfaceState("LFPG");
 	check(state.paris && state.paris->linked == false && state.lastSubmittedLfpgTaxiMode == VsmrVsid::LfpgTaxiMode::GroundCrossing,
 		"published Unlinked does not change the taxi-row highlight");
@@ -236,16 +266,21 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 			"each Minimum Taxiing request first resets areas to avoid inverting an existing selection");
 		check(!VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgLinked, "LFPG", error) && SubmittedCommands.size() == first + 1U,
 			"another command cannot interleave the pending area sequence");
-		poll();
+		const int pendingReads = Reads;
+		check(CommandProgress && !CommandProgress(), "pending fast checks do not request redundant repainting");
+		check(Reads == pendingReads, "pending fast checks do not rescan bridge data");
 		check(SubmittedCommands.size() == first + 1U,
 			"a pending command never advances or retries its sequence");
-		completeCommand();
+		completeQuickly();
 		check(SubmittedCommand == ".vsid area LFPG NORTH" && !VsmrVsid::GetInterfaceState("LFPG").lastSubmittedLfpgTaxiMode,
 			"NORTH is enabled only after OFF is consumed, without prematurely highlighting Minimum Taxiing");
-		completeCommand();
+		completeQuickly();
 		check(SubmittedCommand == ".vsid area LFPG SOUTH" && VsmrVsid::GetInterfaceState("LFPG").commandLineBusy,
 			"SOUTH follows NORTH and keeps the sequence busy until consumed");
-		completeCommand();
+		completeQuickly();
+		check(VsmrVsid::TryGetAircraftData("AFR123", vsid) && vsid.sid == "BUB6B",
+			"fast configuration updates preserve the existing aircraft snapshot");
+		check(CommandProgress == nullptr, "completed sequences stop fast progress checks");
 		state = VsmrVsid::GetInterfaceState("LFPG");
 		check(state.paris && state.paris->linked == false && state.lastSubmittedLfpgTaxiMode == VsmrVsid::LfpgTaxiMode::MinimumTaxiing && !state.commandLineBusy,
 			"completed Minimum Taxiing preserves Unlinked and records only a local command selection");
@@ -258,7 +293,7 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgMinimumTaxiing, "LFPG", error), "start ambiguous-delivery test");
 	const auto beforeAmbiguous = SubmittedCommands.size();
 	SubmissionResult = VsmrEuroScopeCommandLine::SubmissionStatus::Ambiguous;
-	poll();
+	if (CommandProgress) check(CommandProgress(), "ambiguous fast delivery refreshes the popup");
 	poll();
 	state = VsmrVsid::GetInterfaceState("LFPG");
 	check(!state.lastSubmittedLfpgTaxiMode && !state.commandLineBusy && SubmittedCommands.size() == beforeAmbiguous,
@@ -295,8 +330,7 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgMinimumTaxiing, "LFPG", error), "start provider-loss test");
 	const auto beforeUnload = SubmittedCommands.size();
 	Providers.erase("vsid");
-	SubmissionResult = VsmrEuroScopeCommandLine::SubmissionStatus::Confirmed;
-	poll();
+	completeQuickly();
 	check(SubmittedCommands.size() == beforeUnload && !VsmrVsid::GetInterfaceState("LFPG").lastSubmittedLfpgTaxiMode &&
 		!VsmrVsid::GetInterfaceState("LFPG").commandLineBusy,
 		"provider loss cancels remaining area toggles before dispatch and clears local selection");
@@ -309,17 +343,64 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 	state = VsmrVsid::GetInterfaceState("LFPG");
 	check(state.regionalCommandsAvailable && state.paris && state.paris->linked == false,
 		"reloading vSID restores controls and reads current manual state");
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgMinimumTaxiing, "LFPG", error),
+		"start shutdown with a pending fast command sequence");
+	VsmrVsid::Shutdown();
+	check(CommandProgress == nullptr && !VsmrVsid::GetInterfaceState("LFPG").commandLineBusy,
+		"shutdown cancels the progress callback and queued area commands");
+	poll();
 	tick.callsigns.clear();
 	poll();
 	check(!VsmrVsid::TryGetAircraftData("AFR123", vsid) && !VsmrRampAgent::TryGetAircraftData("AFR123", ramp) && !VsmrCdm::TryGetAircraftData("AFR123", cdm),
 		"disconnects evict aircraft from every provider even with unchanged revisions");
+	VsmrVsid::Shutdown();
+	Providers["vsid"] = 4U;
+	Published.push_back({ "vsid/lfpg_taxi", ESB_T_STR, "M" });
+	Published[4].text = "LFPG=?UA;LFPO=?UA;LFPN=WUA;";
+	++Revision;
+	poll();
+	state = VsmrVsid::GetInterfaceState("LFPG");
+	check(state.liveLfpgTaxiAvailable && state.lfpgTaxiMode == VsmrVsid::LfpgTaxiMode::MinimumTaxiing &&
+		!state.lastSubmittedLfpgTaxiMode && state.paris && state.paris->linked == false,
+		"Auto rules and live areas select buttons with no aircraft and no prior UI command");
+	check(VsmrParis::RegionalRule(*VsmrVsid::GetInterfaceState("LFPN").paris) == "wipg" &&
+		!VsmrVsid::GetInterfaceState("LFPO").liveLfpgTaxiAvailable,
+		"regional Auto profile follows publication and taxi mode stays scoped to LFPG");
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgMinimumTaxiing, "LFPG", error), "start live area sequence");
+	completeCommand();
+	completeCommand();
+	completeCommand();
+	Published.back().text = "G";
+	Published[4].text = "LFPG=?LA;LFPO=?LA;LFPN=ELA;";
+	++Revision;
+	check(VsmrVsid::Poll(tick), "external area/rule change requests repaint");
+	state = VsmrVsid::GetInterfaceState("LFPG");
+	check(state.lfpgTaxiMode == VsmrVsid::LfpgTaxiMode::GroundCrossing &&
+		state.lastSubmittedLfpgTaxiMode == VsmrVsid::LfpgTaxiMode::MinimumTaxiing && state.paris->linked == true,
+		"live area state supersedes the last UI command and Auto changes linked selection");
+	for (const auto snapshot : { "?", "", "bad" })
+	{
+		Published.back().text = snapshot;
+		++Revision;
+		poll();
+		state = VsmrVsid::GetInterfaceState("LFPG");
+		check(state.liveLfpgTaxiAvailable && !state.lfpgTaxiMode,
+			"mixed, unset or malformed live state stays unknown instead of using stale local selection");
+	}
+	Published.back().text = "M";
+	Published[4].text.clear(); // Active airport removed by the controller.
+	++Revision;
+	poll();
+	check(!VsmrVsid::GetInterfaceState("LFPG").paris, "deactivation clears the Paris selection");
 	tick.api = nullptr;
 	HostAttachState = VsmrPluginBridge::AttachState::NotLoaded;
 	poll();
 	state = VsmrVsid::GetInterfaceState("LFPG");
-	check(!state.bridgeLoaded && !state.providerReady && !state.paris && !state.parisCommandsAvailable,
+	check(!state.bridgeLoaded && !state.providerReady && !state.paris && !state.parisCommandsAvailable &&
+		!state.liveLfpgTaxiAvailable && !state.lfpgTaxiMode,
 		"a missing bridge clears the manual configuration snapshot and capabilities");
 	VsmrVsid::Shutdown();
 	VsmrCdm::Shutdown();
 	VsmrRampAgent::Shutdown();
+	UiApi = nullptr;
 }

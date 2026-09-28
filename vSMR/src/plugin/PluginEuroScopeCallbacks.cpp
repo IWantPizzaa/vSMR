@@ -61,7 +61,7 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	const std::string normalizedCallsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
 	if (normalizedCallsign.empty())
 		return;
-	VsmrGroundState::ClearLineupOverride(normalizedCallsign.c_str());
+	VsmrGroundState::ForgetAircraft(normalizedCallsign.c_str());
 	VsmrHoldingPoint::ForgetPending(normalizedCallsign);
 	VsmrPluginBridge::ForgetAircraft(normalizedCallsign);
 
@@ -71,11 +71,23 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 void CSMRPlugin::OnFlightPlanControllerAssignedDataUpdate(CFlightPlan FlightPlan, int DataType)
 {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFlightPlanControllerAssignedDataUpdate");
-	(void)FlightPlan;
-	if (DataType != CTR_DATA_TYPE_SCRATCH_PAD_STRING ||
+	// The ground states EuroScope has no status for travel in the assigned speed,
+	// so a speed update has to repaint the tags just like a scratchpad update, and
+	// a status another controller changes decides whether that value still holds.
+	if ((DataType != CTR_DATA_TYPE_SCRATCH_PAD_STRING &&
+		DataType != CTR_DATA_TYPE_SPEED &&
+		DataType != CTR_DATA_TYPE_GROUND_STATE) ||
 		PluginShutdownRequested.load(std::memory_order_relaxed))
 	{
 		return;
+	}
+	// Recording the callsign here covers aircraft no radar screen is showing, so
+	// the cleanup in OnTimer still reaches them.
+	if (DataType == CTR_DATA_TYPE_SPEED &&
+		FlightPlan.IsValid() &&
+		VsmrGroundStateSync::IsReservedAssignedSpeed(FlightPlan.GetControllerAssignedData().GetAssignedSpeed()))
+	{
+		VsmrGroundState::ObserveSharedState(FlightPlan.GetCallsign());
 	}
 	// EuroScope may dispatch synchronized scratchpad updates in bursts and may
 	// invoke this callback while it still owns internal flight-plan state. Never

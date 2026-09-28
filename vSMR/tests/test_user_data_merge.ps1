@@ -80,6 +80,7 @@ function Write-TestFile([string]$Path, [string]$Text) {
 function Update-TestPackage([string]$Map, [string]$Profiles, [bool]$Signed = $false) {
     Write-TestFile (Join-Path $packageData 'AVISO/AAAA.geojson') $Map
     Write-TestFile (Join-Path $packageData 'vSMR_Profiles.json') $Profiles
+    Write-TestFile (Join-Path $packageData 'default.json') ('{"profiles":' + $Profiles + '}')
     $mapHash = (Get-FileHash (Join-Path $packageData 'AVISO/AAAA.geojson')).Hash.ToLowerInvariant()
     $runtime = Join-Path $packageData 'Runtime/vSMR.Runtime.dll'
     $loader = Join-Path $package 'vSMR.dll'
@@ -120,8 +121,24 @@ try {
     Write-TestFile (Join-Path $installedData 'AVISO/AAAA.geojson') '{"color":2,"size":1}'
     Write-TestFile (Join-Path $installedData 'vSMR_Profiles.json') '[{"name":"Default","color":2,"size":1},{"name":"Custom","size":9}]'
     Write-TestFile (Join-Path $installedData 'AVISO/BBBB.geojson') '{"custom":true}'
+    Write-TestFile (Join-Path $installedData 'default.json') '{"obsolete_default":true}'
+    Write-TestFile (Join-Path $installedData 'config.json') '{"user_override":"keep exactly"}'
+    Write-TestFile (Join-Path $installedData 'UserData/Maps/custom.geojson') '{"custom_geometry":true}'
+    Write-TestFile (Join-Path $installedData 'version.json') '{"old_manifest":true}'
     Update-TestPackage '{"color":1,"size":3}' '[{"name":"Default","color":1,"size":3}]'
+    Write-TestFile (Join-Path $installedData '.update/journal.json') '{"phase":"applying"}'
+    $pendingRejected = $false
+    try { Install-TestPackage } catch { $pendingRejected = $_.Exception.Message -like 'pending_file_update:*' }
+    Check $pendingRejected 'manual installation refuses an unfinished file-update journal'
+    Check (@(Get-ChildItem (Join-Path $destination 'vSMR_Backups') -Directory).Count -eq 1) 'pending journal rejection creates no backup or partial installation'
+    Check ([IO.File]::ReadAllText((Join-Path $installedData 'default.json')) -eq '{"obsolete_default":true}') 'pending journal rejection leaves installed defaults intact'
+    Remove-Item -LiteralPath (Join-Path $installedData '.update/journal.json') -Force
+    Write-TestFile (Join-Path $installedData '.update/old-download.tmp') 'obsolete staged data'
     Install-TestPackage
+    Check ((Get-FileHash (Join-Path $installedData 'default.json')).Hash -eq (Get-FileHash (Join-Path $packageData 'default.json')).Hash) 'complete package replaces defaults instead of restoring obsolete ones'
+    Check ([IO.File]::ReadAllText((Join-Path $installedData 'config.json')) -eq '{"user_override":"keep exactly"}') 'complete package preserves sparse config bytes'
+    Check ([IO.File]::ReadAllText((Join-Path $installedData 'UserData/Maps/custom.geojson')) -eq '{"custom_geometry":true}') 'complete package preserves user-owned geometry'
+    Check (-not (Test-Path (Join-Path $installedData 'version.json')) -and -not (Test-Path (Join-Path $installedData '.update'))) 'complete package does not carry stale file manifests or staging state'
     $map = Get-Content (Join-Path $installedData 'AVISO/AAAA.geojson') -Raw | ConvertFrom-Json
     $profiles = Get-Content (Join-Path $installedData 'vSMR_Profiles.json') -Raw | ConvertFrom-Json
     Check ($map.color -eq 2 -and $map.size -eq 3) 'installer merges AVISO defaults and user edits'
@@ -170,6 +187,15 @@ try {
     $rejected = $false
     try { Install-TestPackage } catch { $rejected = $_.Exception.Message -like '*Package hash mismatch*' }
     Check $rejected 'unsigned package still rejects tampered bytes'
+    Write-TestFile (Join-Path $installedData '.update/journal.json') '{"phase":"applying"}'
+    $preRestoreBackupCount = @(Get-ChildItem (Join-Path $destination 'vSMR_Backups') -Directory).Count
+    $pendingRestoreRejected = $false
+    try {
+        & (Join-Path $packageData 'Tools/restore_vsmr_backup.ps1') -DestinationDirectory $destination -BackupDirectory $restoreBackup
+    } catch { $pendingRestoreRejected = $_.Exception.Message -like 'pending_file_update:*' }
+    Check $pendingRestoreRejected 'manual rollback refuses an unfinished file-update journal'
+    Check (@(Get-ChildItem (Join-Path $destination 'vSMR_Backups') -Directory).Count -eq $preRestoreBackupCount) 'pending journal rollback rejection creates no safety backup'
+    Remove-Item -LiteralPath (Join-Path $installedData '.update/journal.json') -Force
     & (Join-Path $packageData 'Tools/restore_vsmr_backup.ps1') -DestinationDirectory $destination -BackupDirectory $restoreBackup
     $map = Get-Content (Join-Path $installedData 'AVISO/AAAA.geojson') -Raw | ConvertFrom-Json
     $baseline = Get-Content (Join-Path $installedData 'UpdateBaselines/AVISO/AAAA.geojson') -Raw | ConvertFrom-Json

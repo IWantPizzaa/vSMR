@@ -243,7 +243,25 @@
     return normalized;
   }
 
-  function metadataAvisoPresetStoreForAirport(metadata, airport, migrateLegacy = true) {
+  function metadataAvisoPresetStoreForAirport(metadata, airport, migrateLegacy = true, readOnly = false) {
+    // Rendering and selection must not manufacture persisted empty arrays:
+    // an explicit [] is an override that would hide future bundled presets.
+    // Migration/edit callers retain the existing writable behavior.
+    if (readOnly) {
+      const root = metadata.aviso_presets;
+      const airportCode = normalizeAirportCode(airport);
+      const airports = root?.airports;
+      const key = airports && typeof airports === "object" && !Array.isArray(airports)
+        ? Object.keys(airports).find(value => normalizeAirportCode(value) === airportCode) : "";
+      let store = normalizeAvisoPresetStore(clone(key ? airports[key] : {}));
+      if (migrateLegacy && airportCode && root && isAirportCode(root.airport) &&
+          normalizeAirportCode(root.airport) === airportCode &&
+          (Array.isArray(root.items) || typeof root.default === "string")) {
+        store = mergeAvisoPresetStore(store,
+          { default: String(root.default || ""), items: clone(Array.isArray(root.items) ? root.items : []) }, "Legacy");
+      }
+      return store;
+    }
     if (!metadata.aviso_presets || typeof metadata.aviso_presets !== "object" || Array.isArray(metadata.aviso_presets)) {
       metadata.aviso_presets = {};
     }
@@ -322,6 +340,10 @@
   }
 
   function migrateProfileAvisoPresetStores(metadata, records, preferredProfile) {
+    if (!records.some(record => record.data?.aviso_presets &&
+        typeof record.data.aviso_presets === "object" && !Array.isArray(record.data.aviso_presets))) {
+      return metadata.aviso_presets || {};
+    }
     if (!metadata.aviso_presets || typeof metadata.aviso_presets !== "object" || Array.isArray(metadata.aviso_presets)) {
       metadata.aviso_presets = {};
     }
@@ -663,7 +685,8 @@
 
   function createState(bundle = DATA) {
     const { records, metadata, extras } = getProfileRecords(bundle.profiles);
-    const preferred = records.find(record => record.data.name === "Custom LFPG")
+    const preferred = records.find(record => record.data.name === "LFPG")
+      || records.find(record => record.data.name === "Custom LFPG")
       || records.find(record => record.data.name === metadata.last_active_profile)
       || records[0];
     const initialAirport = normalizeAirportCode(bundle.airport
@@ -671,7 +694,7 @@
       || inferAirport(bundle.aviso?.name)
       || inferAirport(preferred?.data?.name));
     migrateProfileAvisoPresetStores(metadata, records, preferred?.id || preferred?.data?.name);
-    const preferredPresetStore = metadataAvisoPresetStoreForAirport(metadata, initialAirport, true);
+    const preferredPresetStore = metadataAvisoPresetStoreForAirport(metadata, initialAirport, true, true);
     const preferredPresetItems = preferredPresetStore.items;
     const preferredPresetName = String(preferredPresetStore.default || preferredPresetItems[0]?.name || "");
     const preferredPreset = preferredPresetItems.find(item => item?.name === preferredPresetName) || preferredPresetItems[0] || null;
@@ -702,6 +725,7 @@
         aliasFile: "C:\\EuroScope\\Alias\\alias.txt",
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
         showFps: true,
+        rdfEnabled: true,
         uiColorTheme: "night",
         avisoColorPalette: "dark",
         avisoColorPalettes: ["dark", "light", "real"],

@@ -184,7 +184,8 @@
 <div class="dense-form three-cols tag-font-grid">
 <label class="field span-2"><span>Typeface</span><select id="profileFontName"></select></label>
 <label class="field"><span>Weight</span><select id="profileFontWeight"><option>Regular</option><option>Bold</option><option>Italic</option></select></label>
-<label class="field"><span>Label font size</span><input id="tagLabelFontSize" max="5" min="1" step="1" type="number"/></label>
+<label class="field"><span>Label font size (px)</span><input id="tagLabelFontSize" list="tagLabelFontSizes" max="72" min="6" step="1" type="number"/></label>
+<datalist id="tagLabelFontSizes"><option value="6"></option><option value="8"></option><option value="9"></option><option value="10"></option><option value="11"></option><option value="12"></option><option value="14"></option><option value="16"></option><option value="18"></option><option value="20"></option><option value="22"></option><option value="24"></option><option value="26"></option><option value="28"></option><option value="36"></option><option value="48"></option><option value="72"></option></datalist>
 </div>
 </div>
 </div>
@@ -478,6 +479,7 @@
 <div class="field settings-theme-field"><span>UI theme</span><div aria-label="UI theme" class="ui-toggle-group settings-theme-control" role="group"><button class="ui-button ui-button--toggle" data-action="set-ui-theme" data-ui-color-theme="night" type="button">Night</button><button class="ui-button ui-button--toggle" data-action="set-ui-theme" data-ui-color-theme="day" type="button">Day</button></div></div>
 <label class="field"><span>Resolution</span><select id="settingsResolutionPreset"><option>1080p</option><option>2k</option><option>4k</option></select></label>
 <label class="check-field"><input id="settingsShowFps" type="checkbox"/><span>Show FPS</span></label>
+<label class="check-field" title="Native vSMR RDF overlay driven by TrackAudio"><input id="settingsRdfEnabled" type="checkbox"/><span>Native RDF</span></label>
 </fieldset>
 <fieldset class="compact-group settings-group updater-general-group">
 <legend>Automatic updates</legend>
@@ -488,11 +490,11 @@
 <label class="check-field"><input id="updateAutoCheck" type="checkbox"/><span>Check GitHub when EuroScope starts</span></label>
 <label class="check-field"><input id="updateAutoDownload" type="checkbox"/><span>Download verified updates</span></label>
 <label class="check-field"><input id="updateAutoInstall" type="checkbox"/><span>Activate verified runtime before load</span></label>
-<label class="check-field update-aviso-protection" title="Merge new defaults while retaining user edits. Conflicts keep your values and are recorded in DATA-UPDATE-REPORT.json. Without a reliable baseline, edited maps stay unchanged. Explicit replacement policies can still replace maps after a backup."><input id="updateProtectModifiedAviso" type="checkbox"/><span>Protect locally edited AVISOs</span></label>
+<label class="check-field update-aviso-protection" title="Official maps update independently of your overrides and custom maps. User configuration is never replaced by the updater."><input id="updateProtectModifiedAviso" type="checkbox" checked disabled/><span>User customizations are always preserved</span></label>
 <p aria-live="polite" class="update-notice" id="updateNotice" role="status">Waiting for updater state...</p>
 <div class="updater-general-actions">
 <button class="ui-button" data-action="update-retry" hidden id="updateRetryButton" type="button">Retry next startup</button>
-<button class="ui-button" data-action="update-reload-aviso" id="updateReloadAvisoButton" title="Reload bundled AVISOs on the next startup. With protection enabled, new defaults merge with user edits; conflicts keep user values and incoming copies are saved separately." type="button">Reload AVISOs</button>
+<button class="ui-button" data-action="update-reload-aviso" id="updateReloadAvisoButton" title="Check and repair application files against the channel manifest on the next startup. Your configuration and custom maps are unchanged." type="button">Check / repair files</button>
 <button class="ui-button" data-action="update-clear-skip" hidden id="updateClearSkipButton" type="button">Clear skipped release</button>
 <button class="ui-button update-release-link" data-action="update-release-open" hidden id="updateReleaseLink" type="button">Release notes</button>
 </div>

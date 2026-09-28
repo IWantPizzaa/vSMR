@@ -137,6 +137,13 @@
       authoritative.profiles[0].rules = { version: 1, items: [] };
     }
     authoritative.activeProfile = hostileProfileName;
+    const authoritativeMetadata = authoritative.profiles.find(entry => entry?._vsmr)?._vsmr;
+    if (authoritativeMetadata) {
+      authoritativeMetadata.aviso_presets = {
+        airports: { KEPT: { items: [], default: "" } }
+      };
+    }
+    authoritative.profiles.forEach(profile => { if (profile?.name) delete profile.aviso_presets; });
     authoritative.aviso.vsmr_groups = [{
       id: "browser-hostile-group",
       name: hostileGroupName,
@@ -150,6 +157,12 @@
       payload: authoritative
     });
     expect(api.getState().airport === "TEST", "native authoritative state is applied");
+    const presetMetadataAfterRead = api.getState().profiles.find(entry => entry?._vsmr)?._vsmr;
+    expect(!Object.hasOwn(presetMetadataAfterRead?.aviso_presets?.airports || {}, "TEST"),
+      "opening an airport does not manufacture a persisted empty preset override");
+    expect(Array.isArray(presetMetadataAfterRead?.aviso_presets?.airports?.KEPT?.items) &&
+      presetMetadataAfterRead.aviso_presets.airports.KEPT.items.length === 0,
+      "an explicit saved empty preset array remains intact");
     const contentSecurityPolicy = document.querySelector(
       'meta[http-equiv="Content-Security-Policy"]')?.content || "";
     expect(contentSecurityPolicy.includes("default-src 'none'") &&
@@ -417,6 +430,25 @@
 
 	document.querySelector('[data-profile-tab="tags"]')?.click();
     sampleSharedList("#tagDefinitionList", "Tags");
+    const labelSizeInput = document.querySelector("#tagLabelFontSize");
+    expect(Number(labelSizeInput?.value) >= 6, "Tag font size shows pixels rather than a legacy slot number");
+    expect([6, 8, 10, 12, 14, 18, 24, 72].every(size =>
+      document.querySelector(`#tagLabelFontSizes option[value="${size}"]`)),
+      "Tag font size offers familiar numeric sizes");
+    for (const size of [14, 6, 11]) {
+      const saveStart = outbound.length;
+      labelSizeInput.value = String(size);
+      labelSizeInput.dispatchEvent(new Event("change", { bubbles: true }));
+      await waitFor(() => outbound.slice(saveStart).some(message => message.type === "state.save" &&
+        message.payload?.profiles?.some(profile => {
+          const slot = profile.font?.label_font_size;
+          return slot >= 1 && slot <= 5 &&
+            profile.font.sizes?.[["one", "two", "three", "four", "five"][slot - 1]] === size;
+        })), `Tag font size ${size} persists as pixels while retaining the compatible slot`);
+      document.querySelector('[data-profile-tab="colors"]')?.click();
+      document.querySelector('[data-profile-tab="tags"]')?.click();
+      expect(Number(labelSizeInput.value) === size, `Tag font size ${size} survives navigation`);
+    }
     const fitTagBackground = document.querySelector("#tagFitBackgroundToText");
     expect(Boolean(fitTagBackground), "Tags expose the fit-background option");
     const fitSaveStart = outbound.length;
@@ -655,6 +687,18 @@
       originalPageBackground &&
       api.getState().settings?.avisoColorPalette === originalPaletteButton?.dataset.avisoColorPalette,
       "UI theme changes shared design colors without changing the AVISO palette");
+
+    const rdfToggle = document.querySelector("#settingsRdfEnabled");
+    expect(Boolean(rdfToggle) && rdfToggle.checked,
+      "Settings exposes the native RDF toggle, enabled by default");
+    rdfToggle.checked = false;
+    rdfToggle.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(api.getState().settings?.rdfEnabled === false,
+      "clearing the native RDF toggle stages the disabled state");
+    rdfToggle.checked = true;
+    rdfToggle.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(api.getState().settings?.rdfEnabled === true,
+      "re-checking the native RDF toggle stages the enabled state");
     expect(Boolean(iconPreviewStage) &&
       getComputedStyle(iconPreviewStage).backgroundColor !== initialIconPreviewBackground,
       "target icon preview follows the selected Day/Night UI background");
@@ -755,6 +799,27 @@
     expect(Array.from(document.querySelectorAll('[role="tab"]')).every(button =>
       button.matches(".ui-button.ui-button--tab")),
       "all tabs use the shared tab-button variant");
+
+    expect(document.querySelector("#updateProtectModifiedAviso")?.checked &&
+      document.querySelector("#updateProtectModifiedAviso")?.disabled,
+      "file updater cannot disable user-configuration protection");
+    document.activeElement?.blur();
+    api.receive({ version: 1, id: "layered-reset-baseline", type: "state.authoritative",
+      payload: { ...structuredClone(initial), reason: "reload", airport: "TEST" } });
+    const resetStart = outbound.length;
+    api.receive({ version: 1, id: "layered-reset", type: "resource.loaded", payload: {
+      resource: "aviso", source: "bundled defaults", data: structuredClone(initial.aviso)
+    } });
+    api.receive({ version: 1, id: "layered-reset", type: "resource.loaded", payload: {
+      resource: "profiles", source: "bundled defaults", data: structuredClone(initial.profiles)
+    } });
+    await waitFor(() => outbound.slice(resetStart).some(message => message.type === "state.save" &&
+      message.payload.resetProfileOverrides === true && message.payload.resetAvisoOverrides === true &&
+      message.payload.aviso?.type === "FeatureCollection"),
+      "reset sends explicit override-removal intent even when effective values equal defaults");
+    await waitFor(() => api.getState().resetProfileOverrides === false &&
+      api.getState().resetAvisoOverrides === false,
+      "successful reset acknowledgement clears reset intent for subsequent saves");
   } catch (error) {
     failures.push(`unexpected browser exception: ${error?.stack || error}`);
   }
