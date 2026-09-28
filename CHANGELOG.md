@@ -15,6 +15,7 @@
 
 ### Changed
 
+- AVISO inset map labels adapt only their configured visibility distance to the ratio of the inset's drawable diagonal to the current host radar area's diagonal. Text and halos retain their normal size; automatic font shrinking was removed. The same visibility calculation applies on native vSMR and CoFrance, without fixed reference resolutions; changed visibility invalidates stale text rasters. Aircraft tags, controls and main-view label styling are unchanged.
 - Restore the previous host cursor when leaving inset move/resize handles, including clicks back on CoFrance, without replacing a cursor already changed by the host.
 - Repaired CoFrance resize-handle ownership outside inset frames, retained valid chrome drags outside the original bounds, and stabilized wheel/cursor routing with calibrated radar coordinates, active-view priority and single processing of dequeued mouse events.
 - Made METAR QNH a dedicated, high-contrast pressure strip with larger digits and quieter units, including a pressure-first compact view. Refined the wind rose with a subtle shaded face, cardinal markers, scaled ticks and a tapered wind-from gradient; Day/Night, variable wind and variation arcs remain supported.
