@@ -20,7 +20,10 @@ namespace
 
 	void Expect(bool condition, const std::string& name)
 	{
-		if (!condition) Failures.push_back("Layered config: " + name);
+		// Later assertions dereference values produced by earlier saves. Stop
+		// this fixture on failure instead of turning a useful I/O error into an
+		// access violation in Release builds where RapidJSON asserts are off.
+		if (!condition) throw std::runtime_error(name);
 	}
 
 	struct TemporaryDirectory
@@ -165,6 +168,7 @@ namespace
 		const auto defaultsPath = temporary.path / "default.json";
 		Write(defaultsPath, Defaults());
 		CConfig config(defaultsPath.u8string(), "");
+		Expect(config.isConfigHealthy(), "custom profile fixture could not initialize: " + config.getLastLoadMessage());
 		Value copy;
 		copy.CopyFrom(config.getActiveProfile(), config.document.GetAllocator());
 		copy["name"].SetString("Custom user", config.document.GetAllocator());
