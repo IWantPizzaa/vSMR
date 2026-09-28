@@ -351,7 +351,8 @@
   }
 
   function updateDirtyState(message = "") {
-    state.dirty = !editorSnapshotsEqual(captureEditorSnapshot(), savedSnapshot);
+    state.dirty = Boolean(state.resetProfileOverrides || state.resetAvisoOverrides) ||
+      !editorSnapshotsEqual(captureEditorSnapshot(), savedSnapshot);
     const visuallyDirty = state.dirty || hasUnappliedEditorInputs();
     updateCommandState();
     if (message) setStatus(message, visuallyDirty ? "info" : "");
@@ -578,6 +579,8 @@
       unappliedEditorSections: Array.from(unappliedEditorSections),
       recoveryConfirmed: state.recoveryConfirmed,
       avisoRecoveryConfirmed: state.avisoRecoveryConfirmed,
+      resetProfileOverrides: state.resetProfileOverrides,
+      resetAvisoOverrides: state.resetAvisoOverrides,
       externalEditConflict: state.externalEditConflict,
       configRevision: state.configRevision,
       avisoRevision: state.avisoRevision
@@ -603,6 +606,8 @@
     (rollback.unappliedEditorSections || []).forEach(key => unappliedEditorSections.add(String(key)));
     state.recoveryConfirmed = Boolean(rollback.recoveryConfirmed);
     state.avisoRecoveryConfirmed = Boolean(rollback.avisoRecoveryConfirmed);
+    state.resetProfileOverrides = Boolean(rollback.resetProfileOverrides);
+    state.resetAvisoOverrides = Boolean(rollback.resetAvisoOverrides);
     state.externalEditConflict = Boolean(rollback.externalEditConflict);
     state.configRevision = rollback.configRevision || "";
     state.avisoRevision = rollback.avisoRevision || "";

@@ -160,14 +160,20 @@
     <ClCompile Include="src\app\PluginEntry.cpp" />
     <ClCompile Include="src\bootstrap\RuntimeContext.cpp" />
     <ClCompile Include="src\aviso\AvisoDocumentModel.cpp" />
+    <ClCompile Include="src\aviso\AvisoOverrides.cpp" />
+    <ClCompile Include="src\aviso\AvisoSharedConfig.cpp" />
     <ClCompile Include="src\aviso\AvisoFeatureMetadata.cpp" />
     <ClCompile Include="src\aviso\AvisoRasterBlitter.cpp" />
     <ClCompile Include="src\aviso\AvisoRasterPipeline.cpp" />
     <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp" />
     <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp" />
     <ClCompile Include="src\config\RuntimeConfig.cpp" />
+    <ClCompile Include="src\config\RuntimeConfig.Layered.cpp" />
     <ClCompile Include="src\config\ProfileNormalization.cpp" />
     <ClCompile Include="src\config\RuntimeConfig.Support.cpp" />
+    <ClCompile Include="src\updater\UpdaterVerification.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="src\control_center\ControlCenterBridge.cpp" />
     <ClCompile Include="src\control_center\ControlCenterBridge.Commands.cpp" />
     <ClCompile Include="src\control_center\ControlCenterBridge.Persistence.cpp" />
@@ -284,6 +290,9 @@
     <ClInclude Include="src\aviso\AvisoPolygonOutline.hpp" />
     <ClInclude Include="src\radar\RecentAirports.hpp" />
     <ClInclude Include="src\config\RuntimeConfig.hpp" />
+    <ClInclude Include="src\config\LayeredConfig.hpp" />
+    <ClInclude Include="src\aviso\AvisoOverrides.hpp" />
+    <ClInclude Include="src\aviso\AvisoSharedConfig.hpp" />
     <ClInclude Include="src\config\RuntimeConfig.Internal.hpp" />
     <ClInclude Include="src\control_center\ControlCenterBridge.hpp" />
     <ClInclude Include="src\control_center\ControlCenterBridge.Internal.hpp" />
@@ -377,6 +386,12 @@
       <LinkLibraryDependencies>false</LinkLibraryDependencies>
       <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
     </ProjectReference>
+    <ProjectReference Include="src\bootstrap\apply\vSMRApplyUpdate.vcxproj">
+      <Project>{640AE610-885E-4864-AB13-890560928AD9}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+      <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <None Include="data\Audio\Alarm.wav" />
@@ -384,6 +399,7 @@
     <None Include="data\ICAO_Aircraft.json" />
     <None Include="data\airports_hp.json" />
     <None Include="data\vSMR_Profiles.json" />
+    <None Include="data\default.json" />
     <None Include="src\control_center\web\app.js">
       <Link>vSMR_webUI\app.js</Link>
     </None>
@@ -450,6 +466,8 @@
     <None Include="tools\build_control_center_bundle.ps1" />
     <None Include="tools\build_control_center_styles.ps1" />
     <None Include="tools\create_release_package.ps1" />
+    <None Include="tools\build_config_defaults.ps1" />
+    <None Include="tools\create_update_feed.ps1" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="resources\vSMR.rc" />
@@ -460,6 +478,7 @@
   <Target Name="CopyVsmrRuntimeAssets" AfterTargets="Build">
     <PropertyGroup>
       <_VsmrCrashHandlerPath>$(MSBuildProjectDirectory)\src\crash\handler\bin\$(Configuration)\vSMRCrashHandler.dll</_VsmrCrashHandlerPath>
+      <_VsmrApplyUpdatePath>$(MSBuildProjectDirectory)\src\bootstrap\apply\bin\$(Configuration)\vSMR.ApplyUpdate.exe</_VsmrApplyUpdatePath>
     </PropertyGroup>
     <ItemGroup>
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\index.html" />
@@ -478,6 +497,7 @@
       <_VsmrRuntimeBinary Include="$(TargetPath)" />
     </ItemGroup>
     <Error Condition="!Exists('$(_VsmrCrashHandlerPath)')" Text="The Win32 vSMR crash handler was not built: $(_VsmrCrashHandlerPath)" />
+    <Error Condition="!Exists('$(_VsmrApplyUpdatePath)')" Text="The Win32 update helper was not built: $(_VsmrApplyUpdatePath)" />
     <RemoveDir Directories="$(VsmrDistributionDirectory)vSMR_Data;$(VsmrDistributionDirectory)vSMR_webUI;$(VsmrDistributionDirectory)THIRD_PARTY_LICENSES" />
     <Delete Files="$(VsmrDistributionDirectory)LICENSE" />
     <Delete Files="@(_VsmrLegacyFlatAviso)" />
@@ -486,6 +506,7 @@
     <MakeDir Directories="$(VsmrDistributionDirectory)vSMR_Data\Licenses" />
     <MakeDir Directories="$(VsmrDistributionDirectory)vSMR_Data\CrashReporter" />
     <MakeDir Directories="$(VsmrDistributionDirectory)vSMR_Data\Runtime" />
+    <MakeDir Directories="$(VsmrDistributionDirectory)vSMR_Data\Tools" />
     <Copy SourceFiles="@(_VsmrWebUiAsset)" DestinationFolder="$(VsmrDistributionDirectory)vSMR_Data\vSMR_webUI" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrDefaultProfile)" DestinationFolder="$(VsmrDistributionDirectory)vSMR_Data\vSMR_webUI\defaults" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrRuntimeData)" DestinationFiles="@(_VsmrRuntimeData-&gt;'$(VsmrDistributionDirectory)vSMR_Data\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
@@ -495,6 +516,7 @@
     <Copy SourceFiles="@(_VsmrWebView2Notice)" DestinationFiles="$(VsmrDistributionDirectory)vSMR_Data\Licenses\Microsoft.WebView2-NOTICE.txt" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrCrashHandler)" DestinationFolder="$(VsmrDistributionDirectory)vSMR_Data\CrashReporter" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrRuntimeBinary)" DestinationFiles="$(VsmrDistributionDirectory)vSMR_Data\Runtime\vSMR.Runtime.dll" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(_VsmrApplyUpdatePath)" DestinationFolder="$(VsmrDistributionDirectory)vSMR_Data\Tools" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="CleanVsmrRuntimeAssets" BeforeTargets="Clean">
     <ItemGroup>

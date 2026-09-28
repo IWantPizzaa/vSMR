@@ -161,6 +161,7 @@ private:
 	std::string AvisoGeoJsonLoadedPath;
 	std::string AvisoGeoJsonViewInitializedPath;
 	fs::file_time_type AvisoGeoJsonLoadedWriteTime;
+	std::string AvisoGeoJsonLoadedConfigRevision;
 	unsigned long AvisoGeoJsonLastStatTick = 0;
 	std::string AvisoGeoJsonLastFailedPath;
 	fs::file_time_type AvisoGeoJsonLastFailedWriteTime;
@@ -364,6 +365,7 @@ public:
 	}
 	const std::string& GetDllPath() const noexcept { return DllPath; }
 	const std::string& GetDataPath() const noexcept { return DataPath; }
+	const CConfig* GetConfiguration() const noexcept { return CurrentConfig.get(); }
 	const std::string& GetIconsPath() const noexcept { return IconsPath; }
 	std::string LookupCallsignName(const std::string& code) const
 	{
@@ -530,6 +532,10 @@ public:
 	std::string DetectDefaultAirportFromAviso() const;
 	std::string ResolveAvisoGeoJsonPathForAirport(const std::string& airport) const;
 	std::string GetAvisoGeoJsonEditorPathForAirport(const std::string& airport) const;
+	bool ApplyAvisoUserOverrides(const std::string& path, rapidjson::Document& document,
+		std::string& error) const;
+	std::string GetAvisoDefaultSource(const std::string& path, std::string& error) const;
+	std::string GetAvisoOverridesRevision(bool forceRefresh = false) const;
 	void SetAvisoGeoJsonOverrideForAirport(const std::string& airport, const std::string& path);
 	bool EnsureAvisoGeoJsonLoaded(
 		const std::string& path,

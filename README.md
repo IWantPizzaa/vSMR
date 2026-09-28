@@ -55,7 +55,7 @@ vSMR is a EuroScope plug-in, not a standalone application. WebView2 hosts the lo
 
 1. Choose a published release and download its complete `vSMR-<version>.zip` from [GitHub Releases](https://github.com/IWantPizzaa/vSMR/releases). A development version in this README does not imply its package has been published.
 2. Close EuroScope and back up your existing installation, profiles, custom AVISO maps, and ASRs.
-3. Extract the complete matching package into your EuroScope plug-in folder, keeping `vSMR.dll` beside `vSMR_Data\`. Do not mix loader/runtime files from different packages.
+3. For a fresh installation, extract the complete matching package into an empty plug-in folder, keeping `vSMR.dll` beside `vSMR_Data\`. For an upgrade, extract it to a separate temporary folder and run its `vSMR_Data\Tools\install_vsmr.ps1 -DestinationDirectory "<existing plug-in folder>"`; this preserves user configuration and creates a rollback backup. Do not extract over edited legacy profiles or mix loader/runtime files from different packages.
 4. Start EuroScope and load `vSMR.dll` through its plug-in settings. Load any optional bridge/provider plug-ins separately.
 
 Detailed procedures are maintained in the Wiki:
@@ -69,13 +69,15 @@ Detailed procedures are maintained in the Wiki:
 
 ### Updater compatibility and custom data
 
-The new loader is **1.2.0** (runtime ABI remains 1). Existing signature-enforcing loaders need one complete manual installation before they can accept unsigned releases. After that, the Beta channel can discover beta releases containing `vSMR-<version>.zip` and `vSMR-<version>.update.json`; a detached `.p7s` is optional for unsigned releases. A Git push alone does not publish these release assets.
+The development updater uses a per-file `version.json` feed on the repository's `update-feed` branch: `stable/version.json`, or `beta/version.json` when Beta mode is enabled. File downloads use `raw.githubusercontent.com` URLs pinned to the manifest's immutable Git commit. Only missing or changed managed files are downloaded, with size and SHA-256 validation before installation. A push to `dev` or `main` does **not** publish an update feed.
 
-Unsigned updates rely on the fixed GitHub repository, HTTPS, and SHA-256 integrity checks, not independent publisher authentication. Protect the repository and release credentials. Signing remains available; a pinned/signed loader or a manifest requiring signatures still rejects missing or invalid signatures.
+Updates are staged separately from the working installation and applied before the runtime is loaded. A transaction journal and backups support recovery after a failed or interrupted installation; the local `vSMR_Data/version.json` is committed last. Loader DLL changes use a small external apply helper after EuroScope releases the installation. Do not delete `.update` staging/recovery data while an update is pending; complete-package installation and manual backup restoration refuse an unfinished transaction. SHA-256 checks integrity against the manifest; HTTPS and control of the fixed GitHub repository remain the trust boundary, not independent publisher authentication.
 
-Updates now compare the previous bundled defaults, the user's files, and incoming defaults. With AVISO edit protection enabled, non-conflicting changes merge into bundled maps; profile updates also retain user edits and custom profiles. Conflicts keep user values. Arrays without reliable identities (including ordered rules) are retained as a whole when both sides change. Schema conflicts preserve the edited object for manual review. Profiles are identified by name; map features and groups by ID. Renames or regenerated IDs may require manual reconciliation. External profile/map paths are not modified.
+Configuration has two layers under `vSMR_Data`: `default.json` contains replaceable application defaults; `config.json` contains user overrides and is **never** included in the managed update manifest. Objects merge recursively, override arrays replace complete default arrays, and a supported explicit `null` is different from a missing key. Resetting a setting to its default removes that override. Profiles use stable internal IDs, independently of editable display names. New default keys become available without rewriting user settings; only structural schema changes need a runtime migration.
 
-Older installations without full default snapshots keep their edited files on the first upgrade. The installer saves new defaults under `vSMR_Data/UpdateBaselines` for subsequent merges. Do not edit that folder. Check `DATA-UPDATE-REPORT.json` and `Data_Updates/<version>/` for conflicts or preserved files; AVISO incoming copies also remain under `AVISO_Updates/<version>/`. Complete pre-install backups include the user's files and merge baselines. Review conflicts before using changed operational data.
+Existing profile files are imported conservatively, preserving customized profiles and using matching old defaults when available. Official AVISO geometry is replaceable; user styles/group properties are stored separately, keyed by stable object IDs. When a legacy map cannot be safely compared with a trusted baseline, a user-owned copy is preserved instead of guessing which geometry was customized. External profile/map paths remain user-owned. Keep backups and review migrated profiles/maps before operational use.
+
+Older loaders still use the full ZIP and `.update.json` package mechanism; that remains available for the one-time bridge installation. Existing installations must receive loader **1.3.0**, runtime, `default.json`, and the apply helper together before the per-file feed is used. Runtime ABI remains 1. Never replace only a DLL for this transition.
 
 ### Initial configuration
 
@@ -133,6 +135,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tests\run_tests.ps1
 Release-input checks enforce matching beta 6 versions, the reviewed hashes of all 160 maps, and an update policy that never deletes a bundled airport. LFPG retains the supplied map's 1,468 features plus 89 East arrows and 97 West arrows, independently controlled through the **East Arrows** and **West Arrows** groups. The hash manifest records this post-import restoration.
 
 Publishable artifacts require a clean source commit and verified bundled-asset provenance. Signing is optional; configuring a signing certificate/pin or `-RequireSignature` enforces signed binaries and the matching detached update signature. The packager, binary product versions, and AppVeyor settings target beta 6. Five asset groups still need provenance verification; local validation packages are not distributable releases. See the [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.md).
+
+### Per-file update feed
+
+`vSMR/tools/build_config_defaults.ps1` generates `default.json` from the bundled profile templates and official AVISO hashes. Run it after editing those source assets; the regression suite checks that the generated file is current. Do not edit the generated file or regenerate stable profile/feature IDs during unrelated changes.
+
+The raw feed is separate from the legacy ZIP package. The following commands stage local artifacts only; publishing remains an explicit maintainer action:
+
+```powershell
+# Rebuild/test clean source and stage only application-owned compiled assets.
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\create_update_feed.ps1 `
+  -Phase Prepare -FeedDirectory C:\release-staging\vsmr-payload
+
+# Copy the exact staged payload/ tree and prepared-feed.json into a separate
+# update-feed branch checkout at C:\release-worktrees\vsmr-update-feed.
+# Commit only payload/ there, without stale files from a previous release.
+# Use a .gitattributes entry "payload/** -text" to prevent byte conversion.
+# Retain prepared-feed.json locally; it is not a published application file.
+
+# Verify that the recorded commit contains exactly those payload bytes,
+# then create beta/version.json (stable/version.json for a stable version).
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\create_update_feed.ps1 `
+  -Phase Manifest -FeedDirectory C:\release-worktrees\vsmr-update-feed `
+  -ContentCommit <full-40-character-payload-commit>
+```
+
+Commit/publish the payload before the channel manifest. The manifest contains `schema`, `version`, `content_commit`, `minimum_loader_version`, `runtime_abi`, and a `files` object mapping install-relative paths to `{ "sha256": "...", "size": 123 }`. No file URLs or user paths are supplied by the manifest. `config.json`, legacy editable profile files, custom maps, user data, symbols and local updater state are excluded. The generator checks real Win32 binary headers, exact hashes/sizes, and immutable Git blob contents. `-ValidationOnly -SkipBuild` stages an existing build for local tests; its manifest is deliberately named `version.validation-only.json` and cannot be promoted silently to the public feed.
 
 ## License
 

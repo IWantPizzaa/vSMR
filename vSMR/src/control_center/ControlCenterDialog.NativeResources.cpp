@@ -5,6 +5,8 @@
 #include "control_center/ControlCenterBridge.hpp"
 #include "radar/RadarScreen.hpp"
 #include "shared/logging/Logger.hpp"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 
 #include <algorithm>
 #include <array>
@@ -187,7 +189,22 @@ void CVsmrControlCenterDialog::RequestResetDefaults(
 
 	std::string profilesText;
 	std::string avisoText;
-	if (!ReadTextFile(profilesPath, profilesText, kMaximumResourceBytes))
+	bool profilesLoaded = false;
+	if (Owner != nullptr && Owner->GetConfiguration() != nullptr && Owner->GetConfiguration()->isLayeredConfig())
+	{
+		rapidjson::Document defaults;
+		std::string error;
+		if (Owner->GetConfiguration()->getDefaultProfiles(defaults, error))
+		{
+			rapidjson::StringBuffer buffer;
+			rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+			defaults.Accept(writer);
+			profilesText.assign(buffer.GetString(), buffer.GetSize());
+			profilesLoaded = true;
+		}
+	}
+	else profilesLoaded = ReadTextFile(profilesPath, profilesText, kMaximumResourceBytes);
+	if (!profilesLoaded)
 	{
 		if (Bridge)
 			Bridge->PushError(
@@ -195,7 +212,11 @@ void CVsmrControlCenterDialog::RequestResetDefaults(
 				"The bundled profile defaults are missing.");
 		return;
 	}
-	if (hasMatchingAvisoDefault && !ReadTextFile(avisoPath, avisoText, kMaximumResourceBytes))
+	std::string defaultSourceError;
+	const std::string defaultAvisoSource = hasMatchingAvisoDefault && Owner != nullptr
+		? Owner->GetAvisoDefaultSource(avisoPath.u8string(), defaultSourceError) : avisoPath.u8string();
+	if (hasMatchingAvisoDefault && (defaultAvisoSource.empty() ||
+		!ReadTextFile(std::filesystem::u8path(defaultAvisoSource), avisoText, kMaximumResourceBytes)))
 	{
 		if (Bridge)
 			Bridge->PushError(

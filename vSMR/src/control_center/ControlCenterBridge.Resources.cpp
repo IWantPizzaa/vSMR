@@ -116,16 +116,31 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 	const std::string& effectivePath)
 {
 	std::string validationError;
-	if (!ValidateLoadedResource(resource, jsonText, validationError))
+	const std::string normalizedResource = LowerAscii(resource);
+	const std::filesystem::path selectedPath = std::filesystem::u8path(effectivePath);
+	const std::string selectedName = LowerAscii(selectedPath.filename().u8string());
+	std::error_code sourceError;
+	const bool layeredFile = normalizedResource == "profiles" && !effectivePath.empty() &&
+		(selectedName == "config.json" || selectedName == "default.json") &&
+		std::filesystem::is_regular_file(selectedPath.parent_path() / "default.json", sourceError) && !sourceError;
+	// A sparse local file cannot be validated as a standalone profile array.
+	// Its paired defaults and effective model are validated by CConfig during
+	// SetProfilesConfigPath below. Remote/pasted objects never take this path.
+	if (jsonText.size() > (normalizedResource == "profiles" ? CConfig::MaximumSerializedInputBytes : AvisoDocumentModel::MaximumSerializedInputBytes) ||
+		(!layeredFile && !ValidateLoadedResource(resource, jsonText, validationError)))
 	{
-		State->SendError(requestId, validationError);
+		State->SendError(requestId, validationError.empty() ? "The selected resource is too large." : validationError);
 		return false;
 	}
 
 	rapidjson::Document parsed;
 	VsmrJson::ParseDocument(parsed, jsonText);
-	const std::string normalizedResource = LowerAscii(resource);
-	if (normalizedResource == "profiles")
+	if (parsed.HasParseError())
+	{
+		State->SendError(requestId, "The selected resource contains invalid JSON.");
+		return false;
+	}
+	if (normalizedResource == "profiles" && !layeredFile)
 	{
 		bool migrated = false;
 		std::string migrationError;
@@ -198,6 +213,7 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 				State->Owner->CurrentConfig->document,
 				parsed,
 				parsed.GetAllocator());
+			normalizedEffectivePath = State->Owner->CurrentConfig->getConfigPath();
 		}
 		else if (normalizedResource == "aviso")
 		{
@@ -272,8 +288,7 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 					"The selected AVISO file changed during activation. Select it again.");
 				return false;
 			}
-			activatedAvisoRevision =
-				State->ContentRevision(activatedJson);
+			activatedAvisoRevision = State->AvisoRevision(normalizedEffectivePath);
 			VsmrJson::ParseDocument(parsed, activatedJson);
 			if (parsed.HasParseError() ||
 				DetectAvisoAirport(parsed, source) != activeAirport)
@@ -285,6 +300,22 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 				State->SendError(
 					requestId,
 					"The activated AVISO no longer matches the active airport.");
+				return false;
+			}
+			const std::string defaultSource = State->Owner->GetAvisoDefaultSource(normalizedEffectivePath, activationError);
+			bool baseLoaded = !defaultSource.empty();
+			if (baseLoaded && defaultSource != normalizedEffectivePath)
+			{
+				std::string baseJson;
+				baseLoaded = ReadFileText(defaultSource, baseJson, AvisoDocumentModel::MaximumSerializedInputBytes) &&
+					!VsmrJson::ParseDocument(parsed, baseJson).HasParseError();
+			}
+			if (!baseLoaded || !State->Owner->ApplyAvisoUserOverrides(normalizedEffectivePath, parsed, activationError))
+			{
+				State->Owner->SetAvisoGeoJsonOverrideForAirport(
+					activeAirport, hadPreviousOverride ? previousOverridePath : std::string());
+				State->Owner->ForceReloadAvisoGeoJson();
+				State->SendError(requestId, activationError);
 				return false;
 			}
 
@@ -321,7 +352,7 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 			payload,
 			"avisoRevision",
 			activatedAvisoRevision.empty()
-				? State->FileRevision(State->Owner->GetAvisoGeoJsonEditorPathForAirport(State->Owner->getActiveAirport()))
+				? State->AvisoRevision(State->Owner->GetAvisoGeoJsonEditorPathForAirport(State->Owner->getActiveAirport()))
 				: activatedAvisoRevision,
 			allocator);
 		rapidjson::Value settings;

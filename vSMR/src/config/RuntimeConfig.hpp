@@ -74,7 +74,23 @@ public:
 		const std::vector<ProfileSaveIdentity>& profileIdentities = {},
 		const std::string& expectedRevision = {},
 		std::string* error = nullptr,
-		bool allowRecoveryReplacement = false);
+		bool allowRecoveryReplacement = false,
+		const rapidjson::Value* userSections = nullptr,
+		bool resetProfiles = false);
+	bool isLayeredConfig() const { return layered_config; }
+	const std::string& getConfigPath() const { return config_path; }
+	const rapidjson::Value* getUserConfigSection(const char* key) const;
+	const rapidjson::Value* getDefaultConfigSection(const char* key) const;
+	const rapidjson::Value* getEffectiveConfigSection(const char* key) const;
+	bool saveUserConfigSection(const char* key, const rapidjson::Value* value,
+		const std::string& expectedRevision, std::string& error);
+	bool resetProfileOverrides(const std::string& expectedRevision, std::string& error);
+	bool getDefaultProfiles(rapidjson::Document& output, std::string& error) const;
+	bool resetUserOverride(const std::vector<std::string>& path,
+		const std::string& expectedRevision, std::string& error);
+	// Mark runtime-only normalization as the new comparison baseline, without
+	// materializing inherited defaults into user-owned config.json.
+	void acknowledgeRuntimeNormalization();
 	std::string getConfigRevision() const;
 	std::string getPersistedConfigRevision() const;
 	std::string getLastLoadMessage() const;
@@ -187,6 +203,28 @@ protected:
 	std::string config_revision;
 	std::string last_load_message;
 	bool config_healthy = false;
+	bool layered_config = false;
+	std::string defaults_path;
+	std::string legacy_config_path;
+	std::string defaults_revision;
+	rapidjson::Document layered_defaults;
+	rapidjson::Document layered_overrides;
+	rapidjson::Document layered_effective;
+	rapidjson::Document layered_runtime_snapshot;
+
+	void configureLayeredPaths(const std::string& requestedPath);
+	bool loadLayeredConfig();
+	bool saveLayeredConfig(const std::vector<ProfileSaveIdentity>& profileIdentities,
+		const std::string& expectedRevision, std::string& error,
+		bool allowRecoveryReplacement, const rapidjson::Value* userSections, bool resetProfiles);
+	bool commitLayeredOverrides(rapidjson::Document& candidate,
+		const std::string& expectedRevision, std::string& error, bool allowRecoveryReplacement = false);
+	bool readRuntimeConfigForTransaction(rapidjson::Document& output,
+		std::string& revision, std::string& error);
+	bool persistRuntimeConfigTransaction(const rapidjson::Document& output,
+		const std::string& expectedRevision, std::string& error, std::string* writtenRevision = nullptr);
+	void refreshLayeredSnapshotsAfterPresetTransaction(const rapidjson::Document& authoritative,
+		const std::string& revision);
 
 	bool loadConfig();
 	bool loadMap();

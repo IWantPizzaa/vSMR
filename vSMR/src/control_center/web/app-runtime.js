@@ -126,7 +126,7 @@
   }
 
   function airportAvisoPresetStore() {
-    return metadataAvisoPresetStoreForAirport(state.metadata, activePresetAirport(), true);
+    return metadataAvisoPresetStoreForAirport(state.metadata, activePresetAirport(), true, true);
   }
 
   function avisoPresets() { return airportAvisoPresetStore().items; }
@@ -414,7 +414,7 @@
 	const rollback = captureRuntimeCommandRollback();
     if (insetPresetDialogMode === "rename") {
       if (!current) return;
-      if (store.items.some(item => item !== current && item.name.toLowerCase() === name.toLowerCase())) { showToast("A preset with this name already exists", "error"); return; }
+      if (store.items.some(item => item.name.toLowerCase() !== current.name.toLowerCase() && item.name.toLowerCase() === name.toLowerCase())) { showToast("A preset with this name already exists", "error"); return; }
       const oldName = current.name;
 	  postRuntimeCommand(
 		"aviso.inset.preset.rename",

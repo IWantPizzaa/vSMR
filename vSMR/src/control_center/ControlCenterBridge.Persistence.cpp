@@ -2,6 +2,8 @@
 #include "control_center/ControlCenterBridge.Internal.hpp"
 
 #include "aviso/AvisoDocumentModel.hpp"
+#include "aviso/AvisoOverrides.hpp"
+#include "config/LayeredConfig.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "rdf/RdfOverlay.hpp"
@@ -212,6 +214,13 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 
 	std::unique_ptr<AvisoDocumentModel> avisoModel;
 	std::string avisoPath;
+	bool persistAvisoOverrides = false;
+	bool activateCustomAviso = false;
+	const bool resetAvisoOverrides = Owner->CurrentConfig->isLayeredConfig() &&
+		ReadBool(*payload, "resetAvisoOverrides", false);
+	const bool resetProfileOverrides = Owner->CurrentConfig->isLayeredConfig() &&
+		ReadBool(*payload, "resetProfileOverrides", false);
+	rapidjson::Document stagedUserSections(rapidjson::kObjectType);
 	if (payload->HasMember("aviso"))
 	{
 		const rapidjson::Value& incomingAviso = (*payload)["aviso"];
@@ -226,7 +235,7 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 		avisoPath =
 			Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport());
 		if (!expectedAvisoRevision.empty() &&
-			expectedAvisoRevision != FileRevision(avisoPath))
+			expectedAvisoRevision != AvisoRevision(avisoPath))
 		{
 			error =
 				"The active AVISO file changed in another vSMR window. Reload before saving so those changes are not overwritten.";
@@ -234,8 +243,22 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 		}
 		avisoModel = std::make_unique<AvisoDocumentModel>();
 		std::string loadError;
-		if (!avisoModel->LoadFromFile(avisoPath, loadError))
+		const std::filesystem::path dataRoot = std::filesystem::u8path(Owner->GetDataPath());
+		const std::string sourcePath = resetAvisoOverrides
+			? (dataRoot / "AVISO" / (stagedAirport + ".geojson")).u8string() : avisoPath;
+		persistAvisoOverrides = Owner->CurrentConfig->isLayeredConfig() &&
+			VsmrAvisoOverrides::IsManagedSource(dataRoot, std::filesystem::u8path(sourcePath));
+		rapidjson::Document defaults;
+		rapidjson::Document previousAviso;
+		const std::string defaultSource = Owner->GetAvisoDefaultSource(sourcePath, loadError);
+		if (defaultSource.empty() || !avisoModel->LoadFromFile(defaultSource, loadError))
 		{
+			// An invalid official baseline cannot safely produce sparse edits.
+			if (persistAvisoOverrides)
+			{
+				error = "The official AVISO default is invalid. Repair it or select a custom map before editing.";
+				return false;
+			}
 			if (!avisoRecoveryConfirmed)
 			{
 				error = loadError.empty() ? "Unable to load current AVISO data." : loadError;
@@ -248,6 +271,11 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 		}
 		else
 		{
+			defaults.CopyFrom(avisoModel->GetDocument(), defaults.GetAllocator());
+			if (!resetAvisoOverrides &&
+				!Owner->ApplyAvisoUserOverrides(sourcePath, avisoModel->MutableDocument(), error))
+				return false;
+			previousAviso.CopyFrom(avisoModel->GetDocument(), previousAviso.GetAllocator());
 			MergeAvisoPreservingCoordinates(
 				avisoModel->MutableDocument(),
 				incomingAviso);
@@ -255,6 +283,48 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 		avisoModel->MarkIndexesDirty();
 		if (!avisoModel->ValidateLoadedFeatureCollection(error))
 			return false;
+		if (persistAvisoOverrides)
+		{
+			rapidjson::Document airportOverrides;
+			if (!VsmrAvisoOverrides::Build(defaults, previousAviso, avisoModel->GetDocument(),
+				resetAvisoOverrides ? nullptr : VsmrAvisoOverrides::Find(*Owner->CurrentConfig, stagedAirport),
+				airportOverrides, error)) return false;
+			rapidjson::Value airports(rapidjson::kObjectType);
+			if (const rapidjson::Value* current = Owner->CurrentConfig->getUserConfigSection("aviso"))
+			{
+				if (!current->IsObject()) { error = "Invalid AVISO override configuration."; return false; }
+				airports.CopyFrom(*current, stagedUserSections.GetAllocator());
+			}
+			airports.RemoveMember(stagedAirport.c_str());
+			if (!airportOverrides.ObjectEmpty())
+				VsmrLayeredConfig::Put(airports, stagedAirport.c_str(), airportOverrides, stagedUserSections.GetAllocator());
+			VsmrLayeredConfig::Put(stagedUserSections, "aviso", airports, stagedUserSections.GetAllocator());
+		}
+		else if (VsmrAvisoOverrides::IsManagedSource(dataRoot, std::filesystem::u8path(sourcePath)))
+		{
+			// External legacy profile documents have no layered store. Keep that
+			// workflow usable, but edit a new user-owned map rather than official data.
+			try
+			{
+				const auto directory = dataRoot / "UserData" / "Maps";
+				std::filesystem::create_directories(directory);
+				unsigned int suffix = 0;
+				std::filesystem::path candidate;
+				do
+				{
+					candidate = directory / (stagedAirport + "-custom-" +
+						std::to_string(::GetCurrentProcessId()) + "-" +
+						std::to_string(::GetTickCount64()) + "-" + std::to_string(suffix++) + ".geojson");
+				} while (std::filesystem::exists(candidate));
+				avisoPath = candidate.u8string();
+				activateCustomAviso = true;
+			}
+			catch (const std::exception& exception)
+			{
+				error = "Cannot create a user-owned AVISO copy: " + std::string(exception.what());
+				return false;
+			}
+		}
 	}
 
 	rapidjson::Document previousProfiles;
@@ -287,7 +357,7 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 
 	bool avisoExistedBeforeSave = false;
 	std::string avisoRollbackSnapshotPath;
-	if (avisoModel != nullptr)
+	if (avisoModel != nullptr && !persistAvisoOverrides)
 	{
 		const DWORD attributes = ::GetFileAttributesW(
 			std::filesystem::u8path(avisoPath).c_str());
@@ -308,7 +378,7 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 		Owner->CurrentConfig->document,
 		Owner->CurrentConfig->document.GetAllocator());
 
-	if (avisoModel != nullptr)
+	if (avisoModel != nullptr && !persistAvisoOverrides)
 	{
 		if (!avisoModel->SaveAtomically(
 			avisoPath,
@@ -347,14 +417,16 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 		profileIdentities,
 		expectedConfigRevision,
 		&profileSaveError,
-		recoveryConfirmed))
+		recoveryConfirmed,
+		persistAvisoOverrides ? &stagedUserSections : nullptr,
+		resetProfileOverrides))
 	{
 		CloneJsonValue(
 			previousProfiles,
 			Owner->CurrentConfig->document,
 			Owner->CurrentConfig->document.GetAllocator());
 		bool avisoRollbackOk = true;
-		if (avisoModel != nullptr)
+		if (avisoModel != nullptr && !persistAvisoOverrides)
 		{
 			if (avisoExistedBeforeSave)
 			{
@@ -370,7 +442,7 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 					::GetLastError() == ERROR_FILE_NOT_FOUND;
 		}
 		error = profileSaveError.empty()
-			? "Unable to save vSMR_Profiles.json atomically."
+			? "Unable to save the user configuration atomically."
 			: profileSaveError;
 		if (!avisoRollbackOk)
 		{
@@ -388,6 +460,10 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 			"Warning: unable to remove completed AVISO transaction snapshot " +
 			avisoRollbackSnapshotPath);
 	}
+	if (persistAvisoOverrides && resetAvisoOverrides)
+		Owner->SetAvisoGeoJsonOverrideForAirport(stagedAirport, "");
+	else if (activateCustomAviso)
+		Owner->SetAvisoGeoJsonOverrideForAirport(stagedAirport, avisoPath);
 	// Display settings are ASR state rather than profile JSON. Commit them only
 	// after the profiles/AVISO transaction succeeds so a failed Save changes no
 	// live or persisted display state.
@@ -433,9 +509,9 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 				reloadFailed = true;
 		}
 		if (avisoModel != nullptr &&
-			EqualsNoCase(
+			((persistAvisoOverrides && EqualsNoCase(radar->getActiveAirport(), stagedAirport)) || EqualsNoCase(
 				radar->GetAvisoGeoJsonEditorPathForAirport(radar->getActiveAirport()),
-				avisoPath))
+				avisoPath)))
 		{
 			if (!radar->ForceReloadAvisoGeoJson())
 				avisoReloadFailed = true;

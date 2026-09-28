@@ -59,7 +59,7 @@ namespace
 		std::filesystem::path targetDirectory;
 		if (kind == VsmrResourceFiles::Kind::Aviso)
 		{
-			targetDirectory = dataDirectory / "AVISO";
+			targetDirectory = dataDirectory / "UserData" / "Maps";
 			if (extension != ".geojson" && extension != ".json")
 				extension = ".geojson";
 			// The airport is runtime state, not a filename. Treat it as untrusted
@@ -73,7 +73,7 @@ namespace
 		}
 		else
 		{
-			targetDirectory = dataDirectory / "Profiles";
+			targetDirectory = dataDirectory / "UserData" / "Profiles";
 			extension = ".json";
 			if (stem.empty())
 				stem = "vSMR_Profiles";

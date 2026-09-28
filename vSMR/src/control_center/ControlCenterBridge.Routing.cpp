@@ -51,7 +51,7 @@ bool VsmrControlCenterBridgeImpl::Dispatch(
 			AddString(
 				payload,
 				"avisoRevision",
-				FileRevision(Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport())),
+				AvisoRevision(Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport())),
 				allocator);
 			rapidjson::Value settings;
 			BuildSettings(settings, allocator);

@@ -40,13 +40,13 @@ foreach ($path in @('vSMR/resources/vSMR.rc', 'vSMR/src/crash/handler/vSMRCrashH
 $loader = Read-Source 'vSMR/src/bootstrap/loader/LoaderResources.rc'
 Assert-Contains $loader "PRODUCTVERSION $numericVersion" 'Loader product version'
 Assert-Contains $loader ('VALUE "ProductVersion", "' + $Version + '"') 'Loader product version'
-# Loader 1.2 supports optional signing; runtime ABI is still 1.
-Assert-Contains $loader 'FILEVERSION 1,2,0,0' 'Loader file version'
-Assert-Contains $loader 'VALUE "FileVersion", "1.2.0.0"' 'Loader file version'
+# Loader 1.3 supports per-file update feeds; runtime ABI is still 1.
+Assert-Contains $loader 'FILEVERSION 1,3,0,0' 'Loader file version'
+Assert-Contains $loader 'VALUE "FileVersion", "1.3.0.0"' 'Loader file version'
 $packager = Read-Source 'vSMR/tools/create_release_package.ps1'
 Assert-Contains $packager ('[string]$Version = "' + $Version + '"') 'Packager default'
-Assert-Contains $packager '[string]$LoaderVersion = "1.2.0"' 'Packager loader version'
-Assert-Contains $packager '[string]$MinimumLoaderVersion = "1.2.0"' 'Packager minimum loader version'
+Assert-Contains $packager '[string]$LoaderVersion = "1.3.0"' 'Packager loader version'
+Assert-Contains $packager '[string]$MinimumLoaderVersion = "1.3.0"' 'Packager minimum loader version'
 $ci = Read-Source 'appveyor.yml'
 Assert-Contains $ci "version: $Version.{build}" 'CI version'
 Assert-Contains $ci "VSMR_RELEASE_VERSION: $Version" 'CI release version'
@@ -75,6 +75,30 @@ foreach ($file in $expected) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
         (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $file.Value) {
         throw "Bundled AVISO differs from the reviewed import: $($file.Name)."
+    }
+    # Sparse user overrides address official objects by stable identity. Do
+    # not ship maps with absent/duplicate IDs: later defaults could otherwise
+    # silently attach an edit to the wrong object.
+    $map = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    if ($map.PSObject.Properties['features']) {
+        $ids = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        foreach ($feature in $map.features) {
+            if (-not $feature.PSObject.Properties['id'] -or
+                -not ($feature.id -is [string]) -or [string]::IsNullOrWhiteSpace($feature.id) -or
+                -not $ids.Add($feature.id)) {
+                throw "Bundled AVISO has missing or duplicate stable feature IDs: $($file.Name)."
+            }
+        }
+        $groupIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        if ($map.PSObject.Properties['vsmr_groups']) {
+            foreach ($group in $map.vsmr_groups) {
+                if (-not $group.PSObject.Properties['id'] -or
+                    -not ($group.id -is [string]) -or [string]::IsNullOrWhiteSpace($group.id) -or
+                    -not $groupIds.Add($group.id)) {
+                    throw "Bundled AVISO has missing or duplicate stable group IDs: $($file.Name)."
+                }
+            }
+        }
     }
 }
 $deleted = @($policy.aviso.delete)

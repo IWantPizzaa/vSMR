@@ -166,7 +166,20 @@ namespace
 		std::string oversizedError;
 		Expect(!CConfig::validateAndMigrateProfilesDocument(oversized, oversizedError, oversizedMigrated), "oversized profile strings fail closed");
 
-		CConfig liveConfig(profilePath.u8string(), "");
+		// Exercise the legacy array adapter using an owned fixture. The shipped
+		// source now has a managed default.json sibling, whose real startup path
+		// intentionally creates sparse user config.json during first migration.
+		const auto replacementTestRoot = std::filesystem::temp_directory_path() /
+			("vsmr-profile-replacement-" + std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount64()));
+		const bool fixtureCreated = std::filesystem::create_directory(replacementTestRoot);
+		Expect(fixtureCreated, "profile replacement fixture directory created");
+		if (!fixtureCreated) return;
+		const auto replacementFixture = replacementTestRoot / "profiles.json";
+		{
+			std::ofstream output(replacementFixture, std::ios::binary);
+			output << profileJson;
+		}
+		CConfig liveConfig(replacementFixture.u8string(), "");
 		const std::string activeBefore = liveConfig.getActiveProfileName();
 		const std::size_t countBefore = liveConfig.getProfileCount();
 		rapidjson::Document invalidReplacement;
@@ -174,6 +187,8 @@ namespace
 		std::string replacementError;
 		Expect(!liveConfig.replaceInMemoryConfig(invalidReplacement, activeBefore, replacementError), "invalid profile replacement is rejected");
 		Expect(liveConfig.getActiveProfileName() == activeBefore && liveConfig.getProfileCount() == countBefore, "failed profile replacement preserves live state");
+		std::error_code cleanupError;
+		std::filesystem::remove_all(replacementTestRoot, cleanupError);
 	}
 
 	void TestIndependentProfileSelections()

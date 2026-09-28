@@ -2,6 +2,9 @@
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
+#include "aviso/AvisoOverrides.hpp"
+#include "aviso/AvisoSharedConfig.hpp"
+#include "config/LayeredConfig.hpp"
 #include "insets/InsetWindow.hpp"
 
 #include <cctype>
@@ -47,6 +50,41 @@ namespace
 		}
 	}
 
+}
+
+std::string CSMRRadar::GetAvisoDefaultSource(const std::string& path, std::string& error) const
+{
+	return CurrentConfig != nullptr ? VsmrAvisoOverrides::DefaultSource(*CurrentConfig,
+		std::filesystem::u8path(DataPath), std::filesystem::u8path(path), error) : path;
+}
+
+bool CSMRRadar::ApplyAvisoUserOverrides(const std::string& path,
+	rapidjson::Document& document, std::string& error) const
+{
+	if (CurrentConfig == nullptr ||
+		!VsmrAvisoOverrides::IsManagedSource(std::filesystem::u8path(DataPath),
+			std::filesystem::u8path(path))) return true;
+	if (!CurrentConfig->isLayeredConfig())
+	{
+		const auto shared = VsmrAvisoSharedConfig::Read(std::filesystem::u8path(DataPath));
+		if (!shared.error.empty()) { error = shared.error; return false; }
+		const auto* airports = shared.document != nullptr
+			? VsmrLayeredConfig::Member(*shared.document, "aviso") : nullptr;
+		const auto* overrides = airports != nullptr ? VsmrLayeredConfig::Member(*airports,
+			VsmrAvisoOverrides::AirportKey(std::filesystem::u8path(path)).c_str()) : nullptr;
+		return VsmrAvisoOverrides::Apply(document, overrides, error);
+	}
+	return VsmrAvisoOverrides::Apply(document,
+		VsmrAvisoOverrides::Find(*CurrentConfig,
+			VsmrAvisoOverrides::AirportKey(std::filesystem::u8path(path))), error);
+}
+
+std::string CSMRRadar::GetAvisoOverridesRevision(bool forceRefresh) const
+{
+	if (CurrentConfig != nullptr && CurrentConfig->isLayeredConfig())
+		return forceRefresh ? CurrentConfig->getPersistedConfigRevision() : CurrentConfig->getConfigRevision();
+	const auto shared = VsmrAvisoSharedConfig::Read(std::filesystem::u8path(DataPath), forceRefresh);
+	return shared.revision + ":" + shared.error;
 }
 
 std::string CSMRRadar::GetAvisoGeoJsonEditorPathForAirport(const std::string& airport) const
@@ -132,7 +170,9 @@ bool CSMRRadar::ForceReloadAvisoGeoJson()
 	// Validating before touching the renderer keeps the current dataset on failure
 	AvisoDocumentModel validationModel;
 	std::string validationError;
-	if (!validationModel.LoadFromFile(path, validationError))
+	const std::string defaultSource = GetAvisoDefaultSource(path, validationError);
+	if (defaultSource.empty() || !validationModel.LoadFromFile(defaultSource, validationError) ||
+		!ApplyAvisoUserOverrides(path, validationModel.MutableDocument(), validationError))
 	{
 		Logger::info(
 			"AVISO GeoJSON reload validation failed path=" + path +
