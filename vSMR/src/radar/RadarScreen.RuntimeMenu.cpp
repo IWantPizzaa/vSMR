@@ -1266,6 +1266,8 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 
 	if (RuntimeMenuMinimized)
 	{
+		if (IsInsetsOnly())
+			DrawTextEllipsis(hdc, dragArea, "vSMR", kText, DT_CENTER);
 		ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;
 		RuntimeMenuPopupScrollOffset = 0;
 		RuntimeMenuPopupArea.SetRectEmpty();

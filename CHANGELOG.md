@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added vSMR inset hosting on geo-referenced CoFrance views, with an expanded runtime rail, independent AVISO/SRW/METAR/timer windows and host-main-map rendering/preset isolation. Custom displays no longer depend on native TAG/list rendering phases; `.smr insets` restores the rail and reports host/refresh diagnostics.
 - Added per-file update feeds with immutable Git content URLs, SHA-256 verification, staged installation and manifest-last recovery, plus a minimal external helper for locked loader replacements. Feed generation remains separate from publishing and preserves the legacy full-package bridge path.
 - Added application-owned `default.json` and sparse user-owned `config.json`, with recursive object overrides, whole-array replacement and stable profile identities. Official AVISO customization is separated from replaceable geometry; unknown legacy edits are preserved conservatively.
 - Added an LFLL Real AVISO palette based on supplied real-world screenshots, with a lighter slate-grey background, pale runways, fine outlines and cyan stand labels. Integrated supplied airport-detail geometry including 152 surface markings, 35 buildings, coloured guidance lines and nine independently grouped runway-distance labels. Dark/Light colours, existing stopbars/closures and runway settings are preserved; unrelated circuit annotations and ambiguous restriction classifications are excluded.
@@ -14,6 +15,8 @@
 
 ### Changed
 
+- Restore the previous host cursor when leaving inset move/resize handles, including clicks back on CoFrance, without replacing a cursor already changed by the host.
+- Repaired CoFrance resize-handle ownership outside inset frames, retained valid chrome drags outside the original bounds, and stabilized wheel/cursor routing with calibrated radar coordinates, active-view priority and single processing of dequeued mouse events.
 - Made METAR QNH a dedicated, high-contrast pressure strip with larger digits and quieter units, including a pressure-first compact view. Refined the wind rose with a subtle shaded face, cardinal markers, scaled ticks and a tapered wind-from gradient; Day/Night, variable wind and variation arcs remain supported.
 - Removed one-off updater-test packaging scripts and the superseded dated audit report; scratch directories and Python caches are now explicitly ignored. Maintained build, release, migration and regression tooling remains available.
 - Simplified airport profile names to LFPG and LFMN, and replaced the separate LFBO/LFLL profiles with LFBO / LFLL using the LFBO configuration. Default and numbered Custom profiles are unchanged.
