@@ -222,6 +222,13 @@ bool ActiveProfilesConfigPathClaimed = false;
 		const std::filesystem::path dataConfigPath = pluginDirectory / "vSMR_Data" / "vSMR_Profiles.json";
 
 		std::error_code ec;
+		const auto defaultsPath = pluginDirectory / "vSMR_Data" / "default.json";
+		if (std::filesystem::is_regular_file(defaultsPath, ec) && !ec)
+		{
+			const auto userPath = pluginDirectory / "vSMR_Data" / "config.json";
+			return std::filesystem::is_regular_file(userPath, ec) && !ec ? userPath : defaultsPath;
+		}
+		ec.clear();
 		if (std::filesystem::exists(dataConfigPath, ec))
 			return dataConfigPath;
 		return pluginDirectory / "vSMR_Profiles.json";

@@ -129,15 +129,18 @@ void CInsetWindow::renderTimer(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphi
 		renderWindow = ::GetActiveWindow();
 	UpdateAvisoScreenArea(renderWindow);
 
-	const COLORREF outerBorder = RGB(5, 7, 8);
-	const COLORREF innerBorder = RGB(82, 96, 101);
-	const COLORREF idleFill = RGB(36, 48, 51);
-	const COLORREF hoverFill = RGB(48, 64, 68);
-	const COLORREF runningFill = RGB(38, 79, 91);
-	const COLORREF expiredFill = RGB(92, 42, 42);
-	const COLORREF idleText = RGB(208, 217, 220);
-	const COLORREF runningText = RGB(115, 216, 229);
-	const COLORREF expiredText = RGB(255, 167, 157);
+	// Resolve the live interface theme on every frame, just like the title bar.
+	// Changing Day/Night must not restart or reset any countdown.
+	const bool dayTheme = radar_screen->GetUiColorTheme() == "day";
+	const COLORREF outerBorder = dayTheme ? RGB(63, 72, 76) : RGB(5, 7, 8);
+	const COLORREF innerBorder = dayTheme ? RGB(125, 135, 138) : RGB(82, 96, 101);
+	const COLORREF idleFill = dayTheme ? RGB(173, 181, 183) : RGB(36, 48, 51);
+	const COLORREF hoverFill = dayTheme ? RGB(190, 201, 204) : RGB(48, 64, 68);
+	const COLORREF runningFill = dayTheme ? RGB(153, 194, 204) : RGB(38, 79, 91);
+	const COLORREF expiredFill = dayTheme ? RGB(218, 174, 176) : RGB(92, 42, 42);
+	const COLORREF idleText = dayTheme ? RGB(23, 33, 38) : RGB(208, 217, 220);
+	const COLORREF runningText = dayTheme ? RGB(26, 68, 83) : RGB(115, 216, 229);
+	const COLORREF expiredText = dayTheme ? RGB(111, 34, 40) : RGB(255, 167, 157);
 
 	dc.FillSolidRect(content, idleFill);
 	radar_screen->AddScreenObject(m_Id, "window", content, false, "Timer");
@@ -211,7 +214,7 @@ void CInsetWindow::renderTimer(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphi
 		false,
 		mouseLocation,
 		false,
-		radar_screen->GetUiColorTheme() == "day");
+		dayTheme);
 
 	dc.Detach();
 }

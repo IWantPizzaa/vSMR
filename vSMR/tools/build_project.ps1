@@ -19,6 +19,7 @@ if (-not (Test-Path -LiteralPath $solutionPath -PathType Leaf)) {
 }
 
 $bundleScript = Join-Path $PSScriptRoot "build_control_center_bundle.ps1"
+& (Join-Path $PSScriptRoot 'build_config_defaults.ps1') -RepositoryRoot $RepositoryRoot -Check
 Write-Host "Checking the generated Control Center bundle..."
 & $bundleScript -RepositoryRoot $RepositoryRoot -Check
 if ($LASTEXITCODE -ne 0) {
