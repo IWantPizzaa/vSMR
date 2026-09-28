@@ -187,6 +187,8 @@ namespace vsmr::updater::internal
 			}
 		}
 		CleanupNormalUpdaterState(context);
+		if (startupOptions.legacyRecoveryOnly)
+			return result;
 
 		// Loading updater state and the next-startup action
 		const State previousState = LoadPreviousState(context.statePath);

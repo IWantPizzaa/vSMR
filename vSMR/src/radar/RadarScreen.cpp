@@ -16,6 +16,7 @@
 #include "tags/TagDefinitionUtils.hpp"
 #include "tags/CdmTagHelpers.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
+#include "aviso/AvisoOverrides.hpp"
 #include "plugin/Plugin.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "rdf/RdfOverlay.hpp"
@@ -158,6 +159,12 @@ CSMRRadar::CSMRRadar()
 	DataPath = VsmrRadarSupport::ResolvePluginDataDirectoryPath(DllPath);
 	ConfigPath = VsmrRadarSupport::ResolvePluginFilePath(DllPath, "vSMR_Profiles.json");
 	{
+		const auto defaults = fs::u8path(DataPath) / "default.json";
+		std::error_code error;
+		if (fs::is_regular_file(defaults, error) && !error)
+			ConfigPath = defaults.u8string();
+	}
+	{
 		const std::string sessionProfilesPath =
 			CSMRPlugin::GetActiveProfilesConfigPath();
 		std::error_code sessionPathError;
@@ -210,6 +217,31 @@ CSMRRadar::CSMRRadar()
 	// Loading up the config file
 	if (CurrentConfig == nullptr)
 		CurrentConfig = std::make_unique<CConfig>(ConfigPath, mapsPath);
+	if (CurrentConfig->isLayeredConfig())
+		ConfigPath = CurrentConfig->getConfigPath();
+	const auto canonicalConfig = fs::absolute(fs::u8path(DataPath) / "config.json").lexically_normal();
+	const auto selectedConfig = fs::absolute(fs::u8path(CurrentConfig->getConfigPath())).lexically_normal();
+	if (CurrentConfig->isLayeredConfig() && _wcsicmp(canonicalConfig.c_str(), selectedConfig.c_str()) == 0)
+	{
+		std::string migrationError;
+		if (!VsmrAvisoOverrides::MigrateLegacy(*CurrentConfig, fs::u8path(DataPath), migrationError))
+			Logger::info("Automatic updates remain deferred: " + migrationError);
+	}
+	else
+	{
+		// An external profile selection must not postpone the canonical
+		// map migration or lose its overrides after official maps are updated.
+		const auto defaults = fs::u8path(DataPath) / "default.json";
+		std::error_code error;
+		if (fs::is_regular_file(defaults, error) && !error)
+		{
+			CConfig canonical(defaults.u8string(), mapsPath);
+			std::string migrationError;
+			if (!canonical.isConfigHealthy() ||
+				!VsmrAvisoOverrides::MigrateLegacy(canonical, fs::u8path(DataPath), migrationError))
+				Logger::info("Canonical settings migration remains pending: " + migrationError);
+		}
+	}
 
 	standardCursor = true;
 	ActiveAirport = "EGKK";
@@ -645,8 +677,8 @@ bool CSMRRadar::SetProfilesConfigPath(
 	{
 		CSMRRadar* radar = replacement.radar;
 		const std::string activeProfile = radar->GetActiveProfileNameForEditor();
-		radar->ConfigPath = normalizedPath;
 		radar->CurrentConfig = std::move(replacement.config);
+		radar->ConfigPath = radar->CurrentConfig->getConfigPath();
 		radar->LoadProfile(activeProfile, false);
 		// During ASR load its saved choice has not been restored yet.
 		if (explicitSelection || radar != this)
@@ -666,7 +698,7 @@ bool CSMRRadar::SetProfilesConfigPath(
 		radar->RequestRefresh();
 	}
 	if (publishSessionSelection)
-		CSMRPlugin::PublishActiveProfilesConfigPath(normalizedPath, true);
+		CSMRPlugin::PublishActiveProfilesConfigPath(CurrentConfig->getConfigPath(), true);
 	for (CSMRRadar* radar : targets)
 	{
 		if (radar != this &&

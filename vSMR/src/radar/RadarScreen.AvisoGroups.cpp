@@ -236,7 +236,9 @@ std::vector<std::string> CSMRRadar::GetAvailableAvisoColorPalettes(const std::st
 	const std::string path = ResolveAvisoGeoJsonPathForAirport(airport);
 	AvisoDocumentModel model;
 	std::string error;
-	if (path.empty() || !model.LoadFromFile(path, error))
+	const std::string defaultSource = GetAvisoDefaultSource(path, error);
+	if (defaultSource.empty() || !model.LoadFromFile(defaultSource, error) ||
+		!ApplyAvisoUserOverrides(path, model.MutableDocument(), error))
 		return palettes;
 
 	const rapidjson::Document& document = model.GetDocument();

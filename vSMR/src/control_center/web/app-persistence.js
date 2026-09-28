@@ -34,6 +34,8 @@
       activeProfile: activeProfile().name || "",
       configRevision: state.configRevision || "",
       avisoRevision: state.avisoRevision || "",
+      resetProfileOverrides: Boolean(state.resetProfileOverrides),
+      resetAvisoOverrides: Boolean(state.resetAvisoOverrides),
       recoveryConfirmed: Boolean(state.recoveryConfirmed),
       avisoRecoveryConfirmed: Boolean(state.avisoRecoveryConfirmed)
     };
@@ -118,13 +120,15 @@
     // rewrite it (or make profile recovery depend on it) when only profiles or
     // settings changed.  Resource imports and AVISO editor changes are already
     // represented in the current AVISO snapshot and will still be included.
-    if (savedSnapshot && snapshotChunk(state.aviso) === savedSnapshot.aviso)
+    if (!state.resetAvisoOverrides && savedSnapshot && snapshotChunk(state.aviso) === savedSnapshot.aviso)
       delete payload.aviso;
     const submittedSnapshot = captureEditorSnapshot();
     const requestId = postBridge("state.save", payload);
     if (!requestId) return false;
     pending.save = requestId;
-    saveInFlight = { requestId, snapshot: submittedSnapshot };
+    saveInFlight = { requestId, snapshot: submittedSnapshot,
+      resetProfileOverrides: payload.resetProfileOverrides,
+      resetAvisoOverrides: payload.resetAvisoOverrides };
     armPendingTimeout("save", pending.save);
     setStatus("Saving configuration…", "info");
     updateCommandState();
@@ -149,6 +153,8 @@
     const operation = saveInFlight;
     pending.save = "";
     saveInFlight = null;
+    if (operation?.resetProfileOverrides) state.resetProfileOverrides = false;
+    if (operation?.resetAvisoOverrides) state.resetAvisoOverrides = false;
 
     // The acknowledgement only advances durable revision tokens and host-owned
     // file metadata. The browser model is already newer-or-equal to the data

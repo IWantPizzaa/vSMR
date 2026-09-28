@@ -19,6 +19,10 @@
 #include "shared/JsonInputLimits.hpp"
 #include "shared/RapidJsonUtils.hpp"
 #include "AvisoRasterPipelineTests.hpp"
+#include "AvisoOverridesTests.hpp"
+#include "AvisoSharedConfigTests.hpp"
+#include "FileUpdateTests.hpp"
+#include "LayeredConfigTests.hpp"
 #include "ConfigurationRegressionTests.hpp"
 #include "SharedRenderingTests.hpp"
 #include "AuditRegressionTests.hpp"
@@ -1213,6 +1217,14 @@ int wmain(int argc, wchar_t** argv)
 	TestWeatherParsing();
 	TestRuntimeReleaseLifecycle();
 	for (const std::string& failure : RunAvisoRasterPipelineTests())
+		Expect(false, failure);
+	for (const std::string& failure : RunAvisoOverridesTests(repositoryRoot))
+		Expect(false, failure);
+	for (const std::string& failure : RunAvisoSharedConfigTests(repositoryRoot))
+		Expect(false, failure);
+	for (const std::string& failure : RunFileUpdateTests())
+		Expect(false, failure);
+	for (const std::string& failure : RunLayeredConfigTests(repositoryRoot))
 		Expect(false, failure);
 	for (const std::string& failure : RunSharedRenderingBehaviorTests())
 		Expect(false, failure);
