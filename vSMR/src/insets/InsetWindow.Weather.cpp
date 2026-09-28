@@ -183,8 +183,9 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 	HFONT valueFont = GetWeatherFont(2, fontHeight(10), FW_BOLD, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
 	HFONT directionFont = GetWeatherFont(3, fontHeight(20), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
 	HFONT speedFont = GetWeatherFont(4, fontHeight(14), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
-	HFONT detailFont = GetWeatherFont(5, fontHeight(9), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
 	HFONT compassFont = GetWeatherFont(6, fontHeight(7), FW_NORMAL, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+	HFONT pressureFont = GetWeatherFont(7, fontHeight(19), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
+	const COLORREF pressureColor = dayTheme ? palette.text : RGB(231, 241, 245);
 	HGDIOBJ originalFont = ::GetCurrentObject(hDC, OBJ_FONT);
 
 	const auto drawText = [&](const CRect& source, const std::string& value, HFONT font, COLORREF color, UINT flags)
@@ -292,11 +293,11 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 		drawText(CRect(lines.left, lines.top, lines.right, half),
 			directionValue + "  " + speedValue, directionFont,
 			weather.hasWind ? windColor : palette.mutedText, DT_CENTER);
-		std::string details = "QNH " + (weather.hasQnh ? std::to_string(weather.qnhHpa) : "----");
-		if (runwayReference.valid)
-			details += "  RWY " + runwayReference.name + "  " + headValue + " / " + crossValue;
+		// At minimum size, prioritize pressure instead of squeezing runway
+		// components into the same line and truncating the pressure readout.
+		const std::string details = "QNH " + (weather.hasQnh ? std::to_string(weather.qnhHpa) : "----") + " HPA";
 		drawText(CRect(lines.left, half, lines.right, lines.bottom), details,
-			detailFont, palette.text, DT_CENTER);
+			speedFont, weather.hasQnh ? pressureColor : palette.mutedText, DT_CENTER);
 	}
 	else
 	{
@@ -315,12 +316,12 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 		const float centerX = static_cast<float>(compassArea.left + compassArea.Width() / 2);
 		const float centerY = static_cast<float>(compassArea.top + compassArea.Height() / 2);
 		const Gdiplus::RectF roseRect(centerX - radius, centerY - radius, radius * 2.0f, radius * 2.0f);
-		Gdiplus::SolidBrush roseBrush(ToGdiColor(palette.compass));
-		Gdiplus::Pen roseBorder(ToGdiColor(palette.border), 1.0f);
+		Gdiplus::LinearGradientBrush roseBrush(roseRect,
+			ToGdiColor(palette.compass), ToGdiColor(palette.header), Gdiplus::LinearGradientModeVertical);
+		Gdiplus::Pen roseBorder(ToGdiColor(palette.divider), 1.0f);
 		gdi->FillEllipse(&roseBrush, roseRect);
 		gdi->DrawEllipse(&roseBorder, roseRect);
 
-		const double pi = 3.14159265358979323846;
 		const float variationInset = std::clamp(static_cast<float>(3.0 * scale), 2.0f, 7.0f);
 		const Gdiplus::RectF variationRect(
 			roseRect.X + variationInset,
@@ -364,38 +365,45 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 			const Gdiplus::REAL factors[] = { 0.0f, 0.6f, 0.95f, 1.0f };
 			const Gdiplus::REAL positions[] = { 0.0f, 0.35f, 0.75f, 1.0f };
 			gradient.SetBlend(factors, positions, 4);
-			Gdiplus::Pen band(&gradient, std::clamp(radius * 0.18f, 5.0f, 16.0f));
-			band.SetStartCap(Gdiplus::LineCapFlat);
-			band.SetEndCap(Gdiplus::LineCapFlat);
-			const Gdiplus::GraphicsState saved = gdi->Save();
-			Gdiplus::GraphicsPath compassClip;
-			compassClip.AddEllipse(roseRect);
-			gdi->SetClip(&compassClip, Gdiplus::CombineModeIntersect);
-			gdi->DrawLine(&band, source, centre);
-			gdi->Restore(saved);
+			// A slim sector tapers naturally toward the centre, without an
+			// arrowhead or a hard rectangular end behind the wind readout.
+			const float bearing = static_cast<float>(weather.windDirectionDegrees - 90);
+			const Gdiplus::RectF sectorRect(roseRect.X + 2.0f, roseRect.Y + 2.0f,
+				roseRect.Width - 4.0f, roseRect.Height - 4.0f);
+			gdi->FillPie(&gradient, sectorRect, bearing - 7.0f, 14.0f);
+			Gdiplus::Pen bearingPen(ToGdiColor(windColor),
+				std::clamp(static_cast<float>(2.0 * scale), 1.5f, 4.0f));
+			bearingPen.SetStartCap(Gdiplus::LineCapRound);
+			bearingPen.SetEndCap(Gdiplus::LineCapRound);
+			gdi->DrawArc(&bearingPen, sectorRect, bearing - 3.0f, 6.0f);
 		}
 
 		Gdiplus::Pen minorTick(ToGdiColor(palette.divider), 1.0f);
 		Gdiplus::Pen majorTick(ToGdiColor(palette.mutedText), 1.0f);
+		Gdiplus::Pen cardinalTick(ToGdiColor(palette.text), 1.0f);
 		for (int degrees = 0; degrees < 360; degrees += 10)
 		{
-			const double angle = (static_cast<double>(degrees) - 90.0) * pi / 180.0;
-			const float length = degrees % 30 == 0 ? 5.0f : 2.5f;
+			const double angle = DegToRad(static_cast<double>(degrees) - 90.0);
+			const bool cardinal = degrees % 90 == 0;
+			const float length = static_cast<float>((cardinal ? 7.0 : (degrees % 30 == 0 ? 4.5 : 2.0)) * scale);
 			const Gdiplus::PointF outer(
 				centerX + static_cast<float>(std::cos(angle) * (radius - 2.0f)),
 				centerY + static_cast<float>(std::sin(angle) * (radius - 2.0f)));
 			const Gdiplus::PointF innerTick(
 				centerX + static_cast<float>(std::cos(angle) * (radius - 2.0f - length)),
 				centerY + static_cast<float>(std::sin(angle) * (radius - 2.0f - length)));
-			gdi->DrawLine(degrees % 30 == 0 ? &majorTick : &minorTick, outer, innerTick);
+			gdi->DrawLine(cardinal ? &cardinalTick : (degrees % 30 == 0 ? &majorTick : &minorTick), outer, innerTick);
 			if (degrees % 30 == 0 && radius >= 42.0f)
 			{
-				const float labelRadius = radius - static_cast<float>(10.5 * scale);
+				const float labelRadius = radius - static_cast<float>(14.0 * scale);
 				const int x = static_cast<int>(std::lround(centerX + std::cos(angle) * labelRadius));
 				const int y = static_cast<int>(std::lround(centerY + std::sin(angle) * labelRadius));
-				drawText(CRect(x - 10, y - 5, x + 10, y + 5),
-					degrees == 0 ? "36" : std::to_string(degrees / 10),
-					compassFont, palette.mutedText, DT_CENTER);
+				const int halfWidth = static_cast<int>(std::ceil(10.0 * scale));
+				const int halfHeight = static_cast<int>(std::ceil(6.0 * scale));
+				const char* cardinalLabels[] = { "N", "E", "S", "W" };
+				drawText(CRect(x - halfWidth, y - halfHeight, x + halfWidth, y + halfHeight),
+					cardinal ? cardinalLabels[degrees / 90] : std::to_string(degrees / 10),
+					cardinal ? labelFont : compassFont, cardinal ? palette.text : palette.mutedText, DT_CENTER);
 			}
 		}
 
@@ -440,11 +448,13 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 			{ "DEW", FormatTemperature(weather.hasDewPoint, weather.dewPointCelsius) },
 			{ "RWY", runwayReference.valid ? runwayReference.name : "---" },
 			{ "HEAD", headValue + " KT" },
-			{ "XWIND", crossValue + " KT" },
-			{ "QNH", weather.hasQnh ? std::to_string(weather.qnhHpa) + " HPA" : "---- HPA" }
+			{ "XWIND", crossValue + " KT" }
 		};
 		const int rowsTop = header.bottom;
-		const int rowsHeight = (std::max<LONG>)(1, dataArea.bottom - rowsTop);
+		const int availableHeight = (std::max<LONG>)(1, dataArea.bottom - rowsTop);
+		const int pressureHeight = (std::min)(availableHeight / 3,
+			(std::max)(22, static_cast<int>(std::lround(32.0 * scale))));
+		const int rowsHeight = availableHeight - pressureHeight;
 		for (int index = 0; index < static_cast<int>(_countof(rows)); ++index)
 		{
 			const int top = rowsTop + rowsHeight * index / static_cast<int>(_countof(rows));
@@ -458,6 +468,22 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 			drawText(CRect(row.left + labelWidth, row.top, row.right - 4, row.bottom),
 				rows[index].value, valueFont, palette.text, DT_RIGHT);
 		}
+
+		// Pressure is a primary readout, separated from the supporting weather
+		// rows. Keep units small so all four digits remain prominent at 300 px.
+		CRect pressure(dataArea.left + 1, rowsTop + rowsHeight, dataArea.right, dataArea.bottom);
+		dc.FillSolidRect(pressure, palette.header);
+		dc.FillSolidRect(CRect(pressure.left, pressure.top, pressure.right, pressure.top + 1), palette.divider);
+		const int pressureLabelWidth = static_cast<int>(std::lround(28.0 * scale));
+		const int pressureUnitWidth = static_cast<int>(std::lround(21.0 * scale));
+		drawText(CRect(pressure.left + 4, pressure.top, pressure.left + pressureLabelWidth, pressure.bottom),
+			"QNH", labelFont, palette.text, DT_LEFT);
+		drawText(CRect(pressure.left + pressureLabelWidth, pressure.top,
+			pressure.right - pressureUnitWidth, pressure.bottom),
+			weather.hasQnh ? std::to_string(weather.qnhHpa) : "----", pressureFont,
+			weather.hasQnh ? pressureColor : palette.mutedText, DT_RIGHT);
+		drawText(CRect(pressure.right - pressureUnitWidth + 3, pressure.top, pressure.right - 3, pressure.bottom),
+			"HPA", smallFont, palette.mutedText, DT_RIGHT);
 
 		if (!hasWeather)
 		{

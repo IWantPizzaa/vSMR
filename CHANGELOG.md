@@ -14,6 +14,7 @@
 
 ### Changed
 
+- Made METAR QNH a dedicated, high-contrast pressure strip with larger digits and quieter units, including a pressure-first compact view. Refined the wind rose with a subtle shaded face, cardinal markers, scaled ticks and a tapered wind-from gradient; Day/Night, variable wind and variation arcs remain supported.
 - Removed one-off updater-test packaging scripts and the superseded dated audit report; scratch directories and Python caches are now explicitly ignored. Maintained build, release, migration and regression tooling remains available.
 - Simplified airport profile names to LFPG and LFMN, and replaced the separate LFBO/LFLL profiles with LFBO / LFLL using the LFBO configuration. Default and numbered Custom profiles are unchanged.
 - Replaced the tag Label font size editor's 1-5 preset numbers with actual pixel sizes, common size suggestions and direct numeric entry. Existing profiles retain their selected preset and appearance; changes update its size for main-view, AVISO and SRW tags.
