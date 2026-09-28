@@ -30,7 +30,7 @@
       usesAircraftImage = true;
     }
 
-    const trailClass = style === "nova" ? "nova" : style === "realistic" ? "realistic" : "triangle";
+    const trailClass = style === "nova" ? "nova" : style === "realistic" ? "realistic" : style === "diamond" ? "triangle diamond" : "triangle";
     const trail = trailEnabled
       ? `<span class="icon-preview-trail ${trailClass}" aria-hidden="true"><i></i><i></i><i></i><i></i></span>`
       : "";
