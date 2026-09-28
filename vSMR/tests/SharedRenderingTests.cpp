@@ -8,6 +8,7 @@
 #include "rendering/TargetSymbolRenderer.hpp"
 #include "rendering/DisplayScale.hpp"
 #include "radar/RadarHoverPointer.hpp"
+#include "radar/InsetHostPolicy.hpp"
 #include "rdf/RdfGeometry.hpp"
 
 #include <algorithm>
@@ -81,6 +82,26 @@ namespace
 	void TestRadarHoverPointer(std::vector<std::string>& failures)
 	{
 		using namespace VsmrRadarInteraction;
+		InsetCursorOverride cursorOverride;
+		const HCURSOR hostCursor = reinterpret_cast<HCURSOR>(static_cast<UINT_PTR>(1));
+		const HCURSOR resizeCursor = reinterpret_cast<HCURSOR>(static_cast<UINT_PTR>(2));
+		const HCURSOR moveCursor = reinterpret_cast<HCURSOR>(static_cast<UINT_PTR>(3));
+		const HCURSOR changedHostCursor = reinterpret_cast<HCURSOR>(static_cast<UINT_PTR>(4));
+		cursorOverride.Apply(hostCursor, resizeCursor);
+		cursorOverride.Apply(resizeCursor, moveCursor);
+		Check(cursorOverride.Release(moveCursor) == hostCursor && !cursorOverride.Active(),
+			"leaving inset chrome restores the original host cursor after repeated overrides", failures);
+		Check(cursorOverride.Release(hostCursor) == nullptr,
+			"cursor restore happens only once", failures);
+		cursorOverride.Apply(hostCursor, resizeCursor);
+		Check(cursorOverride.Release(changedHostCursor) == nullptr && !cursorOverride.Active(),
+			"leaving an inset does not overwrite a cursor already selected by CoFrance", failures);
+		cursorOverride.Apply(changedHostCursor, resizeCursor);
+		Check(cursorOverride.Release(resizeCursor) == changedHostCursor,
+			"a subsequent resize remembers the new host cursor", failures);
+		Check(IsActionableMouseHook(HC_ACTION) && !IsActionableMouseHook(HC_NOREMOVE) &&
+			!IsActionableMouseHook(-1),
+			"wheel and selection mutate only on removed mouse messages, never queue peeks", failures);
 		Check(NeedsHoverRefresh(WM_MOUSEMOVE, false),
 			"mouse movement refreshes before any tag is detailed", failures);
 		Check(NeedsHoverRefresh(WM_MOUSELEAVE, true) &&
@@ -682,6 +703,30 @@ namespace
 std::vector<std::string> RunSharedRenderingBehaviorTests()
 {
 	std::vector<std::string> failures;
+	using VsmrRadar::ResolveScreenRole;
+	using VsmrRadar::ScreenRole;
+	for (const char* id : { "topbar", "resize_left", "resize_right", "resize_top", "resize_bottom",
+		"resize_tl", "resize_tr", "resize_bl", "resize_br" })
+		Check(VsmrRadar::IsInsetChromeDrag(id),
+			"registered inset move/resize objects retain ownership when dragging outside their frame", failures);
+	Check(!VsmrRadar::IsInsetChromeDrag("") && !VsmrRadar::IsInsetChromeDrag("window") &&
+		!VsmrRadar::IsInsetChromeDrag("close") && !VsmrRadar::IsInsetChromeDrag("resize_unknown"),
+		"non-drag inset objects cannot bypass overlay pointer ownership", failures);
+	Check(!VsmrRadar::UsesAfterListsPhase(true, false),
+		"custom CoFrance displays do not depend on native TAG/list refresh phases", failures);
+	Check(VsmrRadar::UsesAfterListsPhase(true, true),
+		"inset hosts with native radar content use the late overlay phase", failures);
+	Check(!VsmrRadar::UsesAfterListsPhase(false, false) && !VsmrRadar::UsesAfterListsPhase(false, true),
+		"native SMR keeps its original before-TAG rendering phase", failures);
+	Check(ResolveScreenRole("CoFrance radar display", true) == ScreenRole::CoFranceInsets,
+		"CoFrance geo-referenced screens receive only the inset adapter", failures);
+	Check(ResolveScreenRole("SMR radar display", true) == ScreenRole::SurfaceRadar,
+		"native vSMR screens retain the full radar renderer", failures);
+	Check(ResolveScreenRole(nullptr, true) == ScreenRole::Unsupported &&
+		ResolveScreenRole("CoFrance radar display", false) == ScreenRole::Unsupported &&
+		ResolveScreenRole("Standard ES radar screen", true) == ScreenRole::Unsupported &&
+		ResolveScreenRole("Other radar display", true) == ScreenRole::Unsupported,
+		"inset adapter does not attach to unknown or non-geographic views", failures);
 	TestRadarHoverPointer(failures);
 	TestRdfInsetOcclusion(failures);
 	TestAvisoRasterBlitPlanning(failures);
