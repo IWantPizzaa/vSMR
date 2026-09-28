@@ -226,6 +226,25 @@ void TestTargetProjection(std::vector<std::string>& failures)
 	check(projections == 2 && projected.heading.x == 3 && projected.heading.y == 4 &&
 		projected.primary.empty() && projected.afterglow[0].empty() && projected.trail.empty(),
 		"switching away from Nova clears primary returns and uses the viewport's projected heading");
+	presentation.trailEnabled = true;
+	projectedSource.position = { 0, 0, true };
+	projectedSource.trailPositions = { {0, 40, true}, {40, 40, true}, {80, 40, true},
+		{120, 40, true}, {160, 40, true}, {200, 40, true}, {240, 40, true}, {280, 40, true} };
+	projectedSource.style.icon = VsmrScene::IconStyle::Diamond;
+	projected.Update(projectedSource, presentation, drawOptions, project, VsmrTargetRendering::AlwaysVisible{});
+	check(projected.trail.size() == 8 && projected.trail[0].point.x == 10 &&
+		projected.trail[3].point.x == 40 && projected.trail[3].point.y == 0 &&
+		projected.trail[4].point.x == 40 && projected.trail[4].point.y == 10 &&
+		projected.trail[7].point.y == 40 && projected.trail[7].index == 7,
+		"Diamond trail has quarter-interval spacing, follows turns and retains configured count/fade indices");
+	projectedSource.style.icon = VsmrScene::IconStyle::Triangle;
+	projected.Update(projectedSource, presentation, drawOptions, project, VsmrTargetRendering::AlwaysVisible{});
+	check(projected.trail.size() == 8 && projected.trail[0].point.x == 40 && projected.trail[7].point.y == 280,
+		"other icon styles retain their original history spacing");
+	projectedSource.style.icon = VsmrScene::IconStyle::Diamond;
+	projectedSource.trailPositions[0].valid = false;
+	projected.Update(projectedSource, presentation, drawOptions, project, VsmrTargetRendering::AlwaysVisible{});
+	check(projected.trail.empty(), "Diamond does not interpolate across invalid history");
 
 }
 }
