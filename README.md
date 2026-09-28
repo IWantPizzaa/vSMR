@@ -162,6 +162,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\create_update_f
 
 Commit/publish the payload before the channel manifest. The manifest contains `schema`, `version`, `content_commit`, `minimum_loader_version`, `runtime_abi`, and a `files` object mapping install-relative paths to `{ "sha256": "...", "size": 123 }`. No file URLs or user paths are supplied by the manifest. `config.json`, legacy editable profile files, custom maps, user data, symbols and local updater state are excluded. The generator checks real Win32 binary headers, exact hashes/sizes, and immutable Git blob contents. `-ValidationOnly -SkipBuild` stages an existing build for local tests; its manifest is deliberately named `version.validation-only.json` and cannot be promoted silently to the public feed.
 
+### Generated files and cleanup
+
+Build outputs (`Release/`, `Debug/`, `bin/`, `obj/`), `.vs/`, `.tmp/`, `artifacts/` and Python caches are not source files. Retain any release packages or private symbols you still need outside the checkout before removing generated outputs. Close Visual Studio and EuroScope first, and remove temporary Git worktrees with `git worktree remove` rather than deleting their directories directly. Keep `vSMR/data/`, generated web bundles and `default.json`: these are tracked application inputs validated by the build.
+
+`vSMR/tools/build_project.ps1` rebuilds Release/Win32 and runs the native and browser regression suites. The installer, migration helpers and legacy updater recovery code remain necessary for existing installations; they are not disposable build artifacts.
+
 ## License
 
 vSMR source code is licensed under the [GNU General Public License v3.0](LICENSE). Bundled dependencies and data assets retain their own terms; notices and provenance records are under `vSMR/data/Licenses/`.
