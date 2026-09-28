@@ -600,7 +600,8 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 
 	auto isDenseLabelVisible = [&](const AvisoLabel& label) -> bool
 	{
-		if (label.minimumZoomLevel > 0 && request.viewportZoomLevel < label.minimumZoomLevel)
+		const int labelZoom = request.labelZoomLevel >= 0 ? request.labelZoomLevel : request.viewportZoomLevel;
+		if (label.minimumZoomLevel > 0 && labelZoom < label.minimumZoomLevel)
 			return false;
 		if (label.maxMetersPerPixel > 0.0 && metersPerPixel > label.maxMetersPerPixel)
 			return false;
@@ -706,6 +707,7 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 
 	auto result = std::make_unique<AvisoRasterRenderResult>();
 	result->requestId = request.requestId;
+	result->labelZoomLevel = request.labelZoomLevel;
 	result->groupGeneration = request.groupGeneration;
 	result->colorPalette = request.colorPalette;
 	result->bitmap = dibBitmap.Release();
