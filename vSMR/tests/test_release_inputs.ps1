@@ -53,9 +53,22 @@ try {
     Assert-Rejected 'Bundled AVISO file count differs*'
     $manifest.file_count = 1
     Write-Fixture 'vSMR/tests/fixtures/aviso-set-20260917.json' ($manifest | ConvertTo-Json -Depth 5)
+    foreach ($invalidMap in @(
+        '{"features":[{"id":"same"},{"id":"same"}]}',
+        '{"features":[{"properties":{}}]}',
+        '{"features":[],"vsmr_groups":[{"id":"group"},{"id":"group"}]}'
+    )) {
+        Write-Fixture 'vSMR/data/AVISO/AAAA.geojson' $invalidMap
+        $manifest.files.'AAAA.geojson' = (Get-FileHash (Join-Path $fixtureRoot 'vSMR/data/AVISO/AAAA.geojson') -Algorithm SHA256).Hash.ToLowerInvariant()
+        Write-Fixture 'vSMR/tests/fixtures/aviso-set-20260917.json' ($manifest | ConvertTo-Json -Depth 5)
+        Assert-Rejected 'Bundled AVISO has missing or duplicate stable*'
+    }
+    Write-Fixture 'vSMR/data/AVISO/AAAA.geojson' '{}'
+    $manifest.files.'AAAA.geojson' = $mapHash
+    Write-Fixture 'vSMR/tests/fixtures/aviso-set-20260917.json' ($manifest | ConvertTo-Json -Depth 5)
     Write-Fixture 'vSMR/src/bootstrap/loader/LoaderResources.rc' 'PRODUCTVERSION 0,0,0,0'
     Assert-Rejected 'Loader product version must contain*'
-    Write-Host 'Release-input regression tests passed: valid fixture and five rejection cases.'
+    Write-Host 'Release-input regression tests passed: valid fixture and eight rejection cases.'
 } finally {
     # Only remove the unique fixture directory created by this invocation.
     $resolvedFixture = [IO.Path]::GetFullPath($fixtureRoot)

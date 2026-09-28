@@ -139,6 +139,10 @@
       state.recoveryConfirmed = false;
     if (["initial", "reload", "resource-source"].includes(reason))
       state.avisoRecoveryConfirmed = false;
+    if (["initial", "reload"].includes(reason)) {
+      state.resetProfileOverrides = false;
+      state.resetAvisoOverrides = false;
+    }
     if (!preservesStagedEditors)
       state.externalEditConflict = false;
     else if (externallyChangedDirtyEditors)
@@ -321,6 +325,12 @@
 	  if (effectivePath) updateDirtyState();
       if (resource === "profiles" && resourceSource === "bundled defaults")
         state.recoveryConfirmed = true;
+      if (resourceSource === "bundled defaults") {
+        if (resource === "profiles") state.resetProfileOverrides = true;
+        if (resource === "aviso") state.resetAvisoOverrides = true;
+        updateDirtyState();
+        scheduleAutosave();
+      }
       if (resource === "aviso") state.avisoRecoveryConfirmed = true;
       if (matchesPending && persistentStatusState?.origin === "native")
         setPersistentStatus("", "", [], "native");

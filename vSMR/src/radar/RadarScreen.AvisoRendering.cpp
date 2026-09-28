@@ -2,6 +2,7 @@
 #include "aviso/AvisoRasterBlitter.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
 #include "aviso/AvisoRasterSizing.hpp"
+#include "aviso/AvisoRasterGeometry.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.AvisoRuntimeState.hpp"
 #include "radar/RadarScreen.AvisoSupport.hpp"
@@ -489,29 +490,11 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 
 	const double minRasterPointDistance = AvisoMax(0.35 * request.rasterScale, 0.5);
 	const double minRasterPointDistanceSquared = minRasterPointDistance * minRasterPointDistance;
-	auto appendRasterPoint = [&](std::vector<PointF>& points, AvisoPoint& lastCoordinate, bool& hasLastCoordinate, const AvisoPoint& coordinate, bool force)
+	auto appendRasterPoint = [&](std::vector<PointF>& points, const AvisoPoint& coordinate, bool preserveVertex)
 	{
-		if (!force && hasLastCoordinate)
-		{
-			const double approxDx = (coordinate.longitude - lastCoordinate.longitude) * request.scaleX * rasterCoordinateScaleX;
-			const double approxDy = (coordinate.latitude - lastCoordinate.latitude) * request.scaleY * rasterCoordinateScaleY;
-			if ((approxDx * approxDx + approxDy * approxDy) < minRasterPointDistanceSquared)
-				return;
-		}
-
-		const PointF point = projectRasterPoint(coordinate);
-		if (!force && !points.empty())
-		{
-			const PointF& lastPoint = points.back();
-			const double dx = static_cast<double>(point.X - lastPoint.X);
-			const double dy = static_cast<double>(point.Y - lastPoint.Y);
-			if ((dx * dx + dy * dy) < minRasterPointDistanceSquared)
-				return;
-		}
-
-		points.push_back(point);
-		lastCoordinate = coordinate;
-		hasLastCoordinate = true;
+		// Measure only after the full rotated projection and raster scaling.
+		VsmrAviso::AppendProjectedRasterPoint(points, projectRasterPoint(coordinate),
+			minRasterPointDistanceSquared, preserveVertex);
 	};
 
 	std::vector<PointF> rasterPoints;
@@ -545,6 +528,8 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			continue;
 		if (feature.polygon)
 		{
+			const bool outline = request.colorPalette == "real" ? feature.realPolygonOutline
+				: request.colorPalette == "light" ? feature.lightPolygonOutline : feature.polygonOutline;
 			for (const std::vector<AvisoPoint>& ring : feature.paths)
 			{
 				if (renderCancelled())
@@ -554,13 +539,11 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 
 				rasterPoints.clear();
 				rasterPoints.reserve(ring.size());
-				AvisoPoint lastCoordinate{};
-				bool hasLastCoordinate = false;
 				for (size_t pointIndex = 0; pointIndex < ring.size(); ++pointIndex)
 				{
 					if ((pointIndex & 0xff) == 0 && renderCancelled())
 						return nullptr;
-					appendRasterPoint(rasterPoints, lastCoordinate, hasLastCoordinate, ring[pointIndex], pointIndex == 0);
+					appendRasterPoint(rasterPoints, ring[pointIndex], true);
 				}
 
 				if (rasterPoints.size() < 3)
@@ -572,6 +555,12 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 				{
 					SolidBrush fillBrush(featureFillColor);
 					rasterGraphics.FillPolygon(&fillBrush, rasterPoints.data(), static_cast<INT>(rasterPoints.size()), FillModeAlternate);
+				}
+				if (outline && featureStrokeColor.GetAlpha() > 0 && feature.strokeWidth > 0.0f)
+				{
+					Pen outlinePen(featureStrokeColor, feature.strokeWidth * static_cast<float>(request.rasterScale * request.displayScale));
+					outlinePen.SetLineJoin(LineJoinRound);
+					rasterGraphics.DrawPolygon(&outlinePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
 				}
 			}
 			continue;
@@ -593,13 +582,11 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 
 			rasterPoints.clear();
 			rasterPoints.reserve(line.size());
-			AvisoPoint lastCoordinate{};
-			bool hasLastCoordinate = false;
 			for (size_t pointIndex = 0; pointIndex < line.size(); ++pointIndex)
 			{
 				if ((pointIndex & 0xff) == 0 && renderCancelled())
 					return nullptr;
-				appendRasterPoint(rasterPoints, lastCoordinate, hasLastCoordinate, line[pointIndex], pointIndex == 0 || pointIndex + 1 == line.size());
+				appendRasterPoint(rasterPoints, line[pointIndex], pointIndex == 0 || pointIndex + 1 == line.size());
 			}
 
 			if (rasterPoints.size() >= 2)
@@ -1389,10 +1376,10 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	const PointF projectedBottomLeft = projectFullDisplayPoint(displayMinLon, displayMinLat);
 	const PointF projectedBottomRight = projectFullDisplayPoint(displayMaxLon, displayMinLat);
 
-	const double projectedWidthTop = std::abs(static_cast<double>(projectedTopRight.X - projectedTopLeft.X));
-	const double projectedWidthBottom = std::abs(static_cast<double>(projectedBottomRight.X - projectedBottomLeft.X));
-	const double projectedHeightLeft = std::abs(static_cast<double>(projectedBottomLeft.Y - projectedTopLeft.Y));
-	const double projectedHeightRight = std::abs(static_cast<double>(projectedBottomRight.Y - projectedTopRight.Y));
+	const double projectedWidthTop = VsmrAviso::ProjectedAxisLength(projectedTopLeft, projectedTopRight);
+	const double projectedWidthBottom = VsmrAviso::ProjectedAxisLength(projectedBottomLeft, projectedBottomRight);
+	const double projectedHeightLeft = VsmrAviso::ProjectedAxisLength(projectedTopLeft, projectedBottomLeft);
+	const double projectedHeightRight = VsmrAviso::ProjectedAxisLength(projectedTopRight, projectedBottomRight);
 	const double projectedWidth = AvisoMax(AvisoMax(projectedWidthTop, projectedWidthBottom), 1.0);
 	const double projectedHeight = AvisoMax(AvisoMax(projectedHeightLeft, projectedHeightRight), 1.0);
 	const double scaleX = projectedWidth > 1.0 ? projectedWidth / lonSpan : fallbackScaleX;

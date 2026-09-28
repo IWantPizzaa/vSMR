@@ -32,7 +32,7 @@ namespace
 	// vSID's provider declaration (vSIDPlugin.h): schema 1.0 publishes sid, rwy and
 	// cfl as aircraft STR fields of at most 32 bytes. automode is the optional
 	// schema 1.1 global described in the Wiki Integrations page. The
-	// companion schema 1.2/1.3 also publishes the manual Paris rules snapshot.
+	// companion schema 1.2/1.3 publishes live Paris rules; 1.4 adds LFPG areas.
 	constexpr char ProviderId[] = "vsid";
 	constexpr std::uint32_t SupportedSchemaMajor = 1U;
 
@@ -43,6 +43,7 @@ namespace
 		ClearedFlightLevelField,
 		AutomaticModeField,
 		ParisStateField,
+		LfpgTaxiField,
 		FieldCount
 	};
 
@@ -51,7 +52,8 @@ namespace
 		{ "rwy", ESB_T_STR, static_cast<std::uint32_t>(VsmrVsid::MaximumFieldBytes) },
 		{ "cfl", ESB_T_STR, static_cast<std::uint32_t>(VsmrVsid::MaximumFieldBytes) },
 		{ "automode", ESB_T_STR, static_cast<std::uint32_t>(VsmrVsid::MaximumAutomaticModeBytes) },
-		{ "paris", ESB_T_STR, static_cast<std::uint32_t>(VsmrParis::Airports.size() * 9U) }
+		{ "paris", ESB_T_STR, static_cast<std::uint32_t>(VsmrParis::Airports.size() * 9U) },
+		{ "lfpg_taxi", ESB_T_STR, 1U }
 	} };
 
 	constexpr std::uint64_t NoRevision = (std::numeric_limits<std::uint64_t>::max)();
@@ -68,6 +70,8 @@ namespace
 	std::map<std::string, bool> AutomaticModes;
 	std::map<std::string, VsmrParis::State> ParisStates;
 	std::optional<VsmrVsid::LfpgTaxiMode> LastSubmittedLfpgTaxiMode;
+	bool LiveLfpgTaxiAvailable = false;
+	std::optional<VsmrVsid::LfpgTaxiMode> LiveLfpgTaxiMode;
 	std::unordered_map<std::string, VsmrVsid::AircraftData> AircraftByCallsign;
 	std::atomic<bool> ParisCommandsAvailable{ false };
 	std::atomic<bool> RegionalCommandsAvailable{ false };
@@ -85,6 +89,11 @@ namespace
 	std::deque<std::string> PendingAreaCommands;
 	std::optional<VsmrVsid::LfpgTaxiMode> PendingTaxiMode;
 	std::atomic<bool> AreaSequenceActive{ false };
+	void (*UiRefreshCallback)() = nullptr;
+	// A native-window callback can request a repaint, but must not consume the
+	// host's notification: EuroScope may defer/coalesce that request while its
+	// clickable screen-object list is still the disabled frame's list.
+	bool CommandRefreshPending = false;
 
 	void ClearAreaSequence()
 	{
@@ -95,8 +104,7 @@ namespace
 
 	bool DisconnectProvider()
 	{
-		if (AreaSequenceActive.load(std::memory_order_relaxed))
-			VsmrEuroScopeCommandLine::Cancel(VsmrEuroScopeCommandLine::Owner::Vsid);
+		VsmrEuroScopeCommandLine::Cancel(VsmrEuroScopeCommandLine::Owner::Vsid);
 		ClearAreaSequence();
 		Provider.Reset();
 		ProviderReady.store(false, std::memory_order_relaxed);
@@ -105,12 +113,14 @@ namespace
 		LastProviderRevision = NoRevision;
 		LastScannedCallsigns.clear();
 		std::lock_guard<std::mutex> guard(StateMutex);
-		if (AircraftByCallsign.empty() && AutomaticModes.empty() && ParisStates.empty() && !LastSubmittedLfpgTaxiMode)
+		if (AircraftByCallsign.empty() && AutomaticModes.empty() && ParisStates.empty() && !LastSubmittedLfpgTaxiMode && !LiveLfpgTaxiAvailable)
 			return false;
 		AircraftByCallsign.clear();
 		AutomaticModes.clear();
 		ParisStates.clear();
 		LastSubmittedLfpgTaxiMode.reset();
+		LiveLfpgTaxiAvailable = false;
+		LiveLfpgTaxiMode.reset();
 		return true;
 	}
 
@@ -130,19 +140,38 @@ namespace
 	bool ReplaceSnapshot(
 		std::unordered_map<std::string, VsmrVsid::AircraftData> aircraft,
 		std::map<std::string, bool> automaticModes,
-		std::map<std::string, VsmrParis::State> parisStates)
+		std::map<std::string, VsmrParis::State> parisStates,
+		bool liveTaxiAvailable, std::optional<VsmrVsid::LfpgTaxiMode> taxiMode)
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
-		if (AircraftByCallsign == aircraft && AutomaticModes == automaticModes && ParisStates == parisStates)
+		if (AircraftByCallsign == aircraft && AutomaticModes == automaticModes && ParisStates == parisStates &&
+			LiveLfpgTaxiAvailable == liveTaxiAvailable && LiveLfpgTaxiMode == taxiMode)
 			return false;
 		AircraftByCallsign = std::move(aircraft);
 		AutomaticModes = std::move(automaticModes);
 		ParisStates = std::move(parisStates);
+		LiveLfpgTaxiAvailable = liveTaxiAvailable;
+		LiveLfpgTaxiMode = taxiMode;
 		return true;
 	}
 }
 
-bool VsmrVsid::Poll(const VsmrPluginBridge::Tick& tick)
+namespace VsmrVsid
+{
+namespace
+{
+bool PollState(const VsmrPluginBridge::Tick& tick, bool configurationOnly);
+
+bool PollCommandProgress()
+{
+	const bool changed = PollState({ VsmrPluginBridge::AttachForUi(), {} }, true);
+	CommandRefreshPending = CommandRefreshPending || changed;
+	if (changed && UiRefreshCallback)
+		UiRefreshCallback();
+	return changed;
+}
+
+bool PollState(const VsmrPluginBridge::Tick& tick, bool configurationOnly)
 {
 	bool commandStateChanged = false;
 	const auto submission = VsmrEuroScopeCommandLine::Poll(VsmrEuroScopeCommandLine::Owner::Vsid);
@@ -159,6 +188,10 @@ bool VsmrVsid::Poll(const VsmrPluginBridge::Tick& tick)
 	default:
 		break;
 	}
+	// The short-lived UI timer waits for delivery without repeatedly scanning
+	// aircraft or reading configuration while EuroScope is still processing.
+	if (configurationOnly && submission == VsmrEuroScopeCommandLine::SubmissionStatus::Pending)
+		return false;
 	auto finish = [&](bool dataChanged)
 	{
 		const bool interfaceStateChanged = UpdateInterfaceState();
@@ -191,7 +224,7 @@ bool VsmrVsid::Poll(const VsmrPluginBridge::Tick& tick)
 				{
 					std::string error;
 					if (VsmrEuroScopeCommandLine::Begin(VsmrEuroScopeCommandLine::Owner::Vsid,
-						PendingAreaCommands.front(), &error))
+						PendingAreaCommands.front(), &error, PollCommandProgress))
 						PendingAreaCommands.pop_front();
 					else
 					{
@@ -216,7 +249,7 @@ bool VsmrVsid::Poll(const VsmrPluginBridge::Tick& tick)
 		// Coarse gate (B2.5): every vSID write or clear, global or per aircraft,
 		// advances the provider revision.
 		const std::uint64_t providerRevision = api.provider_revision(ProviderId);
-		if (providerRevision == LastProviderRevision &&
+		if (!configurationOnly && !commandStateChanged && providerRevision == LastProviderRevision &&
 			tick.callsigns == LastScannedCallsigns)
 		{
 			return finish(false);
@@ -251,9 +284,38 @@ bool VsmrVsid::Poll(const VsmrPluginBridge::Tick& tick)
 				return finish(DisconnectProvider());
 			if (parisStatus == ReadStatus::Failed)
 				snapshotComplete = false;
-			// Only vSID's published manual rules establish the selected button state.
+			// Published runtime rules establish the selection regardless of Auto/manual.
 			if (parisStatus == ReadStatus::Value)
 				parisStates = VsmrParis::Parse(snapshot);
+		}
+
+		const bool liveTaxiAvailable = Provider.Field(LfpgTaxiField) != ESB_FIELD_NONE;
+		std::optional<VsmrVsid::LfpgTaxiMode> taxiMode;
+		if (liveTaxiAvailable)
+		{
+			std::string snapshot;
+			const ReadStatus taxiStatus = VsmrPluginBridge::ReadGlobalString(
+				api, Provider.Field(LfpgTaxiField), Fields[LfpgTaxiField].expectedBytes, snapshot);
+			if (taxiStatus == ReadStatus::ProviderLost) return finish(DisconnectProvider());
+			if (taxiStatus == ReadStatus::Failed) snapshotComplete = false;
+			if (taxiStatus == ReadStatus::Value) taxiMode = ParseLfpgTaxiMode(snapshot);
+		}
+
+		if (configurationOnly)
+		{
+			// Refresh button selections immediately, but leave aircraft snapshots
+			// and the full-poll revision gate for the regular EuroScope timer.
+			bool changed;
+			{
+				std::lock_guard<std::mutex> guard(StateMutex);
+				changed = AutomaticModes != automaticModes || ParisStates != parisStates ||
+					LiveLfpgTaxiAvailable != liveTaxiAvailable || LiveLfpgTaxiMode != taxiMode;
+				AutomaticModes = std::move(automaticModes);
+				ParisStates = std::move(parisStates);
+				LiveLfpgTaxiAvailable = liveTaxiAvailable;
+				LiveLfpgTaxiMode = taxiMode;
+			}
+			return finish(changed);
 		}
 
 		std::unordered_map<std::string, AircraftData> next;
@@ -308,7 +370,7 @@ bool VsmrVsid::Poll(const VsmrPluginBridge::Tick& tick)
 		// Retry incomplete reads even when the provider revision did not advance.
 		LastProviderRevision = snapshotComplete ? providerRevision : NoRevision;
 		LastScannedCallsigns = tick.callsigns;
-		return finish(ReplaceSnapshot(std::move(next), std::move(automaticModes), std::move(parisStates)));
+		return finish(ReplaceSnapshot(std::move(next), std::move(automaticModes), std::move(parisStates), liveTaxiAvailable, taxiMode));
 	}
 	catch (const std::exception& exception)
 	{
@@ -319,6 +381,20 @@ bool VsmrVsid::Poll(const VsmrPluginBridge::Tick& tick)
 		Logger::info("vSID bridge poll failed: unknown exception");
 	}
 	return finish(DisconnectProvider());
+}
+}
+}
+
+bool VsmrVsid::Poll(const VsmrPluginBridge::Tick& tick)
+{
+	const bool pendingRefresh = std::exchange(CommandRefreshPending, false);
+	const bool changed = PollState(tick, false);
+	return changed || pendingRefresh;
+}
+
+void VsmrVsid::SetUiRefreshCallback(void (*callback)()) noexcept
+{
+	UiRefreshCallback = callback;
 }
 
 VsmrVsid::InterfaceState VsmrVsid::GetInterfaceState(const std::string& airport)
@@ -341,7 +417,11 @@ VsmrVsid::InterfaceState VsmrVsid::GetInterfaceState(const std::string& airport)
 		const auto paris = ParisStates.find(NormalizeAirport(airport));
 		if (state.providerReady && paris != ParisStates.end()) state.paris = paris->second;
 		if (state.providerReady && NormalizeAirport(airport) == "LFPG")
+		{
 			state.lastSubmittedLfpgTaxiMode = LastSubmittedLfpgTaxiMode;
+			state.liveLfpgTaxiAvailable = LiveLfpgTaxiAvailable;
+			state.lfpgTaxiMode = LiveLfpgTaxiMode;
+		}
 	}
 	return state;
 }
@@ -399,7 +479,7 @@ bool VsmrVsid::SubmitCommand(
 	if (!VsmrEuroScopeCommandLine::Begin(
 		VsmrEuroScopeCommandLine::Owner::Vsid,
 		commands.front(),
-		&error))
+		&error, PollCommandProgress))
 	{
 		return false;
 	}
@@ -435,6 +515,8 @@ bool VsmrVsid::TryGetAircraftData(
 
 void VsmrVsid::Shutdown() noexcept
 {
+	UiRefreshCallback = nullptr;
+	CommandRefreshPending = false;
 	ClearAreaSequence();
 	VsmrEuroScopeCommandLine::Cancel(
 		VsmrEuroScopeCommandLine::Owner::Vsid);
@@ -444,6 +526,8 @@ void VsmrVsid::Shutdown() noexcept
 		AutomaticModes.clear();
 		ParisStates.clear();
 		LastSubmittedLfpgTaxiMode.reset();
+		LiveLfpgTaxiAvailable = false;
+		LiveLfpgTaxiMode.reset();
 	}
 	Provider.Reset();
 	Diagnostics.Reset();
