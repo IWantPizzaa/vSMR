@@ -777,9 +777,6 @@
     $("#updateAutoInstall").addEventListener("change", event => {
       submitUpdateSettings({ auto_install: event.target.checked }, "Automatic activation preference saved");
     });
-    $("#updateProtectModifiedAviso").addEventListener("change", event => {
-      submitUpdateSettings({ protect_modified_aviso: event.target.checked }, "AVISO edit protection saved");
-    });
     $("#reloadButton").addEventListener("click", requestReload);
     $("#closeButton").addEventListener("click", closeControlCenter);
     $("#profilesFileInput").addEventListener("change", importProfilesFile);
@@ -817,8 +814,6 @@
     else if (action === "restore-bundled-defaults") restoreBundledDefaults();
     else if (action === "update-retry") requestUpdateAction("retry_update");
     else if (action === "update-reload-aviso") {
-      if (updateCenter.config.protect_modified_aviso === false &&
-        !window.confirm("AVISO edit protection is disabled. Reloading will replace locally modified bundled AVISOs with the installed GitHub release copies on the next startup. Continue?")) return;
       requestUpdateAction("reload_aviso");
     }
     else if (action === "update-release-open") openUpdateRelease();

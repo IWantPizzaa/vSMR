@@ -77,6 +77,10 @@ function Get-PeMachine([string]$Path, [string]$Description) {
 
 $destinationDataPath = [System.IO.Path]::GetFullPath((Join-Path $DestinationDirectory "vSMR_Data")).TrimEnd('\', '/')
 $backupDataPath = [System.IO.Path]::GetFullPath((Join-Path $BackupDirectory "vSMR_Data")).TrimEnd('\', '/')
+if ((Test-Path -LiteralPath (Join-Path $destinationDataPath '.update/journal.json')) -or
+    (Test-Path -LiteralPath (Join-Path $backupDataPath '.update/journal.json'))) {
+    throw 'pending_file_update: finish or recover the file-update transaction before restoring a complete backup.'
+}
 if ((Test-PathEqualOrChild $BackupDirectory $destinationDataPath) -or
     (Test-PathEqualOrChild $destinationDataPath $backupDataPath)) {
     throw "Backup and active vSMR_Data trees cannot overlap: $BackupDirectory"

@@ -248,7 +248,25 @@
     return normalized;
   }
 
-  function metadataAvisoPresetStoreForAirport(metadata, airport, migrateLegacy = true) {
+  function metadataAvisoPresetStoreForAirport(metadata, airport, migrateLegacy = true, readOnly = false) {
+    // Rendering and selection must not manufacture persisted empty arrays:
+    // an explicit [] is an override that would hide future bundled presets.
+    // Migration/edit callers retain the existing writable behavior.
+    if (readOnly) {
+      const root = metadata.aviso_presets;
+      const airportCode = normalizeAirportCode(airport);
+      const airports = root?.airports;
+      const key = airports && typeof airports === "object" && !Array.isArray(airports)
+        ? Object.keys(airports).find(value => normalizeAirportCode(value) === airportCode) : "";
+      let store = normalizeAvisoPresetStore(clone(key ? airports[key] : {}));
+      if (migrateLegacy && airportCode && root && isAirportCode(root.airport) &&
+          normalizeAirportCode(root.airport) === airportCode &&
+          (Array.isArray(root.items) || typeof root.default === "string")) {
+        store = mergeAvisoPresetStore(store,
+          { default: String(root.default || ""), items: clone(Array.isArray(root.items) ? root.items : []) }, "Legacy");
+      }
+      return store;
+    }
     if (!metadata.aviso_presets || typeof metadata.aviso_presets !== "object" || Array.isArray(metadata.aviso_presets)) {
       metadata.aviso_presets = {};
     }
@@ -327,6 +345,10 @@
   }
 
   function migrateProfileAvisoPresetStores(metadata, records, preferredProfile) {
+    if (!records.some(record => record.data?.aviso_presets &&
+        typeof record.data.aviso_presets === "object" && !Array.isArray(record.data.aviso_presets))) {
+      return metadata.aviso_presets || {};
+    }
     if (!metadata.aviso_presets || typeof metadata.aviso_presets !== "object" || Array.isArray(metadata.aviso_presets)) {
       metadata.aviso_presets = {};
     }
@@ -677,7 +699,7 @@
       || inferAirport(bundle.aviso?.name)
       || inferAirport(preferred?.data?.name));
     migrateProfileAvisoPresetStores(metadata, records, preferred?.id || preferred?.data?.name);
-    const preferredPresetStore = metadataAvisoPresetStoreForAirport(metadata, initialAirport, true);
+    const preferredPresetStore = metadataAvisoPresetStoreForAirport(metadata, initialAirport, true, true);
     const preferredPresetItems = preferredPresetStore.items;
     const preferredPresetName = String(preferredPresetStore.default || preferredPresetItems[0]?.name || "");
     const preferredPreset = preferredPresetItems.find(item => item?.name === preferredPresetName) || preferredPresetItems[0] || null;
@@ -1188,7 +1210,8 @@
   }
 
   function updateDirtyState(message = "") {
-    state.dirty = !editorSnapshotsEqual(captureEditorSnapshot(), savedSnapshot);
+    state.dirty = Boolean(state.resetProfileOverrides || state.resetAvisoOverrides) ||
+      !editorSnapshotsEqual(captureEditorSnapshot(), savedSnapshot);
     const visuallyDirty = state.dirty || hasUnappliedEditorInputs();
     updateCommandState();
     if (message) setStatus(message, visuallyDirty ? "info" : "");
@@ -1415,6 +1438,8 @@
       unappliedEditorSections: Array.from(unappliedEditorSections),
       recoveryConfirmed: state.recoveryConfirmed,
       avisoRecoveryConfirmed: state.avisoRecoveryConfirmed,
+      resetProfileOverrides: state.resetProfileOverrides,
+      resetAvisoOverrides: state.resetAvisoOverrides,
       externalEditConflict: state.externalEditConflict,
       configRevision: state.configRevision,
       avisoRevision: state.avisoRevision
@@ -1440,6 +1465,8 @@
     (rollback.unappliedEditorSections || []).forEach(key => unappliedEditorSections.add(String(key)));
     state.recoveryConfirmed = Boolean(rollback.recoveryConfirmed);
     state.avisoRecoveryConfirmed = Boolean(rollback.avisoRecoveryConfirmed);
+    state.resetProfileOverrides = Boolean(rollback.resetProfileOverrides);
+    state.resetAvisoOverrides = Boolean(rollback.resetAvisoOverrides);
     state.externalEditConflict = Boolean(rollback.externalEditConflict);
     state.configRevision = rollback.configRevision || "";
     state.avisoRevision = rollback.avisoRevision || "";
@@ -1643,7 +1670,7 @@
   }
 
   function airportAvisoPresetStore() {
-    return metadataAvisoPresetStoreForAirport(state.metadata, activePresetAirport(), true);
+    return metadataAvisoPresetStoreForAirport(state.metadata, activePresetAirport(), true, true);
   }
 
   function avisoPresets() { return airportAvisoPresetStore().items; }
@@ -1931,7 +1958,7 @@
 	const rollback = captureRuntimeCommandRollback();
     if (insetPresetDialogMode === "rename") {
       if (!current) return;
-      if (store.items.some(item => item !== current && item.name.toLowerCase() === name.toLowerCase())) { showToast("A preset with this name already exists", "error"); return; }
+      if (store.items.some(item => item.name.toLowerCase() !== current.name.toLowerCase() && item.name.toLowerCase() === name.toLowerCase())) { showToast("A preset with this name already exists", "error"); return; }
       const oldName = current.name;
 	  postRuntimeCommand(
 		"aviso.inset.preset.rename",
@@ -4657,7 +4684,7 @@
     if (updateCenter.pending.action || !updateCenter.available) return;
     if (!HOST_MODE) {
       updateCenter.state.message = action === "reload_aviso"
-        ? "AVISO reload queued for the next startup."
+        ? "Application file check / repair queued for the next startup."
         : "Update retry queued for the next startup.";
       renderUpdateCenter();
       showToast(updateCenter.state.message, "success");
@@ -4771,18 +4798,18 @@
     $("#updateAutoCheck").checked = config.auto_check !== false;
     $("#updateAutoDownload").checked = config.auto_download !== false;
     $("#updateAutoInstall").checked = config.auto_install !== false;
-    $("#updateProtectModifiedAviso").checked = config.protect_modified_aviso !== false;
+    $("#updateProtectModifiedAviso").checked = true;
     $("#updateChannel").disabled = !writable || busy;
     $("#updateAutoCheck").disabled = !writable || busy;
     $("#updateAutoDownload").disabled = !writable || busy || config.auto_check === false;
     $("#updateAutoInstall").disabled = !writable || busy || config.auto_download === false;
-    $("#updateProtectModifiedAviso").disabled = !writable || busy;
+    $("#updateProtectModifiedAviso").disabled = true;
 
     const pendingAction = Boolean(updateCenter.pending.action);
     const pendingActionName = String(updateCenter.pending.action?.action || "");
     const reloadAvisoButton = $("#updateReloadAvisoButton");
     reloadAvisoButton.disabled = !updateCenter.available || pendingAction || busy;
-    reloadAvisoButton.textContent = pendingActionName === "reload_aviso" ? "Queuing..." : "Reload AVISOs";
+    reloadAvisoButton.textContent = pendingActionName === "reload_aviso" ? "Queuing..." : "Check / repair files";
 
     const retryButton = $("#updateRetryButton");
     retryButton.hidden = !["error", "rate_limited"].includes(status);
@@ -4879,6 +4906,8 @@
       activeProfile: activeProfile().name || "",
       configRevision: state.configRevision || "",
       avisoRevision: state.avisoRevision || "",
+      resetProfileOverrides: Boolean(state.resetProfileOverrides),
+      resetAvisoOverrides: Boolean(state.resetAvisoOverrides),
       recoveryConfirmed: Boolean(state.recoveryConfirmed),
       avisoRecoveryConfirmed: Boolean(state.avisoRecoveryConfirmed)
     };
@@ -4963,13 +4992,15 @@
     // rewrite it (or make profile recovery depend on it) when only profiles or
     // settings changed.  Resource imports and AVISO editor changes are already
     // represented in the current AVISO snapshot and will still be included.
-    if (savedSnapshot && snapshotChunk(state.aviso) === savedSnapshot.aviso)
+    if (!state.resetAvisoOverrides && savedSnapshot && snapshotChunk(state.aviso) === savedSnapshot.aviso)
       delete payload.aviso;
     const submittedSnapshot = captureEditorSnapshot();
     const requestId = postBridge("state.save", payload);
     if (!requestId) return false;
     pending.save = requestId;
-    saveInFlight = { requestId, snapshot: submittedSnapshot };
+    saveInFlight = { requestId, snapshot: submittedSnapshot,
+      resetProfileOverrides: payload.resetProfileOverrides,
+      resetAvisoOverrides: payload.resetAvisoOverrides };
     armPendingTimeout("save", pending.save);
     setStatus("Saving configuration…", "info");
     updateCommandState();
@@ -4994,6 +5025,8 @@
     const operation = saveInFlight;
     pending.save = "";
     saveInFlight = null;
+    if (operation?.resetProfileOverrides) state.resetProfileOverrides = false;
+    if (operation?.resetAvisoOverrides) state.resetAvisoOverrides = false;
 
     // The acknowledgement only advances durable revision tokens and host-owned
     // file metadata. The browser model is already newer-or-equal to the data
@@ -5987,9 +6020,6 @@
     $("#updateAutoInstall").addEventListener("change", event => {
       submitUpdateSettings({ auto_install: event.target.checked }, "Automatic activation preference saved");
     });
-    $("#updateProtectModifiedAviso").addEventListener("change", event => {
-      submitUpdateSettings({ protect_modified_aviso: event.target.checked }, "AVISO edit protection saved");
-    });
     $("#reloadButton").addEventListener("click", requestReload);
     $("#closeButton").addEventListener("click", closeControlCenter);
     $("#profilesFileInput").addEventListener("change", importProfilesFile);
@@ -6027,8 +6057,6 @@
     else if (action === "restore-bundled-defaults") restoreBundledDefaults();
     else if (action === "update-retry") requestUpdateAction("retry_update");
     else if (action === "update-reload-aviso") {
-      if (updateCenter.config.protect_modified_aviso === false &&
-        !window.confirm("AVISO edit protection is disabled. Reloading will replace locally modified bundled AVISOs with the installed GitHub release copies on the next startup. Continue?")) return;
       requestUpdateAction("reload_aviso");
     }
     else if (action === "update-release-open") openUpdateRelease();
@@ -6567,6 +6595,10 @@
       state.recoveryConfirmed = false;
     if (["initial", "reload", "resource-source"].includes(reason))
       state.avisoRecoveryConfirmed = false;
+    if (["initial", "reload"].includes(reason)) {
+      state.resetProfileOverrides = false;
+      state.resetAvisoOverrides = false;
+    }
     if (!preservesStagedEditors)
       state.externalEditConflict = false;
     else if (externallyChangedDirtyEditors)
@@ -6749,6 +6781,12 @@
 	  if (effectivePath) updateDirtyState();
       if (resource === "profiles" && resourceSource === "bundled defaults")
         state.recoveryConfirmed = true;
+      if (resourceSource === "bundled defaults") {
+        if (resource === "profiles") state.resetProfileOverrides = true;
+        if (resource === "aviso") state.resetAvisoOverrides = true;
+        updateDirtyState();
+        scheduleAutosave();
+      }
       if (resource === "aviso") state.avisoRecoveryConfirmed = true;
       if (matchesPending && persistentStatusState?.origin === "native")
         setPersistentStatus("", "", [], "native");

@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added per-file update feeds with immutable Git content URLs, SHA-256 verification, staged installation and manifest-last recovery, plus a minimal external helper for locked loader replacements. Feed generation remains separate from publishing and preserves the legacy full-package bridge path.
+- Added application-owned `default.json` and sparse user-owned `config.json`, with recursive object overrides, whole-array replacement and stable profile identities. Official AVISO customization is separated from replaceable geometry; unknown legacy edits are preserved conservatively.
 - Added an LFLL Real AVISO palette based on supplied real-world screenshots, with a lighter slate-grey background, pale runways, fine outlines and cyan stand labels. Integrated supplied airport-detail geometry including 152 surface markings, 35 buildings, coloured guidance lines and nine independently grouped runway-distance labels. Dark/Light colours, existing stopbars/closures and runway settings are preserved; unrelated circuit annotations and ambiguous restriction classifications are excluded.
 - Added an LFBO Real AVISO palette based on supplied real-world screenshots, with slate-grey surfaces, thin polygon outlines, lighter buildings and reference-coloured stand labels, plus a shared LFBO / LFLL profile with compact white targets and blue/mauve callsign/type tags. Existing geometry and Dark/Light palettes are preserved; polygon outlines are opt-in per palette.
 - Added a Native RDF checkbox to Control Center Settings, synchronized with `.smr rdf on` / `.smr rdf off` and the saved EuroScope setting.

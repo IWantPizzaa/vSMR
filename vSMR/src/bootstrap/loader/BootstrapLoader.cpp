@@ -8,6 +8,7 @@
 #include "bootstrap/loader/LoaderVersion.hpp"
 #include "bootstrap/loader/RuntimeReleaseState.hpp"
 #include "updater/UpdaterCore.hpp"
+#include "updater/FileUpdater.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1268,6 +1269,12 @@ void __declspec(dllexport) EuroScopePlugInInit(
 		if (!AcquireSessionLock(installRoot, lockError))
 		{
 			ShowStartupFailure(lockError);
+			return;
+		}
+		if (!vsmr::updater::files::ValidatePreparedGeneration(updateOptions, update))
+		{
+			ReleaseSessionLockForRecovery();
+			ShowStartupFailure(L"The installation changed while vSMR was preparing to load. Load the plug-in again.");
 			return;
 		}
 

@@ -3,6 +3,7 @@
 #include "control_center/ControlCenterBridge.Internal.hpp"
 
 #include "aviso/AvisoDocumentModel.hpp"
+#include "aviso/AvisoOverrides.hpp"
 #include "plugin/Plugin.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
@@ -214,6 +215,15 @@ std::string VsmrControlCenterBridgeImpl::FileRevision(const std::string& path)
 		: "missing";
 }
 
+std::string VsmrControlCenterBridgeImpl::AvisoRevision(const std::string& path)
+{
+	const std::string file = FileRevision(path);
+	if (Owner == nullptr || Owner->CurrentConfig == nullptr ||
+		!VsmrAvisoOverrides::IsManagedSource(std::filesystem::u8path(Owner->GetDataPath()),
+			std::filesystem::u8path(path))) return file;
+	return file + ":" + Owner->GetAvisoOverridesRevision(true);
+}
+
 void VsmrControlCenterBridgeImpl::EvaluateAvisoHealth(
 	const std::string& path,
 	bool& healthy,
@@ -231,8 +241,11 @@ void VsmrControlCenterBridgeImpl::EvaluateAvisoHealth(
 		? std::filesystem::last_write_time(filePath, fileError)
 		: std::filesystem::file_time_type{};
 	const bool stampValid = !fileError;
+	const std::string configRevision = Owner != nullptr
+		? Owner->GetAvisoOverridesRevision() : std::string();
 	if (stampValid &&
 		AvisoHealthCachePath == path &&
+		AvisoHealthCacheConfigRevision == configRevision &&
 		AvisoHealthCacheExists == exists &&
 		AvisoHealthCacheSize == size &&
 		AvisoHealthCacheWriteTime == writeTime)
@@ -251,8 +264,9 @@ void VsmrControlCenterBridgeImpl::EvaluateAvisoHealth(
 		std::string avisoJson;
 		rapidjson::Document parsed;
 		std::string inputError;
-		if (ReadFileText(
-				path,
+		const std::string defaultSource = Owner != nullptr ? Owner->GetAvisoDefaultSource(path, inputError) : path;
+		if (!defaultSource.empty() && ReadFileText(
+				defaultSource,
 				avisoJson,
 				AvisoDocumentModel::MaximumSerializedInputBytes) &&
 			AvisoDocumentModel::ValidateSerializedInputLimits(
@@ -280,6 +294,12 @@ void VsmrControlCenterBridgeImpl::EvaluateAvisoHealth(
 			if (schemaSupported)
 			{
 				AvisoDocumentModel validationModel;
+				if (Owner != nullptr && !Owner->ApplyAvisoUserOverrides(path, parsed, inputError))
+				{
+					message = inputError;
+					AvisoHealthCachePath.clear();
+					return;
+				}
 				CloneJsonValue(
 					parsed,
 					validationModel.MutableDocument(),
@@ -303,6 +323,7 @@ void VsmrControlCenterBridgeImpl::EvaluateAvisoHealth(
 	}
 
 	AvisoHealthCachePath = path;
+	AvisoHealthCacheConfigRevision = configRevision;
 	AvisoHealthCacheExists = exists;
 	AvisoHealthCacheSize = size;
 	AvisoHealthCacheWriteTime = writeTime;
@@ -587,7 +608,7 @@ void VsmrControlCenterBridgeImpl::SendAuthoritativeState(
 	AddString(
 		payload,
 		"avisoRevision",
-		FileRevision(Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport())),
+		AvisoRevision(Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport())),
 		allocator);
 	payload.AddMember("avisoFollows", includeAviso, allocator);
 	AddString(payload, "reason", reason, allocator);
