@@ -15,6 +15,7 @@ std::atomic<Logger::Mode> Logger::CURRENT_MODE{ Logger::Mode::Normal };
 std::atomic<bool> PluginShutdownRequested(false);
 std::atomic<CSMRPlugin*> ActivePluginInstance{ nullptr };
 std::atomic<bool> FlightDataRefreshPending(false);
+std::atomic<bool> AirportRunwayRefreshPending(false);
 bool BLINK = false;
 
 std::vector<CSMRRadar*> RadarScreensOpened;

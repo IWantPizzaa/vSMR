@@ -115,6 +115,12 @@ if (Test-PathEqualOrChild $DestinationDirectory $PackageRoot) {
 if (Test-PathEqualOrChild $PackageRoot $destinationData) {
     throw "The extracted package cannot be inside the vSMR_Data tree being replaced."
 }
+# A raw-feed transaction owns its rollback journal until recovery completes.
+# Replacing the installation under that journal could later undo this manual
+# installation. Check before creating backups or writing any destination data.
+if (Test-Path -LiteralPath (Join-Path $destinationData '.update/journal.json')) {
+    throw 'pending_file_update: finish or recover the pending vSMR update before installing a complete package.'
+}
 
 Assert-File $PackageDll
 Assert-File (Join-Path $PackageData "RELEASE-METADATA.json")
@@ -394,7 +400,8 @@ if ($hadData -and -not $ReplaceUserData) {
         'vSMR_webUI', 'CrashReporter', 'Licenses', 'Runtime', 'Tools',
         'RELEASE-METADATA.json', 'SHA256SUMS.txt', 'INSTALLATION.json',
         'AVISO-UPDATE-POLICY.json', 'AVISO-INVENTORY.json', 'AVISO-UPDATE-REPORT.json',
-        'airports_hp.json', 'AVISO', 'UpdateBaselines', 'DATA-UPDATE-REPORT.json'
+        'airports_hp.json', 'AVISO', 'UpdateBaselines', 'DATA-UPDATE-REPORT.json',
+        'default.json', 'version.json', '.update'
     )
     foreach ($item in @(Get-ChildItem -LiteralPath $destinationData -Force)) {
         if ($immutableNames -contains $item.Name) { continue }

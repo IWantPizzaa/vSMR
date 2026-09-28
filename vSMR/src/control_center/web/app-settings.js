@@ -203,7 +203,7 @@
     if (updateCenter.pending.action || !updateCenter.available) return;
     if (!HOST_MODE) {
       updateCenter.state.message = action === "reload_aviso"
-        ? "AVISO reload queued for the next startup."
+        ? "Application file check / repair queued for the next startup."
         : "Update retry queued for the next startup.";
       renderUpdateCenter();
       showToast(updateCenter.state.message, "success");
@@ -317,18 +317,18 @@
     $("#updateAutoCheck").checked = config.auto_check !== false;
     $("#updateAutoDownload").checked = config.auto_download !== false;
     $("#updateAutoInstall").checked = config.auto_install !== false;
-    $("#updateProtectModifiedAviso").checked = config.protect_modified_aviso !== false;
+    $("#updateProtectModifiedAviso").checked = true;
     $("#updateChannel").disabled = !writable || busy;
     $("#updateAutoCheck").disabled = !writable || busy;
     $("#updateAutoDownload").disabled = !writable || busy || config.auto_check === false;
     $("#updateAutoInstall").disabled = !writable || busy || config.auto_download === false;
-    $("#updateProtectModifiedAviso").disabled = !writable || busy;
+    $("#updateProtectModifiedAviso").disabled = true;
 
     const pendingAction = Boolean(updateCenter.pending.action);
     const pendingActionName = String(updateCenter.pending.action?.action || "");
     const reloadAvisoButton = $("#updateReloadAvisoButton");
     reloadAvisoButton.disabled = !updateCenter.available || pendingAction || busy;
-    reloadAvisoButton.textContent = pendingActionName === "reload_aviso" ? "Queuing..." : "Reload AVISOs";
+    reloadAvisoButton.textContent = pendingActionName === "reload_aviso" ? "Queuing..." : "Check / repair files";
 
     const retryButton = $("#updateRetryButton");
     retryButton.hidden = !["error", "rate_limited"].includes(status);
@@ -357,6 +357,7 @@
     $("#settingsAliasFile").title = aliasFile || "No alias file found";
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
+    $("#settingsRdfEnabled").checked = settings.rdfEnabled !== false;
     const uiColorTheme = settings.uiColorTheme === "day" ? "day" : "night";
     syncToggleButtons('[data-ui-color-theme]', uiColorTheme, "uiColorTheme");
     const avisoColorPalette = normalizeAvisoColorPalette(settings.avisoColorPalette);
@@ -375,7 +376,8 @@
       profileFile: $("#settingsProfileFile").value,
       avisoFile: $("#settingsAvisoFile").value,
       resolutionPreset: $("#settingsResolutionPreset").value || "1080p",
-      showFps: $("#settingsShowFps").checked
+      showFps: $("#settingsShowFps").checked,
+      rdfEnabled: $("#settingsRdfEnabled").checked
     });
     state.profiles.forEach(record => {
       record.data.targets ||= {};

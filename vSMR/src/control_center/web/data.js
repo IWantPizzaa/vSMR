@@ -4,7 +4,7 @@
 window.VSMR_DATA = {
   profiles: [
     {
-      name: "Custom LFPG",
+      name: "LFPG",
       schema_version: 2,
       font: {
         font_name: "Tahoma",
@@ -146,7 +146,7 @@ window.VSMR_DATA = {
     {
       _vsmr: {
         schema_version: 1,
-        last_active_profile: "Custom LFPG",
+        last_active_profile: "LFPG",
         aviso_presets: {
           airports: {
             LFPG: {

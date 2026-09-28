@@ -145,7 +145,8 @@ bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorre
 		return settings.statuses.arrivals;
 
 	// Applying departure visibility by operational ground state
-	const GroundStateCategory targetStatus = classifyGroundStateForCallsign(fp.GetCallsign(), fp.GetGroundState(), reportedGs, targetOnRunway);
+	const GroundStateCategory targetStatus = classifyGroundStateWithSharedState(
+		fp.GetGroundState(), reportedGs, targetOnRunway, fp.GetControllerAssignedData().GetAssignedSpeed());
 	switch (targetStatus)
 	{
 	case GroundStateCategory::Push:

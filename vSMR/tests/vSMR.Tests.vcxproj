@@ -59,7 +59,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <DataExecutionPrevention>true</DataExecutionPrevention>
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
-      <AdditionalDependencies>gdiplus.lib;msimg32.lib;winhttp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>gdiplus.lib;msimg32.lib;winhttp.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -69,12 +69,25 @@
     <ClCompile Include="AuditRegressionTests.cpp" />
     <ClCompile Include="PluginBridgeTests.cpp" />
     <ClCompile Include="PluginBridgePollingTests.cpp" />
+    <ClCompile Include="CommandLineWindowTests.cpp" />
+    <ClCompile Include="..\src\platform\windows\EuroScopeCommandLine.cpp">
+      <PreprocessorDefinitions>VsmrEuroScopeCommandLine=VsmrCommandLineWindowTests;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
     <ClCompile Include="..\src\integrations\CdmBridgeClient.cpp" />
     <ClCompile Include="..\src\integrations\VsidBridgeClient.cpp" />
     <ClCompile Include="..\src\integrations\RampAgentBridgeClient.cpp" />
     <ClCompile Include="..\src\integrations\PluginBridgeReads.cpp" />
     <ClCompile Include="..\src\platform\windows\network\HttpHelper.cpp" />
     <ClCompile Include="..\src\updater\UpdaterVerification.cpp" />
+    <ClCompile Include="..\src\updater\FileUpdateTransaction.cpp" />
+    <ClCompile Include="..\src\updater\FileUpdater.cpp" />
+    <ClCompile Include="..\src\updater\UpdaterCore.cpp" />
+    <ClCompile Include="..\src\updater\UpdaterCoordinator.cpp" />
+    <ClCompile Include="..\src\updater\UpdaterHealth.cpp" />
+    <ClCompile Include="..\src\updater\UpdaterPackage.cpp" />
+    <ClCompile Include="..\src\updater\UpdaterProcess.cpp" />
+    <ClCompile Include="FileUpdateTests.cpp" />
+    <ClCompile Include="LayeredConfigTests.cpp" />
     <ClCompile Include="..\src\updater\UpdaterManifest.cpp" />
     <ClCompile Include="..\src\updater\UpdaterState.cpp" />
     <ClCompile Include="..\src\updater\UpdaterTransport.cpp" />
@@ -82,9 +95,15 @@
     <ClCompile Include="TagColorRuleTests.cpp" />
     <ClCompile Include="UpdaterUrlPolicyTests.cpp" />
     <ClCompile Include="..\src\aviso\AvisoDocumentModel.cpp" />
+    <ClCompile Include="..\src\aviso\AvisoFeatureMetadata.cpp" />
     <ClCompile Include="..\src\aviso\AvisoRasterBlitter.cpp" />
     <ClCompile Include="..\src\aviso\AvisoRasterPipeline.cpp" />
     <ClCompile Include="..\src\config\RuntimeConfig.cpp" />
+    <ClCompile Include="..\src\config\RuntimeConfig.Layered.cpp" />
+    <ClCompile Include="..\src\aviso\AvisoOverrides.cpp" />
+    <ClCompile Include="AvisoOverridesTests.cpp" />
+    <ClCompile Include="..\src\aviso\AvisoSharedConfig.cpp" />
+    <ClCompile Include="AvisoSharedConfigTests.cpp" />
     <ClCompile Include="..\src\config\ProfileNormalization.cpp" />
     <ClCompile Include="..\src\config\RuntimeConfig.Support.cpp" />
     <ClCompile Include="..\src\control_center\RuntimeResourceFiles.cpp" />
@@ -118,8 +137,17 @@
     <ClInclude Include="..\src\aviso\AvisoRasterBlitter.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterPipeline.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterSizing.hpp" />
+    <ClInclude Include="..\src\aviso\AvisoRasterGeometry.hpp" />
+    <ClInclude Include="..\src\aviso\AvisoPolygonOutline.hpp" />
     <ClInclude Include="..\src\radar\RecentAirports.hpp" />
     <ClInclude Include="..\src\config\RuntimeConfig.hpp" />
+    <ClInclude Include="..\src\config\LayeredConfig.hpp" />
+    <ClInclude Include="..\src\aviso\AvisoOverrides.hpp" />
+    <ClInclude Include="AvisoOverridesTests.hpp" />
+    <ClInclude Include="..\src\aviso\AvisoSharedConfig.hpp" />
+    <ClInclude Include="AvisoSharedConfigTests.hpp" />
+    <ClInclude Include="FileUpdateTests.hpp" />
+    <ClInclude Include="LayeredConfigTests.hpp" />
     <ClInclude Include="..\src\config\RuntimeConfig.Internal.hpp" />
     <ClInclude Include="..\src\control_center\RuntimeResourceFiles.hpp" />
     <ClInclude Include="..\src\control_center\ControlCenterMessageProtocol.hpp" />

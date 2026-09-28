@@ -144,6 +144,8 @@ namespace VsmrScene
 		std::vector<GeoPoint> primaryReturnPolygon;
 		std::array<std::vector<GeoPoint>, 3> primaryReturnAfterglow;
 
+		int assignedSpeed = 0;
+		int towerModeAssignedSpeed = 0;
 		int reportedGroundSpeed = 0;
 		int groundSpeed = 0;
 		int pressureAltitude = 0;
