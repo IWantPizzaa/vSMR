@@ -170,6 +170,8 @@ Build outputs (`Release/`, `Debug/`, `bin/`, `obj/`), `.vs/`, `.tmp/`, `artifact
 
 ### CoFrance insets
 
+AVISO inset label visibility uses `r = min(1, inset drawable diagonal / host drawable diagonal)` and evaluates zoom visibility at `visible ground diagonal / r`. Text and halos retain their normal configured size; resizing does not shrink them. Existing GeoJSON visibility settings remain authoritative; labels without a zoom restriction remain unrestricted. The dimensions exclude title bars/chat and do not depend on raster overscan or a fixed screen resolution. Changes to visibility invalidate label caches. This applies equally to native vSMR and CoFrance insets; aircraft tags, UI controls and the main AVISO labels are unchanged.
+
 vSMR also attaches to the geo-referenced `CoFrance radar display` type. CoFrance continues to own the main radar; vSMR draws its AVISO, SRW, METAR and timer insets plus their existing runtime controls. Other third-party and standard EuroScope views are not opted in.
 
 Load vSMR together with CoFrance, then reopen a CoFrance ASR (an already-open screen must be recreated). The vSMR rail starts expanded on a new CoFrance view: select the airport, then open **Insets** and enable the desired windows. `.smr insets` expands and recenters the rail on all attached CoFrance views and reports received refresh phases and radar bounds; if no view is attached, it reports that explicitly. `.smr editor` opens the Control Center. Saving the ASR stores vSMR's inset state in its own plugin namespace. Keep a backup/test copy of the ASR and test disconnected from VATSIM first.
