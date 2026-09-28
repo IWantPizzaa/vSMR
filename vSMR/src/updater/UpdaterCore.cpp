@@ -1,5 +1,6 @@
 #include "updater/UpdaterCore.hpp"
 #include "updater/UpdaterCore.Internal.hpp"
+#include "updater/FileUpdater.hpp"
 
 #include <exception>
 #include <filesystem>
@@ -60,7 +61,16 @@ namespace vsmr::updater
 				return result;
 			}
 			optionsNormalized = true;
-			return PrepareUpdateImpl(normalized);
+			// Finish an interrupted old-format transaction before switching to the
+			// per-file protocol. The archive updater is recovery-only from now on.
+			const auto storage = normalized.testStorageDirectory.empty()
+				? GetUpdaterStorageDirectory() : normalized.testStorageDirectory;
+			if (IsRegularFile(HealthMarkerPath(storage, normalized.installRoot)))
+			{
+				normalized.legacyRecoveryOnly = true;
+				return PrepareUpdateImpl(normalized);
+			}
+			return files::Prepare(normalized);
 		}
 		catch (const std::exception& exception)
 		{
@@ -72,8 +82,9 @@ namespace vsmr::updater
 				{
 					result.updaterStoragePath = normalized.testStorageDirectory.empty()
 						? GetUpdaterStorageDirectory() : normalized.testStorageDirectory;
-					transactionPending = !result.updaterStoragePath.empty() && IsRegularFile(
-						HealthMarkerPath(result.updaterStoragePath, normalized.installRoot));
+					transactionPending = files::HasTransaction(normalized.installRoot) ||
+						(!result.updaterStoragePath.empty() && IsRegularFile(
+						HealthMarkerPath(result.updaterStoragePath, normalized.installRoot)));
 				}
 			}
 			catch (...)
@@ -100,8 +111,9 @@ namespace vsmr::updater
 				{
 					result.updaterStoragePath = normalized.testStorageDirectory.empty()
 						? GetUpdaterStorageDirectory() : normalized.testStorageDirectory;
-					transactionPending = !result.updaterStoragePath.empty() && IsRegularFile(
-						HealthMarkerPath(result.updaterStoragePath, normalized.installRoot));
+					transactionPending = files::HasTransaction(normalized.installRoot) ||
+						(!result.updaterStoragePath.empty() && IsRegularFile(
+						HealthMarkerPath(result.updaterStoragePath, normalized.installRoot)));
 				}
 			}
 			catch (...)
@@ -128,6 +140,8 @@ namespace vsmr::updater
 	{
 		try
 		{
+			if (files::IsFileUpdate(update))
+				return files::Restore(options, update, restoredRuntimePath, errorMessage);
 			if (!MarkRuntimeUnhealthy(update))
 				throw std::runtime_error("runtime health marker could not be marked failed");
 			StartupOptions normalized;
@@ -174,6 +188,8 @@ namespace vsmr::updater
 	{
 		try
 		{
+			if (files::IsFileUpdate(update))
+				return files::Confirm(update, false);
 			if (!update.updateActivated || update.healthMarkerPath.empty())
 				return false;
 			OwnedMutex markerMutex = AcquireHealthMarkerMutex(update.healthMarkerPath);
@@ -192,6 +208,8 @@ namespace vsmr::updater
 	{
 		try
 		{
+			if (files::IsFileUpdate(update))
+				return files::Confirm(update, true);
 			if (!update.updateActivated || update.healthMarkerPath.empty())
 				return true;
 			const fs::path storage = update.updaterStoragePath.empty()
