@@ -19,8 +19,8 @@ function Assert-Contains([string]$Text, [string]$Expected, [string]$Context) {
 }
 
 $metadata = Read-Source "vSMR/src/plugin/PluginMetadata.hpp"
-if ($metadata -notmatch 'VsmrPluginVersion\[\]\s*=\s*"v(\d+\.\d+\.\d+-beta\.\d+)"') {
-    throw "Cannot read the beta release version from PluginMetadata.hpp."
+if ($metadata -notmatch 'VsmrPluginVersion\[\]\s*=\s*"v(\d+\.\d+\.\d+(?:-beta\.\d+)?)"') {
+    throw "Cannot read the release version from PluginMetadata.hpp."
 }
 $sourceVersion = $Matches[1]
 if ($Version -and $Version -ne $sourceVersion) {
@@ -28,6 +28,7 @@ if ($Version -and $Version -ne $sourceVersion) {
 }
 $Version = $sourceVersion
 $numericVersion = $Version.Replace('-beta.', '.').Replace('.', ',')
+if ($Version -notmatch '-') { $numericVersion += ',0' }
 foreach ($path in @('vSMR/resources/vSMR.rc', 'vSMR/src/crash/handler/vSMRCrashHandler.rc')) {
     $resource = Read-Source $path
     foreach ($key in @('FILEVERSION', 'PRODUCTVERSION')) {

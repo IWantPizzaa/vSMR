@@ -129,7 +129,8 @@ namespace
                 {
                     tx.changes.push_back({file, false, {}});
                     if (!fu::CopyAtomically(options.testFeedDirectory / L"payload" / fs::u8path(file.path),
-                        fu::UpdateRoot(options.installRoot) / L"new" / fs::u8path(file.path))) throw std::runtime_error("stage copy failed");
+                        fu::UpdateRoot(options.installRoot) / L"new" / fs::u8path(file.path)))
+                        throw std::runtime_error("stage copy failed for " + file.path + ": Win32 " + std::to_string(::GetLastError()));
                 }
             Put(fu::UpdateRoot(options.installRoot) / L"target.json", manifest);
             if (!fu::SaveTransaction(tx, error)) throw std::runtime_error(error);
