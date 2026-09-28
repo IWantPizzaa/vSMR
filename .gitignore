@@ -204,6 +204,9 @@ FakesAssemblies/
 ipch/
 package/
 /artifacts/
+/.tmp/
+__pycache__/
+*.pyc
 /.diagnostics/
 /vSMR/version.txt
 /vSMR/SectorFileProviderDescriptor.txt
