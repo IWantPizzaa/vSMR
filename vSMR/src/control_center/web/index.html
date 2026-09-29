@@ -91,11 +91,11 @@
 <section class="subpage active" data-profile-panel="colors" id="profilePanelColors" role="tabpanel">
 <div class="split-layout split-master color-layout">
 <aside class="panel master-panel">
-<div class="panel-title"><span>Profile colors</span></div>
+<div class="panel-title"><span>Profile colors</span><button class="ui-button ui-button--compact" data-action="select-all-editor" data-editor="colors" type="button">Select All</button></div>
 <div aria-label="Profile colors" class="ui-list ui-list--grouped color-definition-tree" id="colorTree" role="region"></div>
 </aside>
 <section class="panel detail-panel">
-<div class="panel-title"><span id="selectedColorPath">Color</span><span class="mini-tools editor-copy-tools"><button class="ui-button ui-button--compact ui-button--wide" data-action="copy-profile-color" type="button">Copy</button><button class="ui-button ui-button--compact ui-button--wide" data-action="paste-profile-color" type="button">Paste</button></span></div>
+<div class="panel-title"><span id="selectedColorPath">Color</span><span class="mini-tools editor-copy-tools"><button class="ui-button ui-button--compact" data-action="reset-editor-section" data-editor="colors" title="Reset only the selection to bundled defaults" type="button">Reset</button><button class="ui-button ui-button--compact ui-button--wide" data-action="copy-profile-color" type="button">Copy</button><button class="ui-button ui-button--compact ui-button--wide" data-action="paste-profile-color" type="button">Paste</button></span></div>
 <div class="detail-scroll color-detail-scroll">
 <div class="color-editor-body">
 <div class="color-picker-workbench">
@@ -121,7 +121,7 @@
 </section>
 <section class="subpage" data-profile-panel="icons" id="profilePanelIcons" role="tabpanel">
 <section class="panel full-editor-panel">
-<div class="panel-title"><span>Target icons</span></div>
+<div class="panel-title"><span>Target icons</span><button class="ui-button ui-button--compact" data-action="reset-editor-section" data-editor="icons" type="button">Reset</button></div>
 <div class="profile-settings-scroll icon-settings-grid">
 <section class="icon-preview-column">
 <div class="icon-section-heading">Preview</div>
@@ -150,12 +150,12 @@
 <section class="subpage" data-profile-panel="tags" id="profilePanelTags" role="tabpanel">
 <div class="split-layout split-master tag-layout">
 <aside class="panel master-panel">
-<div class="panel-title"><span>Tag definitions</span></div>
+<div class="panel-title"><span>Tag definitions</span><button class="ui-button ui-button--compact" data-action="select-all-editor" data-editor="tags" type="button">Select All</button></div>
 <div aria-label="Tag definitions" class="ui-list ui-list--grouped ui-list--multiselect tag-definition-tree" id="tagDefinitionList" role="region"></div>
 </aside>
 <div class="tag-right-stack">
 <section class="panel tag-definition-detail-panel">
-<div class="panel-title"><span id="tagEditorCaption">Tag definition</span><span class="mini-tools editor-copy-tools"><button class="ui-button ui-button--compact ui-button--wide" data-action="copy-tag-definition" type="button">Copy</button><button class="ui-button ui-button--compact ui-button--wide" data-action="paste-tag-definition" type="button">Paste</button></span></div>
+<div class="panel-title"><span id="tagEditorCaption">Tag definition</span><span class="mini-tools editor-copy-tools"><button class="ui-button ui-button--compact" data-action="reset-editor-section" data-editor="tags" title="Reset only the selection to bundled defaults" type="button">Reset</button><button class="ui-button ui-button--compact ui-button--wide" data-action="copy-tag-definition" type="button">Copy</button><button class="ui-button ui-button--compact ui-button--wide" data-action="paste-tag-definition" type="button">Paste</button></span></div>
 <div class="detail-scroll tag-definition-detail-scroll">
 <div class="tag-editor-panel" id="tagDefinitionEditor">
 <label class="check-field inherit-row"><input id="tagDetailedInherits" type="checkbox"/><span>Detailed tag inherits normal</span></label>
@@ -169,7 +169,7 @@
 </div>
 </section>
 <section class="panel tag-global-options-panel">
-<div class="panel-title"><span>Tag options</span></div>
+<div class="panel-title"><span>Tag options</span><button class="ui-button ui-button--compact" data-action="reset-editor-section" data-editor="tag-options" type="button">Reset</button></div>
 <div class="tag-global-options-body" id="tagOptionsEditor">
 <div class="tag-options-block">
 <div class="tag-options-subtitle">Behaviour</div>
@@ -196,7 +196,7 @@
 <section class="subpage" data-profile-panel="rules" id="profilePanelRules" role="tabpanel">
 <div class="split-layout split-master rules-layout">
 <aside class="panel master-panel manager-list-panel">
-<div class="panel-title"><span>Rules</span></div>
+<div class="panel-title"><span>Rules</span><button class="ui-button ui-button--compact" data-action="reset-editor-section" data-editor="rules" type="button">Reset</button></div>
 <div aria-label="Rules" class="ui-list ui-list--manager" id="ruleList" role="listbox"></div>
 <div class="master-list-actions">
 <button class="ui-button ui-button--icon" aria-label="New rule" data-action="new-rule" title="New rule" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
@@ -340,11 +340,12 @@
 <aside class="panel master-panel aviso-style-list-panel">
 <div class="panel-title">
 <span>Geometry styles</span>
+<button class="ui-button ui-button--compact" data-action="select-all-editor" data-editor="geometry" type="button">Select All</button>
 </div>
 <div aria-label="Geometry styles" class="ui-list ui-list--grouped ui-list--multiselect aviso-style-tree" id="avisoGeometryStyleList" role="region"></div>
 </aside>
 <section class="panel detail-panel aviso-category-editor">
-<div class="panel-title"><span id="avisoGeometryCaption">Geometry style</span><span class="mini-tools editor-copy-tools"><button class="ui-button ui-button--compact ui-button--wide" data-action="copy-aviso-geometry" type="button">Copy</button><button class="ui-button ui-button--compact ui-button--wide" data-action="paste-aviso-geometry" type="button">Paste</button></span></div>
+<div class="panel-title"><span id="avisoGeometryCaption">Geometry style</span><span class="mini-tools editor-copy-tools"><button class="ui-button ui-button--compact" data-action="reset-editor-section" data-editor="geometry" title="Reset only the selection to bundled defaults" type="button">Reset</button><button class="ui-button ui-button--compact ui-button--wide" data-action="copy-aviso-geometry" type="button">Copy</button><button class="ui-button ui-button--compact ui-button--wide" data-action="paste-aviso-geometry" type="button">Paste</button></span></div>
 <div class="detail-scroll aviso-editor-scroll aviso-geometry-editor-scroll">
 <div class="aviso-flat-style-editor aviso-geometry-properties">
 <div class="color-editor-body aviso-color-editor-body" id="avisoGeometryColorEditor">
@@ -372,11 +373,12 @@
 <aside class="panel master-panel aviso-style-list-panel aviso-text-style-panel">
 <div class="panel-title">
 <span>Text styles</span>
+<button class="ui-button ui-button--compact" data-action="select-all-editor" data-editor="text" type="button">Select All</button>
 </div>
 <div aria-label="Text styles" class="ui-list ui-list--grouped ui-list--multiselect aviso-style-tree" id="avisoTextStyleList" role="region"></div>
 </aside>
 <section class="panel detail-panel aviso-text-editor">
-<div class="panel-title"><span id="avisoTextCaption">Text style</span><span class="mini-tools editor-copy-tools"><button class="ui-button ui-button--compact ui-button--wide" data-action="copy-aviso-text" type="button">Copy</button><button class="ui-button ui-button--compact ui-button--wide" data-action="paste-aviso-text" type="button">Paste</button></span></div>
+<div class="panel-title"><span id="avisoTextCaption">Text style</span><span class="mini-tools editor-copy-tools"><button class="ui-button ui-button--compact" data-action="reset-editor-section" data-editor="text" title="Reset only the selection to bundled defaults" type="button">Reset</button><button class="ui-button ui-button--compact ui-button--wide" data-action="copy-aviso-text" type="button">Copy</button><button class="ui-button ui-button--compact ui-button--wide" data-action="paste-aviso-text" type="button">Paste</button></span></div>
 <div class="detail-scroll aviso-editor-scroll aviso-text-editor-scroll">
 <div class="aviso-flat-style-editor aviso-text-properties">
 <div class="color-editor-body aviso-color-editor-body" id="avisoTextColorEditor">
@@ -419,6 +421,7 @@
 <div class="alerts-control-column">
 <fieldset class="compact-group alert-types-box">
 <legend>Active alert types</legend>
+<button class="ui-button ui-button--compact" data-action="reset-editor-section" data-editor="alerts" title="Restore alert options without changing active runways or manual closures" type="button">Reset</button>
 <div class="alert-toggle-grid" id="alertTypeGrid"></div>
 </fieldset>
 <fieldset class="compact-group alerts-timing-box">
@@ -550,7 +553,7 @@
 </div>
 <div class="aviso-group-content-search-row">
 <input aria-label="Find content" id="avisoGroupContentSearch" placeholder="Find content…" type="search"/>
-<button class="ui-button" data-action="select-filtered-group-content" type="button">Select shown</button>
+<button class="ui-button" data-action="select-filtered-group-content" title="Select all matching entries in the current tab and search" type="button">Select All</button>
 <button class="ui-button" data-action="clear-filtered-group-content" type="button">Clear shown</button>
 </div>
 <div aria-label="Available group content" class="ui-list aviso-group-content-list" id="avisoGroupContentList" role="region"></div>

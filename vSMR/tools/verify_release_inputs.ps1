@@ -29,7 +29,7 @@ if ($Version -and $Version -ne $sourceVersion) {
 $Version = $sourceVersion
 $numericVersion = $Version.Replace('-beta.', '.').Replace('.', ',')
 if ($Version -notmatch '-') { $numericVersion += ',0' }
-foreach ($path in @('vSMR/resources/vSMR.rc', 'vSMR/src/crash/handler/vSMRCrashHandler.rc')) {
+foreach ($path in @('vSMR/resources/PluginResources.rc', 'vSMR/src/crash/handler/CrashHandlerResources.rc')) {
     $resource = Read-Source $path
     foreach ($key in @('FILEVERSION', 'PRODUCTVERSION')) {
         Assert-Contains $resource "$key $numericVersion" $path
@@ -56,8 +56,8 @@ foreach ($suffix in @('.zip', '.update.json', '-symbols.zip', '-*-validation-onl
     Assert-Contains $ci "artifacts\vSMR-$Version$suffix" 'CI artifact path'
 }
 
-$manifest = Read-Source 'vSMR/tests/fixtures/aviso-set-20260917.json' | ConvertFrom-Json
-$policy = Read-Source 'vSMR/data/AVISO-UPDATE-POLICY.json' | ConvertFrom-Json
+$manifest = Read-Source 'vSMR/tests/fixtures/aviso_inventory.json' | ConvertFrom-Json
+$policy = Read-Source 'vSMR/data/aviso_update_policy.json' | ConvertFrom-Json
 if ($manifest.schema_version -ne 1 -or $manifest.release -ne $Version -or
     $policy.schema_version -ne 1 -or $policy.release -ne $Version) {
     throw 'AVISO inventory and update policy must target the source release.'

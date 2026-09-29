@@ -128,7 +128,7 @@
     <None Include="vSMRCrashHandler.def" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="vSMRCrashHandler.rc" />
+    <ResourceCompile Include="CrashHandlerResources.rc" />
   </ItemGroup>
   <Import Project="..\..\..\BuildHardening.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

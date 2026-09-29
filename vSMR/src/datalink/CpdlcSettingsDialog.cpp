@@ -1,8 +1,8 @@
-// CPDLCSettingsDialog.cpp : implementation file
+// CpdlcSettingsDialog.cpp : implementation file
 //
 
 #include "platform/windows/PrecompiledHeader.hpp"
-#include "datalink/CPDLCSettingsDialog.hpp"
+#include "datalink/CpdlcSettingsDialog.hpp"
 #include "afxdialogex.h"
 
 

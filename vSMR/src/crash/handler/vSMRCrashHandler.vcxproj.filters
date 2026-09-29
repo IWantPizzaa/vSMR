@@ -27,7 +27,7 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="vSMRCrashHandler.rc">
+    <ResourceCompile Include="CrashHandlerResources.rc">
       <Filter>Resources</Filter>
     </ResourceCompile>
   </ItemGroup>
