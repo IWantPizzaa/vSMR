@@ -69,6 +69,8 @@ $styleOwnershipScript = Join-Path $PSScriptRoot "verify_control_center_style_own
 
 & (Join-Path $PSScriptRoot "verify_json_entry_points.ps1") -RepositoryRoot $RepositoryRoot
 & (Join-Path $PSScriptRoot "test_runtime_audio_resources.ps1") -RepositoryRoot $RepositoryRoot
+& (Join-Path $PSScriptRoot "test_distribution_assets.ps1") -RepositoryRoot $RepositoryRoot
+& (Join-Path $PSScriptRoot "test_file_naming.ps1") -RepositoryRoot $RepositoryRoot
 
 $nativeTests = Join-Path $RepositoryRoot "vSMR\tests\bin\Release\vSMR.Tests.exe"
 if (-not (Test-Path -LiteralPath $nativeTests -PathType Leaf)) {
@@ -100,11 +102,11 @@ try {
     foreach ($asset in @("index.html", "styles.css", "data.js", "app-bundle.js", "app-aviso-editor.js")) {
         Copy-Item -LiteralPath (Join-Path $webRoot $asset) -Destination $testRoot
     }
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "ControlCenterBrowserTests.js") -Destination $testRoot
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "control-center-browser-tests.js") -Destination $testRoot
 
     $indexPath = Join-Path $testRoot "index.html"
     $index = [System.IO.File]::ReadAllText($indexPath)
-    $testScript = '<script src="app-aviso-editor.js"></script><script src="ControlCenterBrowserTests.js"></script>'
+    $testScript = '<script src="app-aviso-editor.js"></script><script src="control-center-browser-tests.js"></script>'
     $index = $index.Replace("</body>", "$testScript`n</body>")
     [System.IO.File]::WriteAllText($indexPath, $index, [System.Text.UTF8Encoding]::new($false))
 

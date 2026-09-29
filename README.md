@@ -165,6 +165,8 @@ Commit/publish the payload before the channel manifest. The manifest contains `s
 
 ### Generated files and cleanup
 
+File naming conventions, including source-to-install compatibility aliases, are documented in [NAMING.md](NAMING.md).
+
 Build outputs (`Release/`, `Debug/`, `bin/`, `obj/`), `.vs/`, `.tmp/`, `artifacts/` and Python caches are not source files. Retain any release packages or private symbols you still need outside the checkout before removing generated outputs. Close Visual Studio and EuroScope first, and remove temporary Git worktrees with `git worktree remove` rather than deleting their directories directly. Keep `vSMR/data/`, generated web bundles and `default.json`: these are tracked application inputs validated by the build.
 
 `vSMR/tools/build_project.ps1` rebuilds Release/Win32 and runs the native and browser regression suites. The installer, migration helpers and legacy updater recovery code remain necessary for existing installations; they are not disposable build artifacts.

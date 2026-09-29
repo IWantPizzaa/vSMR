@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Installed names are a compatibility contract with existing loaders. -->
+  <ItemGroup>
+    <VsmrRenamedData Include="$(MSBuildThisFileDirectory)data\aircraft_types.json">
+      <SourceName>aircraft_types.json</SourceName>
+      <InstallName>ICAO_Aircraft.json</InstallName>
+    </VsmrRenamedData>
+    <VsmrRenamedData Include="$(MSBuildThisFileDirectory)data\holding_points.json">
+      <SourceName>holding_points.json</SourceName>
+      <InstallName>airports_hp.json</InstallName>
+    </VsmrRenamedData>
+    <VsmrRenamedData Include="$(MSBuildThisFileDirectory)data\profile_templates.json">
+      <SourceName>profile_templates.json</SourceName>
+      <InstallName>vSMR_Profiles.json</InstallName>
+    </VsmrRenamedData>
+    <VsmrRenamedData Include="$(MSBuildThisFileDirectory)data\aviso_update_policy.json">
+      <SourceName>aviso_update_policy.json</SourceName>
+      <InstallName>AVISO-UPDATE-POLICY.json</InstallName>
+    </VsmrRenamedData>
+    <VsmrRenamedData Include="$(MSBuildThisFileDirectory)data\Audio\timer_alarm.wav">
+      <SourceName>Audio/timer_alarm.wav</SourceName>
+      <InstallName>Audio/Alarm.wav</InstallName>
+    </VsmrRenamedData>
+    <VsmrRenamedData Include="$(MSBuildThisFileDirectory)data\Audio\cpdlc_notification.wav">
+      <SourceName>Audio/cpdlc_notification.wav</SourceName>
+      <InstallName>Audio/Ding.wav</InstallName>
+    </VsmrRenamedData>
+  </ItemGroup>
+</Project>

@@ -280,6 +280,7 @@
   }
 
   function finishResourceRequest(message, success) {
+    if (finishSectionDefaults(message, success)) return true;
     const pendingRequest = pending.resource;
     const matchesPending = Boolean(pendingRequest && messageMatchesRequest(message, pendingRequest.id));
     const source = String(message.payload.source || "");

@@ -2,8 +2,8 @@
 #include "EuroScopePlugIn.h"
 #include "plugin/PluginMetadata.hpp"
 #include "platform/windows/network/HttpHelper.hpp"
-#include "datalink/CPDLCSettingsDialog.hpp"
-#include "datalink/DataLinkDialog.hpp"
+#include "datalink/CpdlcSettingsDialog.hpp"
+#include "datalink/DatalinkDialog.hpp"
 #include <string>
 #include <algorithm>
 #include "radar/RadarUiSupport.hpp"
