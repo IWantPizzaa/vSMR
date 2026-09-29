@@ -24,6 +24,7 @@ void CSMRPlugin::RefreshControllerDependentOverlays()
 
 void CSMRPlugin::OnControllerPositionUpdate(CController Controller)
 {
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnControllerPositionUpdate");
 	(void)Controller;
 	RefreshControllerDependentOverlays();
@@ -31,6 +32,7 @@ void CSMRPlugin::OnControllerPositionUpdate(CController Controller)
 
 void CSMRPlugin::OnControllerDisconnect(CController Controller)
 {
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnControllerDisconnect");
 	(void)Controller;
 	RefreshControllerDependentOverlays();
@@ -38,6 +40,7 @@ void CSMRPlugin::OnControllerDisconnect(CController Controller)
 
 void CSMRPlugin::OnAirportRunwayActivityChanged()
 {
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnAirportRunwayActivityChanged");
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;

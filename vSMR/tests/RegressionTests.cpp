@@ -257,6 +257,11 @@ namespace
 	void TestGroundState()
 	{
 		Expect(classifyGroundState("ST-UP", 0, false) == GroundStateCategory::Stup, "ground state startup alias");
+		Expect(classifyGroundState("STUP", 0, false) == GroundStateCategory::Stup, "current SDK startup spelling");
+		Expect(classifyGroundState("ARR", 8, false) == GroundStateCategory::Arr, "current SDK arrival state");
+		Expect(classifyGroundState("TAXIIN", 8, false) == GroundStateCategory::Taxi, "current SDK inbound taxi spelling");
+		Expect(classifyGroundState("TXIN", 8, false) == GroundStateCategory::Taxi, "legacy inbound taxi spelling");
+		Expect(classifyGroundState("PARK", 0, false) == GroundStateCategory::Gate, "current SDK parked state");
 		Expect(classifyGroundState("P/B", 3, false) == GroundStateCategory::Push, "ground state push alias");
 		Expect(classifyGroundState("LINE UP", 0, true) == GroundStateCategory::Lnup, "ground state lineup alias");
 		Expect(classifyGroundState("", 0, false) == GroundStateCategory::Gate, "stationary empty state defaults to gate");
