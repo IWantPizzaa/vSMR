@@ -195,9 +195,9 @@
     <ClCompile Include="src\control_center\RadarScreen.Integration.cpp" />
     <ClCompile Include="src\control_center\RuntimeResourceFiles.cpp" />
     <ClCompile Include="src\crash\CrashReporter.cpp" />
-    <ClCompile Include="src\datalink\CPDLCSettingsDialog.cpp" />
+    <ClCompile Include="src\datalink\CpdlcSettingsDialog.cpp" />
     <ClCompile Include="src\datalink\DatalinkProtocolSupport.cpp" />
-    <ClCompile Include="src\datalink\DataLinkDialog.cpp" />
+    <ClCompile Include="src\datalink\DatalinkDialog.cpp" />
     <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp" />
     <ClCompile Include="src\integrations\CdmBridgeClient.cpp" />
     <ClCompile Include="src\integrations\PluginBridgeClient.cpp" />
@@ -307,9 +307,9 @@
     <ClInclude Include="src\crash\CrashReportProtocol.hpp" />
     <ClInclude Include="src\crash\CrashReportSupport.hpp" />
     <ClInclude Include="src\crash\CrashRuntime.hpp" />
-    <ClInclude Include="src\datalink\CPDLCSettingsDialog.hpp" />
+    <ClInclude Include="src\datalink\CpdlcSettingsDialog.hpp" />
     <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp" />
-    <ClInclude Include="src\datalink\DataLinkDialog.hpp" />
+    <ClInclude Include="src\datalink\DatalinkDialog.hpp" />
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp" />
     <ClInclude Include="src\integrations\CdmBridgeClient.hpp" />
     <ClInclude Include="src\integrations\CdmBridgeData.hpp" />
@@ -395,11 +395,11 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <None Include="data\Audio\Alarm.wav" />
-    <None Include="data\Audio\Ding.wav" />
-    <None Include="data\ICAO_Aircraft.json" />
-    <None Include="data\airports_hp.json" />
-    <None Include="data\vSMR_Profiles.json" />
+    <None Include="data\Audio\timer_alarm.wav" />
+    <None Include="data\Audio\cpdlc_notification.wav" />
+    <None Include="data\aircraft_types.json" />
+    <None Include="data\holding_points.json" />
+    <None Include="data\profile_templates.json" />
     <None Include="data\default.json" />
     <None Include="src\control_center\web\app.js">
       <Link>vSMR_webUI\app.js</Link>
@@ -434,6 +434,9 @@
     <None Include="src\control_center\web\app-events.js">
       <Link>vSMR_webUI\app-events.js</Link>
     </None>
+    <None Include="src\control_center\web\app-editor-actions.js">
+      <Link>vSMR_webUI\app-editor-actions.js</Link>
+    </None>
     <None Include="src\control_center\web\app-actions.js">
       <Link>vSMR_webUI\app-actions.js</Link>
     </None>
@@ -459,10 +462,10 @@
     <None Include="src\control_center\web\styles\responsive-polish.css" />
     <None Include="src\control_center\web\styles\README.md" />
     <None Include="resources\cursors\arrow.cur" />
-    <None Include="resources\cursors\cursor1.cur" />
-    <None Include="resources\cursors\move.cur" />
+    <None Include="resources\cursors\move_tag.cur" />
+    <None Include="resources\cursors\move_window.cur" />
     <None Include="resources\vSMR.def" />
-	<None Include="resources\vSMR.rc2" />
+	<None Include="resources\PluginResources.rc2" />
 	<None Include="tools\build_project.ps1" />
     <None Include="tools\build_control_center_bundle.ps1" />
     <None Include="tools\build_control_center_styles.ps1" />
@@ -471,11 +474,12 @@
     <None Include="tools\create_update_feed.ps1" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="resources\vSMR.rc" />
+    <ResourceCompile Include="resources\PluginResources.rc" />
   </ItemGroup>
   <Target Name="EnsureWebView2PackageRestored" BeforeTargets="PrepareForBuild" Condition="!Exists('$(PkgMicrosoft_Web_WebView2)\build\native\Microsoft.Web.WebView2.targets')">
     <Error Text="Microsoft.Web.WebView2 1.0.4078.44 is not restored. Run MSBuild vSMR.sln /t:Restore before building." />
   </Target>
+  <Import Project="DistributionAssets.props" />
   <Target Name="CopyVsmrRuntimeAssets" AfterTargets="Build">
     <PropertyGroup>
       <_VsmrCrashHandlerPath>$(MSBuildProjectDirectory)\src\crash\handler\bin\$(Configuration)\vSMRCrashHandler.dll</_VsmrCrashHandlerPath>
@@ -486,9 +490,9 @@
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\styles.css" />
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\data.js" />
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\app-bundle.js" />
-      <_VsmrDefaultProfile Include="$(MSBuildProjectDirectory)\data\vSMR_Profiles.json" />
+      <_VsmrDefaultProfile Include="$(MSBuildProjectDirectory)\data\profile_templates.json" />
       <_VsmrRuntimeData Include="$(MSBuildProjectDirectory)\data\**\*.*"
-        Exclude="$(MSBuildProjectDirectory)\data\AVISO\ALL_FR_*.geojson;$(MSBuildProjectDirectory)\data\AVISO\_LFXX.geojson;$(MSBuildProjectDirectory)\data\AVISO\version.txt" />
+        Exclude="@(VsmrRenamedData);$(MSBuildProjectDirectory)\data\AVISO\ALL_FR_*.geojson;$(MSBuildProjectDirectory)\data\AVISO\_LFXX.geojson;$(MSBuildProjectDirectory)\data\AVISO\version.txt" />
 	  <_VsmrLegacyFlatAviso Include="$(VsmrDistributionDirectory)AVISO_*.geojson" />
       <_VsmrProjectLicense Include="$(MSBuildProjectDirectory)\..\LICENSE" />
       <_VsmrRapidJsonLicense Include="$(MSBuildProjectDirectory)\..\lib\include\rapidjson\license.txt" />
@@ -509,7 +513,8 @@
     <MakeDir Directories="$(VsmrDistributionDirectory)vSMR_Data\Runtime" />
     <MakeDir Directories="$(VsmrDistributionDirectory)vSMR_Data\Tools" />
     <Copy SourceFiles="@(_VsmrWebUiAsset)" DestinationFolder="$(VsmrDistributionDirectory)vSMR_Data\vSMR_webUI" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_VsmrDefaultProfile)" DestinationFolder="$(VsmrDistributionDirectory)vSMR_Data\vSMR_webUI\defaults" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrDefaultProfile)" DestinationFiles="$(VsmrDistributionDirectory)vSMR_Data\vSMR_webUI\defaults\vSMR_Profiles.json" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(VsmrRenamedData)" DestinationFiles="@(VsmrRenamedData-&gt;'$(VsmrDistributionDirectory)vSMR_Data\%(InstallName)')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrRuntimeData)" DestinationFiles="@(_VsmrRuntimeData-&gt;'$(VsmrDistributionDirectory)vSMR_Data\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrProjectLicense)" DestinationFiles="$(VsmrDistributionDirectory)vSMR_Data\Licenses\vSMR.txt" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrRapidJsonLicense)" DestinationFiles="$(VsmrDistributionDirectory)vSMR_Data\Licenses\RapidJSON.txt" SkipUnchangedFiles="true" />
@@ -534,7 +539,7 @@
   <ImportGroup Label="ExtensionTargets" />
   <ProjectExtensions>
     <VisualStudio>
-      <UserProperties RESOURCE_FILE="resources\vSMR.rc" />
+      <UserProperties RESOURCE_FILE="resources\PluginResources.rc" />
     </VisualStudio>
   </ProjectExtensions>
 </Project>

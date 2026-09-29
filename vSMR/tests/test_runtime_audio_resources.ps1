@@ -32,8 +32,8 @@ if ($module -eq [IntPtr]::Zero) { throw "Cannot load runtime resources: $runtime
 try {
     $ids = [IO.File]::ReadAllText((Join-Path $RepositoryRoot 'vSMR\src\platform\windows\ResourceIds.h'))
     foreach ($sound in @(
-        @{ Id = 'IDR_TIMER_ALARM_WAVE'; File = 'Alarm.wav' },
-        @{ Id = 'IDR_CPDLC_DING_WAVE'; File = 'Ding.wav' }
+        @{ Id = 'IDR_TIMER_ALARM_WAVE'; File = 'timer_alarm.wav' },
+        @{ Id = 'IDR_CPDLC_DING_WAVE'; File = 'cpdlc_notification.wav' }
     )) {
         if ($ids -notmatch ('#define\s+' + $sound.Id + '\s+(\d+)')) { throw "Missing resource ID: $($sound.Id)" }
         $resource = [VsmrAudioResourceTest]::FindResourceW($module, [IntPtr][int]$Matches[1], 'WAVE')

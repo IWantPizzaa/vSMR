@@ -111,9 +111,15 @@ if ($Phase -eq 'Prepare') {
     # The source inventory, not arbitrary contents of an installation, defines
     # ownership. Legacy profiles are migration input only, never managed here.
     $sourceData = Join-Path $RepositoryRoot 'vSMR/data'
+    [xml]$assetMapping = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'vSMR/DistributionAssets.props') -Raw
+    $installedNames = @{}
+    foreach ($entry in $assetMapping.SelectNodes("//*[local-name()='VsmrRenamedData']")) {
+        $installedNames[[string]$entry.SourceName] = [string]$entry.InstallName
+    }
     foreach ($asset in @(Get-ChildItem -LiteralPath $sourceData -File -Recurse)) {
         Assert-RegularPath $asset.FullName
         $relative = $asset.FullName.Substring($sourceData.Length).TrimStart('\', '/').Replace('\', '/')
+        if ($installedNames.ContainsKey($relative)) { $relative = $installedNames[$relative] }
         if ($relative -match '(?i)(^|/)(config\.json|vSMR_Profiles\.json|UserData|UpdateBaselines|\.update|version\.json)(/|$)' -or
             $relative -match '^AVISO/(ALL_FR_.*|_LFXX)\.geojson$|^AVISO/version\.txt$') { continue }
         [void]$managed.Add('vSMR_Data/' + $relative)

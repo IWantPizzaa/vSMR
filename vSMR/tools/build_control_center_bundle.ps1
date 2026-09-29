@@ -24,6 +24,7 @@ $sourceNames = @(
 	"app-aviso-clipboard.js",
     "app-settings.js",
     "app-persistence.js",
+    "app-editor-actions.js",
 	"app-interaction-help.js",
     "app-events.js",
     "app-actions.js",

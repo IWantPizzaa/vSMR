@@ -691,14 +691,7 @@
     $("#avisoGeometryStyleList").addEventListener("keydown", event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
         event.preventDefault();
-        const ids = avisoStyleEntries("geometry").map(entry => entry.id);
-        if (ids.length) {
-          state.ui.selectedAvisoGeometryStyleIds = ids;
-          state.ui.selectedAvisoGeometryStyleId = ids[ids.length - 1];
-          state.ui.avisoGeometrySelectionAnchorId = ids[0];
-          clearUnappliedEditorSection($("#avisoGeometryColorHex"));
-          renderAvisoGeometry();
-        }
+        selectAllEditorItems("geometry");
       } else if (event.key === "Escape") {
         const id = state.ui.selectedAvisoGeometryStyleId;
         state.ui.selectedAvisoGeometryStyleIds = id ? [id] : [];
@@ -709,14 +702,7 @@
     $("#avisoTextStyleList").addEventListener("keydown", event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
         event.preventDefault();
-        const ids = avisoStyleEntries("text").map(entry => entry.id);
-        if (ids.length) {
-          state.ui.selectedAvisoTextStyleIds = ids;
-          state.ui.selectedAvisoTextStyleId = ids[ids.length - 1];
-          state.ui.avisoTextSelectionAnchorId = ids[0];
-          clearUnappliedEditorSection($("#avisoTextFont"));
-          renderAvisoText();
-        }
+        selectAllEditorItems("text");
       } else if (event.key === "Escape") {
         const id = state.ui.selectedAvisoTextStyleId;
         state.ui.selectedAvisoTextStyleIds = id ? [id] : [];
@@ -727,15 +713,7 @@
     $("#tagDefinitionList").addEventListener("keydown", event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
         event.preventDefault();
-        const ids = tagDefinitions().map(entry => entry.id);
-        if (ids.length) {
-          state.ui.selectedTagIds = ids;
-          state.ui.selectedTagId = ids[ids.length - 1];
-          state.ui.tagSelectionAnchorId = ids[0];
-          drafts.tag = null;
-          clearUnappliedEditorSection($("#tagDefinitionEditor"));
-          renderTags();
-        }
+        selectAllEditorItems("tags");
       } else if (event.key === "Escape") {
         const id = state.ui.selectedTagId;
         state.ui.selectedTagIds = id ? [id] : [];
@@ -747,15 +725,7 @@
     $("#colorTree").addEventListener("keydown", event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
         event.preventDefault();
-        const ids = collectProfileColors(activeProfile()).map(entry => entry.id);
-        if (ids.length) {
-          state.ui.selectedColorPaths = ids;
-          state.ui.selectedColorPath = ids[ids.length - 1];
-          state.ui.colorSelectionAnchorPath = ids[0];
-          drafts.color = null;
-          clearUnappliedEditorSection($("#colorHex"));
-          renderColors();
-        }
+        selectAllEditorItems("colors");
       } else if (event.key === "Escape") {
         const id = state.ui.selectedColorPath;
         state.ui.selectedColorPaths = id ? [id] : [];
@@ -786,7 +756,9 @@
   }
 
   function handleAction(action, button) {
-    if (action === "open-control-center") openControlCenter();
+    if (action === "select-all-editor") selectAllEditorItems(button.dataset.editor);
+    else if (action === "reset-editor-section") requestSectionDefaults(button.dataset.editor);
+    else if (action === "open-control-center") openControlCenter();
     else if (action === "open-settings") { openControlCenter(); setPage("settings"); }
     else if (action === "set-ui-theme") {
       const theme = button.dataset.uiColorTheme === "day" ? "day" : "night";

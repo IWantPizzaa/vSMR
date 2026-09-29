@@ -822,6 +822,111 @@
     await waitFor(() => api.getState().resetProfileOverrides === false &&
       api.getState().resetAvisoOverrides === false,
       "successful reset acknowledgement clears reset intent for subsequent saves");
+
+    // Scoped resets must never fall through to the full-defaults import path.
+    const resetFixture = structuredClone(initial);
+    const defaultProfile = resetFixture.profiles.find(profile => profile.name === "Default")
+      || resetFixture.profiles.find(profile => profile.name);
+    const expectedDefault = structuredClone(defaultProfile);
+    defaultProfile.targets.symbol_scale = 4.5;
+    defaultProfile.labels.fit_background_to_text = !Boolean(defaultProfile.labels.fit_background_to_text);
+    const preservedLabels = JSON.stringify(defaultProfile.labels);
+    resetFixture.activeProfile = defaultProfile.name;
+    api.receive({ version: 1, id: "section-reset-baseline", type: "state.authoritative",
+      payload: { ...resetFixture, reason: "reload" } });
+    api.open("display");
+    document.querySelector('[data-profile-tab="icons"]').click();
+    const oldConfirm = window.confirm;
+    try {
+      window.confirm = () => false;
+      const cancelStart = outbound.length;
+      document.querySelector('[data-editor="icons"][data-action="reset-editor-section"]').click();
+      expect(!outbound.slice(cancelStart).some(message => message.type === "state.reset"),
+        "cancelled scoped reset does not request defaults");
+      window.confirm = () => true;
+      const sectionStart = outbound.length;
+      document.querySelector('[data-editor="icons"][data-action="reset-editor-section"]').click();
+      await waitFor(() => api.getState().profiles.find(profile => profile.name === defaultProfile.name)
+        ?.targets?.symbol_scale === expectedDefault.targets.symbol_scale, "icons reset uses bundled profile defaults");
+      await waitFor(() => outbound.slice(sectionStart).some(message => message.type === "state.save"),
+        "scoped reset is automatically saved");
+      expect(JSON.stringify(api.getState().profiles.find(profile => profile.name === defaultProfile.name)?.labels) === preservedLabels,
+        "icons reset preserves tag customizations");
+      expect(JSON.stringify(api.getState().aviso) === JSON.stringify(resetFixture.aviso),
+        "profile section reset does not import the AVISO sent alongside defaults");
+      expect(outbound.slice(sectionStart).filter(message => message.type === "state.save")
+        .every(message => !message.payload.resetProfileOverrides && !message.payload.resetAvisoOverrides),
+        "section resets never clear all profile or AVISO overrides");
+      const completed = outbound.slice(sectionStart).find(message => message.type === "state.reset");
+      if (completed) api.receive({ version: 1, id: completed.id, type: "resource.loaded", payload: {
+        resource: "profiles", source: "bundled defaults", data: structuredClone(initial.profiles)
+      } });
+      expect(JSON.stringify(api.getState().profiles.find(profile => profile.name === defaultProfile.name)?.labels) === preservedLabels,
+        "duplicate reset replies cannot become a global reset");
+      for (const [kind, tab, list, selector] of [
+        ["colors", "colors", "colorTree", "[data-color-path]"],
+        ["tags", "tags", "tagDefinitionList", "[data-tag-id]"]
+      ]) {
+        document.querySelector(`[data-profile-tab="${tab}"]`).click();
+        const beforeSelect = JSON.stringify(api.getState().profiles);
+        document.querySelector(`[data-editor="${kind}"][data-action="select-all-editor"]`).click();
+        const rows = [...document.querySelectorAll(`#${list} ${selector}`)].filter(row => row.matches(".ui-list__row"));
+        expect(rows.length > 1 && rows.every(row => row.getAttribute("aria-selected") === "true" || row.classList.contains("selected")),
+          `${kind} Select All includes every selectable row`);
+        expect(JSON.stringify(api.getState().profiles) === beforeSelect, `${kind} Select All does not edit settings`);
+      }
+      // Reset map paint only; keep custom styles, coordinates, other palettes and profiles.
+      const alertFixture = structuredClone(initial);
+      alertFixture.activeProfile = defaultProfile.name;
+      const alertProfile = alertFixture.profiles.find(profile => profile.name === defaultProfile.name);
+      alertProfile.rimcas.timer = [99, 88, 77, 66, 0];
+      alertProfile.rimcas.runways = [{ name: "09L/27R", arr: true, dep: false, closed: true }];
+      alertProfile.rimcas.visibility = "lvp";
+      api.receive({ version: 1, id: "alerts-reset-baseline", type: "state.authoritative",
+        payload: { ...alertFixture, reason: "reload" } });
+      api.open("alerts");
+      const beforeAlertReset = api.getState().profiles.find(profile => profile.name === defaultProfile.name).rimcas;
+      const alertResetStart = outbound.length;
+      document.querySelector('[data-editor="alerts"][data-action="reset-editor-section"]').click();
+      await waitFor(() => outbound.slice(alertResetStart).some(message => message.type === "state.save"), "alert reset is saved");
+      const afterAlertReset = api.getState().profiles.find(profile => profile.name === defaultProfile.name).rimcas;
+      expect(JSON.stringify(afterAlertReset.timer) === JSON.stringify(expectedDefault.rimcas.timer), "alert reset restores default timers");
+      expect(JSON.stringify(afterAlertReset.runways) === JSON.stringify(beforeAlertReset.runways) &&
+        afterAlertReset.visibility === beforeAlertReset.visibility, "alert reset preserves runway closures, assignments and LVP");
+
+      const mapFixture = structuredClone(initial);
+      mapFixture.airport = initial.aviso.metadata?.airport || "LFPG";
+      mapFixture.settings.avisoColorPalette = "dark";
+      mapFixture.aviso.styles["surface.taxiway"].paint.fill = "#123456";
+      mapFixture.aviso.styles["surface.taxiway"].paint["palette-overrides"].real.fill = "#654321";
+      mapFixture.aviso.styles["custom.test"] = { name: "Custom", object_type: "Area", paint: { fill: "#987654" } };
+      api.receive({ version: 1, id: "map-reset-baseline", type: "state.authoritative",
+        payload: { ...mapFixture, reason: "reload" } });
+      api.open("aviso");
+      for (const [kind, list] of [["geometry", "avisoGeometryStyleList"], ["text", "avisoTextStyleList"]]) {
+        document.querySelector(`[data-aviso-view="${kind}"]`).click();
+        const beforeSelect = JSON.stringify(api.getState().aviso);
+        document.querySelector(`[data-editor="${kind}"][data-action="select-all-editor"]`).click();
+        const selectors = [...document.querySelectorAll(`#${list} .ui-list__selection`)];
+        expect(selectors.length > 0 && selectors.every(row => row.getAttribute("aria-pressed") === "true"),
+          `${kind} Select All includes every style`);
+        expect(JSON.stringify(api.getState().aviso) === beforeSelect, `${kind} Select All does not edit the map`);
+      }
+      document.querySelector('[data-aviso-view="geometry"]').click();
+      const beforeMapReset = api.getState();
+      const mapResetStart = outbound.length;
+      document.querySelector('[data-editor="geometry"][data-action="reset-editor-section"]').click();
+      await waitFor(() => api.getState().aviso.styles["surface.taxiway"].paint.fill ===
+        initial.aviso.styles["surface.taxiway"].paint.fill, "geometry reset restores the selected palette");
+      await waitFor(() => outbound.slice(mapResetStart).some(message => message.type === "state.save"), "map reset is saved");
+      const afterMapReset = api.getState();
+      expect(afterMapReset.aviso.styles["surface.taxiway"].paint["palette-overrides"].real.fill === "#654321",
+        "geometry reset preserves other palettes");
+      expect(afterMapReset.aviso.styles["custom.test"].paint.fill === "#987654", "geometry reset preserves custom styles");
+      expect(JSON.stringify(afterMapReset.profiles) === JSON.stringify(beforeMapReset.profiles), "geometry reset preserves profiles");
+      expect(JSON.stringify(afterMapReset.aviso.features.map(feature => [feature.id, feature.geometry])) ===
+        JSON.stringify(beforeMapReset.aviso.features.map(feature => [feature.id, feature.geometry])), "geometry reset preserves coordinates and feature identities");
+    } finally { window.confirm = oldConfirm; }
   } catch (error) {
     failures.push(`unexpected browser exception: ${error?.stack || error}`);
   }

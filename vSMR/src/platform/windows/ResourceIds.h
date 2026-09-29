@@ -1,6 +1,6 @@
 //{{NO_DEPENDENCIES}}
 // Microsoft Visual C++ generated include file.
-// Used by vSMR.rc
+// Used by PluginResources.rc
 //
 #define IDC_SMRCURSOR                   104
 #define IDR_TIMER_ALARM_WAVE            105

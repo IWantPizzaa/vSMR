@@ -144,7 +144,7 @@ std::vector<std::string> RunAvisoOverridesTests(const std::filesystem::path& rep
             const Value* user = VsmrAvisoOverrides::Find(config, "LFXX");
             const auto externalPath = dataRoot / "UserData/Profiles/external.json";
             Document legacyProfiles;
-            VsmrJson::ParseDocument(legacyProfiles, Read(repositoryRoot / "vSMR/data/vSMR_Profiles.json"));
+            VsmrJson::ParseDocument(legacyProfiles, Read(repositoryRoot / "vSMR/data/profile_templates.json"));
             Write(externalPath, legacyProfiles);
             CConfig external(externalPath.u8string(), (dataRoot / "vSMR_Maps.json").u8string());
             expect(!external.isLayeredConfig(), "External profile fixture remains user-owned legacy format");

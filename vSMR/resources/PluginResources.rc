@@ -24,19 +24,19 @@ LANGUAGE LANG_NEUTRAL, SUBLANG_DEFAULT
 #pragma code_page(1252)
 
 // Built-in fallbacks keep notifications available with missing/broken data files.
-IDR_TIMER_ALARM_WAVE WAVE "../data/Audio/Alarm.wav"
-IDR_CPDLC_DING_WAVE  WAVE "../data/Audio/Ding.wav"
+IDR_TIMER_ALARM_WAVE WAVE "../data/Audio/timer_alarm.wav"
+IDR_CPDLC_DING_WAVE  WAVE "../data/Audio/cpdlc_notification.wav"
 
 /////////////////////////////////////////////////////////////////////////////
 //
 // Cursor
 //
 
-IDC_SMRMOVETAG          CURSOR                  "cursors\\cursor1.cur"
+IDC_SMRMOVETAG          CURSOR                  "cursors\\move_tag.cur"
 
 IDC_SMRCURSOR           CURSOR                  "cursors\\arrow.cur"
 
-IDC_SMRMOVEWINDOW       CURSOR                  "cursors\\move.cur"
+IDC_SMRMOVEWINDOW       CURSOR                  "cursors\\move_window.cur"
 
 #endif    // Neutral (Default) resources
 /////////////////////////////////////////////////////////////////////////////
@@ -127,7 +127,7 @@ BEGIN
     "\r\n"
     "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)\r\n"
     "LANGUAGE 9, 1\r\n"
-    "#include ""vSMR.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""PluginResources.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
     "#include ""afxres.rc""      // Standard components\r\n"
     "#endif\r\n"
     "\0"
@@ -245,7 +245,7 @@ END
 
 #if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
 LANGUAGE 9, 1
-#include "vSMR.rc2"  // non-Microsoft Visual C++ edited resources
+#include "PluginResources.rc2"  // non-Microsoft Visual C++ edited resources
 #include "afxres.rc"      // Standard components
 #endif
 

@@ -4,7 +4,7 @@
 #include "plugin/PluginDatalink.Internal.hpp"
 
 #include "crash/CrashReporter.hpp"
-#include "datalink/DataLinkDialog.hpp"
+#include "datalink/DatalinkDialog.hpp"
 #include "datalink/DatalinkProtocolSupport.hpp"
 #include "shared/TextUtils.hpp"
 #include "shared/logging/Logger.hpp"

@@ -63,7 +63,7 @@ foreach ($mapFile in $bundledMaps) {
     $result = Merge $source $local $remote
     Check ($result.Json.Contains('"__merge_test_local":true') -and $result.Json.Contains('"__merge_test_remote":true') -and $result.Conflicts.Length -eq 0) ('independent changes in real map: ' + $mapFile.Name)
 }
-$source = [IO.File]::ReadAllText((Join-Path $RepositoryRoot 'vSMR/data/vSMR_Profiles.json')).Trim()
+$source = [IO.File]::ReadAllText((Join-Path $RepositoryRoot 'vSMR/data/profile_templates.json')).Trim()
 $result = Merge $source $source $source $true
 Check ($result.Json -ceq $source) 'real bundled profiles round-trip without normalization'
 

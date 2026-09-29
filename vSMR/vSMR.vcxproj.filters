@@ -78,9 +78,9 @@
     <ClCompile Include="src\control_center\RadarScreen.Integration.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\control_center\RuntimeResourceFiles.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\crash\CrashReporter.cpp"><Filter>Source</Filter></ClCompile>
-    <ClCompile Include="src\datalink\CPDLCSettingsDialog.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\datalink\CpdlcSettingsDialog.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\datalink\DatalinkProtocolSupport.cpp"><Filter>Source</Filter></ClCompile>
-    <ClCompile Include="src\datalink\DataLinkDialog.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\datalink\DatalinkDialog.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\integrations\CdmBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\integrations\PluginBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
@@ -177,9 +177,9 @@
     <ClInclude Include="src\crash\CrashReportProtocol.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\crash\CrashReportSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\crash\CrashRuntime.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\datalink\CPDLCSettingsDialog.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\datalink\CpdlcSettingsDialog.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\datalink\DataLinkDialog.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\datalink\DatalinkDialog.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\CdmBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\CdmBridgeData.hpp"><Filter>Headers</Filter></ClInclude>
@@ -265,19 +265,19 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="data\Audio\Alarm.wav">
+    <None Include="data\Audio\timer_alarm.wav">
       <Filter>Data\Audio</Filter>
     </None>
-    <None Include="data\Audio\Ding.wav">
+    <None Include="data\Audio\cpdlc_notification.wav">
       <Filter>Data\Audio</Filter>
     </None>
-    <None Include="data\ICAO_Aircraft.json">
+    <None Include="data\aircraft_types.json">
       <Filter>Data</Filter>
     </None>
-    <None Include="data\airports_hp.json">
+    <None Include="data\holding_points.json">
       <Filter>Data</Filter>
     </None>
-    <None Include="data\vSMR_Profiles.json">
+    <None Include="data\profile_templates.json">
       <Filter>Data</Filter>
     </None>
     <None Include="src\control_center\web\app.js">
@@ -313,6 +313,9 @@
     <None Include="src\control_center\web\app-events.js">
       <Filter>Web UI</Filter>
     </None>
+    <None Include="src\control_center\web\app-editor-actions.js">
+      <Filter>Web UI</Filter>
+    </None>
     <None Include="src\control_center\web\app-actions.js">
       <Filter>Web UI</Filter>
     </None>
@@ -340,16 +343,16 @@
     <None Include="resources\cursors\arrow.cur">
       <Filter>Resources\Cursors</Filter>
     </None>
-    <None Include="resources\cursors\cursor1.cur">
+    <None Include="resources\cursors\move_tag.cur">
       <Filter>Resources\Cursors</Filter>
     </None>
-    <None Include="resources\cursors\move.cur">
+    <None Include="resources\cursors\move_window.cur">
       <Filter>Resources\Cursors</Filter>
     </None>
     <None Include="resources\vSMR.def">
       <Filter>Resources</Filter>
     </None>
-    <None Include="resources\vSMR.rc2">
+    <None Include="resources\PluginResources.rc2">
       <Filter>Resources</Filter>
     </None>
     <None Include="tools\build_project.ps1">
@@ -366,7 +369,7 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="resources\vSMR.rc">
+    <ResourceCompile Include="resources\PluginResources.rc">
       <Filter>Resources</Filter>
     </ResourceCompile>
   </ItemGroup>
