@@ -71,6 +71,7 @@ $styleOwnershipScript = Join-Path $PSScriptRoot "verify_control_center_style_own
 & (Join-Path $PSScriptRoot "test_runtime_audio_resources.ps1") -RepositoryRoot $RepositoryRoot
 & (Join-Path $PSScriptRoot "test_distribution_assets.ps1") -RepositoryRoot $RepositoryRoot
 & (Join-Path $PSScriptRoot "test_file_naming.ps1") -RepositoryRoot $RepositoryRoot
+& (Join-Path $PSScriptRoot "test_euroscope_callbacks.ps1") -RepositoryRoot $RepositoryRoot
 
 $nativeTests = Join-Path $RepositoryRoot "vSMR\tests\bin\Release\vSMR.Tests.exe"
 if (-not (Test-Path -LiteralPath $nativeTests -PathType Leaf)) {

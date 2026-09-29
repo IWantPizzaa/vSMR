@@ -22,3 +22,13 @@ foreach ($file in $files) {
     ++$checked
 }
 Write-Host "File naming verified: $checked project-owned source and asset files."
+foreach ($asset in @('vSMR/data/profile_templates.json', 'vSMR/data/aircraft_types.json')) {
+    $attribute = & git -C $RepositoryRoot check-attr eol -- $asset
+    if ($LASTEXITCODE -ne 0 -or $attribute -notmatch ': eol: lf$') {
+        throw "Renamed canonical asset must retain LF checkout bytes: $asset"
+    }
+}
+$patchAttribute = & git -C $RepositoryRoot check-attr text -- 'vSMR/data/Tools/rdf_smr_ground_view.patch'
+if ($LASTEXITCODE -ne 0 -or $patchAttribute -notmatch ': text: unset$') {
+    throw 'The RDF patch must retain its upstream CRLF bytes after renaming.'
+}

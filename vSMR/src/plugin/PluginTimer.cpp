@@ -20,6 +20,7 @@
 
 void CSMRPlugin::OnTimer(int Counter)
 {
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnTimer");
 	(void)Counter;
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))

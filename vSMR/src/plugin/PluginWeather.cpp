@@ -41,6 +41,7 @@ void CSMRPlugin::StopWeatherFetchWorker()
 
 void CSMRPlugin::OnNewMetarReceived(const char* sStation, const char* sFullMetar)
 {
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnNewMetarReceived");
 	if (!PluginShutdownRequested.load(std::memory_order_relaxed))
 		VsmrWeather::Update(sStation, sFullMetar);

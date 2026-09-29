@@ -31,6 +31,7 @@ void CSMRPlugin::OnGetTagItem(
 	COLORREF* pRGB,
 	double* pFontSize)
 {
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnGetTagItem");
 	(void)RadarTarget;
 	(void)TagData;
