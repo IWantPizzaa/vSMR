@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "platform/windows/ResourceIds.h"
 #include "radar/RadarScreen.hpp"
+#include "radar/InsetHostPolicy.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
 #include "insets/InsetWindow.hpp"
 #include "rdf/RdfOverlay.hpp"
@@ -18,6 +19,16 @@ void EnsureInsetWindowProcHook(HWND hwnd, CSMRRadar* radarScreen);
 
 namespace
 {
+    class ScopedHostDcState
+    {
+    public:
+        ScopedHostDcState(HDC dc, bool enabled) : Dc(dc), State(enabled ? ::SaveDC(dc) : 0) {}
+        ~ScopedHostDcState() { if (State != 0) ::RestoreDC(Dc, State); }
+    private:
+        HDC Dc;
+        int State;
+    };
+
     double AvisoMax(double left, double right)
     {
         return left > right ? left : right;
@@ -142,6 +153,10 @@ void CSMRRadar::RefreshSectorMap(
 	EnsureAirportPositionCache();
 	EnsureRunwayGeometryCache();
 	RefreshRunwayStatuses(false);
+	// Read airport/runway data for insets, but never change the host's sector
+	// element visibility or refresh its main map from vSMR profile settings.
+	if (IsInsetsOnly())
+		return;
 
 	// Draw map elements based on zoom level
 	CPosition radarDownLeft;
@@ -364,6 +379,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRefreshSceneAndRend
 		isLVP,
 		&sceneRimcasMilliseconds);
 	performance.rimcasMilliseconds += sceneRimcasMilliseconds;
+	if (IsInsetsOnly())
+		return frameSceneOwner;
 
 	const double perfAvisoStartMs = RefreshPerfNowMs();
 	try
@@ -1093,6 +1110,17 @@ void CSMRRadar::RecordRefreshPerformance(
 
 bool CSMRRadar::PrepareRefreshPhase(HDC hDC, int phase)
 {
+	if (IsInsetsOnly() && phase >= REFRESH_PHASE_BACK_BITMAP && phase <= REFRESH_PHASE_AFTER_LISTS)
+	{
+		const unsigned int phaseBit = 1u << phase;
+		if ((InsetHostRefreshPhasesSeen & phaseBit) == 0)
+			Logger::info("CoFrance inset host received refresh phase=" + std::to_string(phase));
+		InsetHostRefreshPhasesSeen |= phaseBit;
+	}
+	const int renderPhase = VsmrRadar::UsesAfterListsPhase(IsInsetsOnly(), HostNeedsRadarContent)
+		? REFRESH_PHASE_AFTER_LISTS : REFRESH_PHASE_BEFORE_TAGS;
+	if (phase != renderPhase)
+		return false;
 	if (Logger::is_verbose_mode())
 	{
 		Logger::info(
@@ -1116,7 +1144,7 @@ bool CSMRRadar::PrepareRefreshPhase(HDC hDC, int phase)
 	RefreshDisplayScale();
 	EnsureAvisoWheelHooks(this);
 	// Refresh pipeline is phase-driven by EuroScope. Cursor setup stays on the UI thread.
-	if (initCursor)
+	if (initCursor && !IsInsetsOnly())
 	{
 		if (customCursor) {
 			HCURSOR loadedCursor = reinterpret_cast<HCURSOR>(::LoadImage(
@@ -1139,6 +1167,8 @@ bool CSMRRadar::PrepareRefreshPhase(HDC hDC, int phase)
 		initCursor = false;
 	}
 	HWND insetHostWindow = ::WindowFromDC(hDC);
+	if (IsInsetsOnly() && TagHoverPointer.Window() != nullptr && ::IsWindow(TagHoverPointer.Window()))
+		insetHostWindow = TagHoverPointer.Window();
 	if (insetHostWindow == nullptr || !::IsWindow(insetHostWindow))
 		insetHostWindow = AvisoRefreshHostWindow.load(std::memory_order_acquire);
 	if (insetHostWindow == nullptr || !::IsWindow(insetHostWindow))
@@ -1146,16 +1176,6 @@ bool CSMRRadar::PrepareRefreshPhase(HDC hDC, int phase)
 	EnsureInsetWindowProcHook(insetHostWindow, this);
 	AvisoRefreshHostWindow.store(insetHostWindow, std::memory_order_release);
 
-	if (phase == REFRESH_PHASE_AFTER_LISTS) {
-		VsmrRefreshLog("phase == REFRESH_PHASE_AFTER_LISTS");
-		VsmrRefreshLog("break phase == REFRESH_PHASE_AFTER_LISTS");
-		return false;
-	}
-
-	if (phase != REFRESH_PHASE_BEFORE_TAGS)
-		return false;
-
-	VsmrRefreshLog("phase != REFRESH_PHASE_BEFORE_TAGS");
 	const unsigned long fpsNowTick = ::GetTickCount();
 	if (FpsLastSampleTick == 0)
 		FpsLastSampleTick = fpsNowTick;
@@ -1235,6 +1255,7 @@ void CSMRRadar::RenderRefreshTagsAndRdf(
 
 void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 {
+	ScopedHostDcState hostDcState(hDC, IsInsetsOnly());
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnRefresh",
 		reinterpret_cast<std::uintptr_t>(this));
@@ -1332,19 +1353,22 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				setRefreshStage);
 		const VsmrScene::RadarScene* frameScene = frameSceneOwner.get();
 
-		RenderClosedRunwayOverlays(graphics, setRefreshStage);
-		RenderRefreshTargets(
-			graphics,
-			dc,
-			RadarArea,
-			frameScene,
-			performance,
-			setRefreshStage);
-		RenderRefreshTagsAndRdf(hDC, graphics, dc, performance, setRefreshStage);
-		RenderRefreshRimcasPanels(dc, frameScene, performance, setRefreshStage);
+		if (!IsInsetsOnly())
+		{
+			RenderClosedRunwayOverlays(graphics, setRefreshStage);
+			RenderRefreshTargets(
+				graphics,
+				dc,
+				RadarArea,
+				frameScene,
+				performance,
+				setRefreshStage);
+			RenderRefreshTagsAndRdf(hDC, graphics, dc, performance, setRefreshStage);
+			RenderRefreshRimcasPanels(dc, frameScene, performance, setRefreshStage);
 
-		// Tag deconflicting
-		DeconflictRefreshTags(frameScene, performance, setRefreshStage);
+			// Tag deconflicting
+			DeconflictRefreshTags(frameScene, performance, setRefreshStage);
+		}
 
 		// App windows
 		RenderRefreshInsets(
@@ -1352,7 +1376,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			graphics,
 			performance,
 			setRefreshStage);
-		RenderRefreshFpsOverlay(dc, RadarArea, setRefreshStage);
+		if (!IsInsetsOnly())
+			RenderRefreshFpsOverlay(dc, RadarArea, setRefreshStage);
 
 		setRefreshStage("runtime menu");
 		RenderRuntimeMenu(hDC, graphics);

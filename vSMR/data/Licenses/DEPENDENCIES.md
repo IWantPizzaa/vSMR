@@ -1,18 +1,18 @@
 # vSMR dependency manifest
 
 This file is an inventory, not a replacement for the license texts shipped in
-this directory. It describes the dependencies used by vSMR 2.0.0-beta.6 so a
+this directory. It describes the dependencies used by vSMR 2.0.0 so a
 release can be reviewed without inspecting the Visual Studio project.
 
 | Component | Version | Use | Distribution in the vSMR package | License material |
 | --- | --- | --- | --- | --- |
-| vSMR | 2.0.0-beta.6 | EuroScope plugin and bundled UI/data | `vSMR.dll`, `vSMR_Data` | `vSMR.txt` (GPL-3.0) |
+| vSMR | 2.0.0 | EuroScope plugin and bundled UI/data | `vSMR.dll`, `vSMR_Data` | `vSMR.txt` (GPL-3.0) |
 | Microsoft WebView2 SDK/Loader | 1.0.4078.44 | Hosts the local Control Center UI; loader is linked statically | Code included in `vSMR_Data\Runtime\vSMR.Runtime.dll` | `Microsoft.WebView2-LICENSE.txt`, `Microsoft.WebView2-NOTICE.txt` |
 | RapidJSON | 1.1.0 API, upstream commit `24b5e7a8b27f42fa16b96fc70aade9106cf7102f` | JSON parsing and writing | Code included in `vSMR_Data\Runtime\vSMR.Runtime.dll` | `RapidJSON.txt` (MIT) |
 | EuroScope Plugin Bridge client header | `esbridge.h` ABI v1, upstream commit `be6e0de6d3358e63c7cea0308ffcc16c87a61f8c` | Optional vSID, Ramp Agent and CDM data from a separately installed `EuroScopeBridge.dll` | Header code included in `vSMR_Data\Runtime\vSMR.Runtime.dll`; the bridge DLL is not bundled | None published upstream (the repository has no license file) |
 | Microsoft Visual C++ and MFC runtimes | MSVC v145 by default; v143 in compatibility CI | Native runtime | Not bundled; matching x86 redistributable required | Microsoft redistributable terms |
 | EuroScope Plug-in SDK | repository-provided header/import library | Plug-in ABI | Not separately bundled | Consult the EuroScope SDK distribution terms |
-| France-Ground-Layouts | commit `da539a889b213e66eb254f893fa087c263f65332` | Geometry and ground labels for 53 airports, converted to GeoJSON with vSMR palettes | `vSMR_Data/AVISO/*.geojson`; affected files carry source metadata | `France-Ground-Layouts.txt` (GPL-3.0); source: https://github.com/vaccfr/France-Ground-Layouts |
+| France-Ground-Layouts | Historical import `da539a889b213e66eb254f893fa087c263f65332`; current 160-map inventory refreshed by vSMR commit `4819ea1` | Geometry and ground labels converted to GeoJSON with vSMR palettes; subsequent local additions tracked in the provenance register | `vSMR_Data/AVISO/*.geojson` | `France-Ground-Layouts.txt` (GPL-3.0); source: https://github.com/vaccfr/France-Ground-Layouts; not a blanket license for unidentified local additions |
 | Windows system libraries | Windows 10 SDK | GDI/GDI+, WinHTTP, multimedia, COM and windowing | Provided by Windows | Microsoft Windows terms |
 
 The Microsoft WebView2 Evergreen Runtime itself is not included. Users install
