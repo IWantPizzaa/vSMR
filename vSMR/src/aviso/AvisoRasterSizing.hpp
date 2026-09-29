@@ -5,6 +5,18 @@
 
 namespace VsmrAviso
 {
+	// Compare actual drawable diagonals, not a hard-coded reference resolution.
+	// Uniform resizing and portrait/landscape swaps preserve the same ratio.
+	// This ratio affects visibility only; font and halo sizes stay configured.
+	inline double InsetLabelVisibilityRatio(double width, double height, double hostWidth, double hostHeight)
+	{
+		if (!std::isfinite(width) || !std::isfinite(height) ||
+			!std::isfinite(hostWidth) || !std::isfinite(hostHeight) ||
+			width <= 0.0 || height <= 0.0 || hostWidth <= 0.0 || hostHeight <= 0.0)
+			return 1.0;
+		return (std::min)(1.0, std::hypot(width, height) / std::hypot(hostWidth, hostHeight));
+	}
+
 	// Spend the bitmap budget on visible pixels first, then on pan overscan.
 	// The final raster still applies its hard allocation caps for larger desktops.
 	inline double NativeResolutionOverscan(double width, double height, double maxPixels)

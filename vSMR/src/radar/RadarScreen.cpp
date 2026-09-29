@@ -76,6 +76,7 @@ bool standardCursor; // True when the default arrow cursor is active.
 bool customCursor; // True when the plugin-specific cursor theme is enabled.
 constexpr UINT_PTR kInsetWindowSubclassId = 0x56534D52u; // "VSMR"
 std::map<HWND, std::vector<CSMRRadar*>> gInsetWindowRadarScreens;
+std::map<HWND, CSMRRadar*> gInsetWindowActiveRadarScreen;
 UINT AvisoWorkerRefreshMessage()
 {
 	static const UINT message =
@@ -106,7 +107,8 @@ std::map<std::string, std::string> CSMRRadar::vStripsStands;
 
 // ReSharper disable CppMsExtAddressOfClassRValue
 
-CSMRRadar::CSMRRadar()
+CSMRRadar::CSMRRadar(bool insetsOnly, bool needRadarContent)
+	: InsetsOnly(insetsOnly), HostNeedsRadarContent(needRadarContent)
 {
 
 	Logger::info("CSMRRadar::CSMRRadar()");
@@ -243,7 +245,8 @@ CSMRRadar::CSMRRadar()
 		}
 	}
 
-	standardCursor = true;
+	if (!IsInsetsOnly())
+		standardCursor = true;
 	ActiveAirport = "EGKK";
 	const std::string avisoDefaultAirport = DetectDefaultAirportFromAviso();
 	if (!avisoDefaultAirport.empty())
@@ -881,7 +884,8 @@ void CSMRRadar::LoadProfile(
 	const std::vector<int> RimcasLVP = readCountdownDefinition(rimcasTimerLvp, defaultRimcasTimerLvp);
 	RimcasInstance->setCountdownDefinition(RimcasNorm, RimcasLVP);
 
-	customCursor = CurrentConfig->isCustomCursorUsed();
+	if (!IsInsetsOnly())
+		customCursor = CurrentConfig->isCustomCursorUsed();
 	currentFontSize = GetActiveLabelFontSize();
 
 	// Reloading the fonts
@@ -1023,6 +1027,7 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 	{
 		::RemoveWindowSubclass(hwnd, InsetWindowSubclassProc, kInsetWindowSubclassId);
 		gInsetWindowRadarScreens.erase(hwnd);
+		gInsetWindowActiveRadarScreen.erase(hwnd);
 		return ::DefSubclassProc(hwnd, uMsg, wParam, lParam);
 	}
 
@@ -1093,6 +1098,16 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 		break;
 	case WM_SETCURSOR:
 	{
+		const auto active = gInsetWindowActiveRadarScreen.find(hwnd);
+		if (active != gInsetWindowActiveRadarScreen.end() && active->second != nullptr &&
+			active->second->IsInsetsOnly())
+		{
+			// No native-vSMR cursor fallback on a CoFrance screen, including
+			// when an older SMR view shares this same EuroScope child window.
+			if (!active->second->IsShutdownRequested() && active->second->HandleInsetSetCursor(hwnd))
+				return TRUE;
+			return ::DefSubclassProc(hwnd, uMsg, wParam, lParam);
+		}
 		const auto radarIt = gInsetWindowRadarScreens.find(hwnd);
 		if (radarIt != gInsetWindowRadarScreens.end())
 		{
@@ -1144,12 +1159,18 @@ void EnsureInsetWindowProcHook(HWND hwnd, CSMRRadar* radarScreen)
 	auto& radarScreens = existing->second;
 	if (std::find(radarScreens.begin(), radarScreens.end(), radarScreen) == radarScreens.end())
 		radarScreens.push_back(radarScreen);
+	gInsetWindowActiveRadarScreen[hwnd] = radarScreen;
 }
 
 void RemoveInsetWindowProcHooksForRadar(CSMRRadar* radarScreen)
 {
 	if (radarScreen == nullptr)
 		return;
+	for (auto it = gInsetWindowActiveRadarScreen.begin(); it != gInsetWindowActiveRadarScreen.end();)
+	{
+		if (it->second == radarScreen) it = gInsetWindowActiveRadarScreen.erase(it);
+		else ++it;
+	}
 
 	for (auto it = gInsetWindowRadarScreens.begin(); it != gInsetWindowRadarScreens.end();)
 	{
@@ -1181,6 +1202,7 @@ void RemoveInsetWindowProcHooksForRadar(CSMRRadar* radarScreen)
 
 void RestoreInsetWindowProcHooks()
 {
+	gInsetWindowActiveRadarScreen.clear();
 	for (auto it = gInsetWindowRadarScreens.begin(); it != gInsetWindowRadarScreens.end();)
 	{
 		const HWND hwnd = it->first;
@@ -1202,6 +1224,19 @@ bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd)
 	if (wheelDelta == 0)
 		return false;
 
+	// Prefer the most specific active view under the event, not the first
+	// radar ever opened. Older ASRs can retain the same frame HWND and bounds.
+	HWND target = ::WindowFromPoint(screenPoint);
+	if (target == nullptr) target = sourceHwnd;
+	for (HWND window = target; window != nullptr && ::IsWindow(window); window = ::GetParent(window))
+	{
+		const auto active = gInsetWindowActiveRadarScreen.find(window);
+		if (active == gInsetWindowActiveRadarScreen.end()) continue;
+		CSMRRadar* radar = active->second;
+		return radar != nullptr && !radar->IsShutdownRequested() &&
+			radar->HandleAvisoMouseWheelAtScreenPoint(screenPoint, wheelDelta, sourceHwnd);
+	}
+
 	for (CSMRRadar* radarScreen : RadarScreensOpened)
 	{
 		if (radarScreen == nullptr || radarScreen->IsShutdownRequested())
@@ -1214,10 +1249,10 @@ bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd)
 
 LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
 {
-	if (code >= 0 && IsMouseButtonDownMessage(wParam))
+	if (VsmrRadarInteraction::IsActionableMouseHook(code) && IsMouseButtonDownMessage(wParam))
 		ClearAvisoWheelRoutingState();
 
-	if (code >= 0 && wParam == WM_MOUSEWHEEL && lParam != 0)
+	if (VsmrRadarInteraction::IsActionableMouseHook(code) && wParam == WM_MOUSEWHEEL && lParam != 0)
 	{
 		MOUSEHOOKSTRUCTEX* mouseData = reinterpret_cast<MOUSEHOOKSTRUCTEX*>(lParam);
 		const int wheelDelta = static_cast<short>(HIWORD(mouseData->mouseData));
