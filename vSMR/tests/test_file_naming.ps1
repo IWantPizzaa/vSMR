@@ -18,7 +18,7 @@ foreach ($file in $files) {
     } else {
         '^[a-z][a-z0-9]*(_[a-z0-9]+)*\.[a-z0-9]+$'
     }
-    if ($name -cnotmatch $pattern) { throw "File naming does not match NAMING.md: $file" }
+    if ($name -cnotmatch $pattern) { throw "File naming does not match README.md: $file" }
     ++$checked
 }
 Write-Host "File naming verified: $checked project-owned source and asset files."

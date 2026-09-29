@@ -2,11 +2,11 @@
 
 vSMR is a configurable surface-movement radar plug-in for 32-bit EuroScope. It provides airport surface displays, aircraft tags and symbols, AVISO maps, RIMCAS alerts, native inset windows, CDM data, and Hoppie CPDLC/PDC workflows.
 
-Current source version: **2.0.0** (release preparation). This README describes the current source and bundled data; it does not announce publication of the final package. Public packaging remains blocked by the unresolved entries in the [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.md).
+Current source version: **2.0.0** (release preparation). This README describes the current source and bundled data; it does not announce publication of the final package. Public packaging remains blocked by the unresolved entries in the [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.txt).
 
 > Verify the active airport, profile, AVISO map, runway configuration, and alerts before controlling. Development and validation-only packages are not official releases.
 
-[Documentation](https://github.com/IWantPizzaa/vSMR/wiki) | [Releases](https://github.com/IWantPizzaa/vSMR/releases) | [Changelog](CHANGELOG.md) | [2.0.0 release notes](RELEASE_NOTES.md) | [Report an issue](https://github.com/IWantPizzaa/vSMR/issues)
+[Documentation](https://github.com/IWantPizzaa/vSMR/wiki) | [Releases](https://github.com/IWantPizzaa/vSMR/releases) | [Changelog](CHANGELOG.md) | [Report an issue](https://github.com/IWantPizzaa/vSMR/issues)
 
 ## Highlights
 
@@ -135,7 +135,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tests\run_tests.ps1
 
 Release-input checks enforce matching 2.0.0 versions, the reviewed hashes of all 160 maps, and an update policy that never deletes a bundled airport. LFPG retains the supplied map's 1,468 features plus 89 East arrows and 97 West arrows, independently controlled through the **East Arrows** and **West Arrows** groups. The hash manifest records this post-import restoration.
 
-Publishable artifacts require a clean source commit and verified bundled-asset provenance. Signing is optional; configuring a signing certificate/pin or `-RequireSignature` enforces signed binaries and the matching detached update signature. The packager, binary product versions, and AppVeyor settings target 2.0.0; loader version remains 1.3.0 and runtime ABI remains 1. Five resource/dependency groups still need provenance verification, including the compiled bridge client shim; local validation packages are not distributable releases. See the [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.md). Keep the changelog entry Unreleased and do not publish the tag or stable feed until those gates are resolved.
+Publishable artifacts require a clean source commit and verified bundled-asset provenance. Signing is optional; configuring a signing certificate/pin or `-RequireSignature` enforces signed binaries and the matching detached update signature. The packager, binary product versions, and AppVeyor settings target 2.0.0; loader version remains 1.3.0 and runtime ABI remains 1. Five resource/dependency groups still need provenance verification, including the compiled bridge client shim; local validation packages are not distributable releases. See the [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.txt). Keep the changelog entry Unreleased and do not publish the tag or stable feed until those gates are resolved.
 
 ### Per-file update feed
 
@@ -165,7 +165,7 @@ Commit/publish the payload before the channel manifest. The manifest contains `s
 
 ### Generated files and cleanup
 
-File naming conventions, including source-to-install compatibility aliases, are documented in [NAMING.md](NAMING.md).
+Project-owned C++/C#/resource files use PascalCase (`Owner.Feature.cpp` for split units); JavaScript/CSS use kebab-case; scripts, source JSON, sounds and cursors use descriptive snake_case. ICAO identifiers, third-party files, license notices and public binary names retain their established names. `vSMR/DistributionAssets.props` maps renamed source assets to stable installed filenames, preserving updater and migration compatibility. Update includes, project files, generators and tests together when renaming files; `test_file_naming.ps1` checks these conventions.
 
 Build outputs (`Release/`, `Debug/`, `bin/`, `obj/`), `.vs/`, `.tmp/`, `artifacts/` and Python caches are not source files. Retain any release packages or private symbols you still need outside the checkout before removing generated outputs. Close Visual Studio and EuroScope first, and remove temporary Git worktrees with `git worktree remove` rather than deleting their directories directly. Keep `vSMR/data/`, generated web bundles and `default.json`: these are tracked application inputs validated by the build.
 
