@@ -25,7 +25,6 @@ namespace
 }
 
 void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area) {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnFunctionCall",
 		reinterpret_cast<std::uintptr_t>(this));

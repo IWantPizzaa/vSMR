@@ -5,7 +5,6 @@
 
 void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnRadarTargetPositionUpdate",
 		reinterpret_cast<std::uintptr_t>(this));
@@ -214,7 +213,6 @@ std::string CSMRRadar::GetBottomLine(const char * Callsign) {
 
 bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnCompileCommand",
 		reinterpret_cast<std::uintptr_t>(this));
@@ -237,7 +235,6 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 
 void CSMRRadar::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnFlightPlanDisconnect",
 		reinterpret_cast<std::uintptr_t>(this));

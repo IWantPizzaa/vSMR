@@ -1144,7 +1144,6 @@ std::string CSMRRadar::setActiveAirport(
 
 void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnAsrContentLoaded",
 		reinterpret_cast<std::uintptr_t>(this));
@@ -1247,7 +1246,6 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 
 void CSMRRadar::OnAsrContentToBeSaved()
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnAsrContentToBeSaved",
 		reinterpret_cast<std::uintptr_t>(this));

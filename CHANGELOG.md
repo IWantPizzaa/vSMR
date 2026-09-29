@@ -2,10 +2,6 @@
 
 ## [2.0.0] - Unreleased
 
-- Updated Git line-ending rules for renamed profile/aircraft assets and the RDF patch, keeping defaults fingerprints stable across Windows checkouts.
-
-- Audited EuroScope 3.2.3.2/3.2.9/3.2.13 compatibility: isolated all 25 SDK callbacks with vSMR's MFC module state, and made background-bitmap/null-DC refreshes return before accessing shared radar/UI state. Added callback-boundary, ground-state-alias and optional SDK binary/interface checks. Direct binary checks passed for 3.2.3.2 and 3.2.13; 3.2.9 binaries and live-session validation remain pending (see README).
-
 ### Control Center and source maintenance
 
 - Added Select All to the profile-color, tag-definition, AVISO geometry and text lists; group contents also expose Select All for the currently filtered items.

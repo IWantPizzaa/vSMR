@@ -192,7 +192,6 @@ int CSMRRadar::getIntFromCategory(std::string category)
 
 void CSMRRadar::OnAsrContentToBeClosed(void)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnAsrContentToBeClosed",
 		reinterpret_cast<std::uintptr_t>(this));
