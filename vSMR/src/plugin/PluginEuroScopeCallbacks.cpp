@@ -17,8 +17,8 @@
 #include <string>
 
 bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnCompileCommand");
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return false;
 	return VsmrPluginCommandHandler::Handle(
@@ -34,7 +34,6 @@ void CSMRPlugin::OnFunctionCall(
 	POINT Pt,
 	RECT Area)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFunctionCall");
 	(void)Pt;
 	if (Logger::is_verbose_mode())
@@ -49,7 +48,6 @@ void CSMRPlugin::OnFunctionCall(
 
 void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFlightPlanDisconnect");
 	Logger::info(std::string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
@@ -73,7 +71,6 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 
 void CSMRPlugin::OnFlightPlanControllerAssignedDataUpdate(CFlightPlan FlightPlan, int DataType)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFlightPlanControllerAssignedDataUpdate");
 	// The ground states EuroScope has no status for travel in the assigned speed,
 	// so a speed update has to repaint the tags just like a scratchpad update, and
@@ -102,7 +99,6 @@ void CSMRPlugin::OnFlightPlanControllerAssignedDataUpdate(CFlightPlan FlightPlan
 
 void CSMRPlugin::OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFlightPlanFlightPlanDataUpdate");
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
@@ -125,7 +121,6 @@ void CSMRPlugin::OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan)
 
 CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnRadarScreenCreated");
 	(void)CanBeSaved;
 	(void)CanBeCreated;

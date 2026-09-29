@@ -420,7 +420,6 @@ namespace
 
 void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	if (!OwnsOverlayPointer(this, Pt))
 	{
 		RestoreInsetCursor(IsInsetsOnly());
@@ -470,7 +469,6 @@ void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId,
 
 void CSMRRadar::OnButtonUpScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	if (!OwnsOverlayPointer(this, Pt))
 	{
 		RestoreInsetCursor(IsInsetsOnly());
@@ -497,7 +495,6 @@ void CSMRRadar::OnButtonUpScreenObject(int ObjectType, const char * sObjectId, P
 }
 
 void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, bool Released) {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	// Release must end dragging even when the target disappeared or routing changed.
 	if (Released) TagBeingDragged.clear();
 	VsmrCrashRuntime::RecordEuroScopeCallback(
@@ -754,7 +751,6 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 
 void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	if (!OwnsOverlayPointer(this, Pt))
 	{
 		RestoreInsetCursor(IsInsetsOnly());
@@ -1123,7 +1119,6 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 
 void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	if (!OwnsOverlayPointer(this, Pt))
 	{
 		RestoreInsetCursor(IsInsetsOnly());
