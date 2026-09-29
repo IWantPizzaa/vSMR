@@ -94,7 +94,17 @@ VsmrAviso::AvisoRasterPipeline::QueueStatus VsmrAviso::AvisoRasterPipeline::Queu
 		{
 			request.requestId = ++nextRequestId_;
 			request.performanceQueuedAtMilliseconds = MonotonicMilliseconds();
-			if (request.debounceMilliseconds == 0 && cacheAvailable)
+			// A wheel/pan/resize request already replaces the pending request and
+			// cancels obsolete in-flight work. Waiting for another quiet period
+			// here adds a full frame of latency to every zoom step and repeatedly
+			// postpones builds during continuous input. Start view-only changes
+			// immediately; retain explicit delays and the content-change debounce.
+			const bool viewOnlyChange = lastRequestKey_.has_value() &&
+				lastRequestKey_->path == request.path &&
+				lastRequestKey_->colorPalette == request.colorPalette &&
+				lastRequestKey_->groupGeneration == request.groupGeneration &&
+				lastRequestKey_->displayScale == request.displayScale;
+			if (request.debounceMilliseconds == 0 && cacheAvailable && !viewOnlyChange)
 				request.debounceMilliseconds = 24;
 			request.cancellationToken = cancellationToken_;
 
