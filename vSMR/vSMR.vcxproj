@@ -460,7 +460,6 @@
     <None Include="src\control_center\web\styles\shared-theme.css" />
     <None Include="src\control_center\web\styles\editor-workflows.css" />
     <None Include="src\control_center\web\styles\responsive-polish.css" />
-    <None Include="src\control_center\web\styles\README.md" />
     <None Include="resources\cursors\arrow.cur" />
     <None Include="resources\cursors\move_tag.cur" />
     <None Include="resources\cursors\move_window.cur" />
