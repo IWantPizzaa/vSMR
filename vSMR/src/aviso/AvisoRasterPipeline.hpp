@@ -64,8 +64,9 @@ namespace VsmrAviso
 		AvisoRasterPipeline(AvisoRasterPipeline&&) = delete;
 		AvisoRasterPipeline& operator=(AvisoRasterPipeline&&) = delete;
 
-		// cacheAvailable enables the existing short debounce while a previous
-		// raster can remain visible. Stop is terminal and joins the worker.
+		// Cached content changes use a short debounce; view-only pan/zoom/resize
+		// changes start immediately. Explicit request delays remain supported.
+		// Stop is terminal and joins the worker.
 		QueueStatus Queue(Request request, bool cacheAvailable);
 		void InvalidateRequests();
 		void Stop();

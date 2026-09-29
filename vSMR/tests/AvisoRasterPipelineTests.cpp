@@ -289,6 +289,64 @@ namespace
 		pipeline.Stop();
 	}
 
+	void TestInteractiveZoomScheduling(Failures& failures)
+	{
+		TestEvent completed;
+		std::atomic<int> refreshes{0};
+		std::atomic<std::uint64_t> observedDelay{0};
+		Pipeline::Callbacks callbacks;
+		callbacks.render = [&](const Pipeline::Request& request) {
+			observedDelay.store(request.debounceMilliseconds);
+			return MakeResult(request);
+		};
+		callbacks.requestRefresh = [&]() { ++refreshes; completed.Notify(); };
+		Pipeline pipeline(std::move(callbacks), "interactive zoom scheduling");
+		auto request = MakeRequest("LFPG");
+		const double angle = 4.5 * 3.14159265358979323846 / 180.0;
+		auto rotate = [&](float x, float y) {
+			return Gdiplus::PointF(static_cast<float>(x * std::cos(angle) - y * std::sin(angle)),
+				static_cast<float>(x * std::sin(angle) + y * std::cos(angle)));
+		};
+		request.projectedTopRight = rotate(64, 0);
+		request.projectedBottomLeft = rotate(0, 48);
+		request.projectedBottomRight = rotate(64, 48);
+		int expectedRefreshes = 0;
+		auto render = [&](bool cached, std::uint64_t expectedDelay, const char* message) {
+			++expectedRefreshes;
+			Check(pipeline.Queue(request, cached) == Pipeline::QueueStatus::Queued, message, failures);
+			Check(completed.Wait([&]() { return refreshes.load() >= expectedRefreshes; }),
+				"Interactive scheduling request completes", failures);
+			Check(pipeline.TakeCompleted() != nullptr && observedDelay.load() == expectedDelay, message, failures);
+		};
+		render(false, 0, "Initial AVISO has no artificial render delay");
+		for (int i = 0; i < 8; ++i) {
+			request.displayMaxLongitude -= 0.1;
+			request.displayMaxLatitude -= 0.1;
+			request.labelZoomLevel = i;
+			render(true, 0, "Repeated zoom steps at 4.5 degrees start immediately, including label-level changes");
+		}
+		request.displayMinLongitude += 0.1;
+		request.displayMaxLongitude += 0.1;
+		render(true, 0, "Panning an existing AVISO starts immediately");
+		request.rasterWidth += 20;
+		render(true, 0, "Inset resize starts immediately");
+		request.colorPalette = "real";
+		render(true, 24, "Palette changes retain the content debounce");
+		++request.groupGeneration;
+		render(true, 24, "Group changes retain the content debounce");
+		request.displayScale = 2.0;
+		render(true, 24, "Resolution changes retain the content debounce");
+		request.path = "LFBO";
+		render(true, 24, "Airport changes retain the content debounce");
+		request.displayMaxLongitude += 0.2;
+		request.debounceMilliseconds = 37;
+		render(true, 37, "An explicit delay is not bypassed by interactive scheduling");
+		pipeline.InvalidateRequests();
+		request.debounceMilliseconds = 0;
+		render(true, 24, "Invalidation clears the previous interactive context");
+		pipeline.Stop();
+	}
+
 	void TestSupersession(Failures& failures)
 	{
 		TestEvent completed;
@@ -609,6 +667,7 @@ std::vector<std::string> RunAvisoRasterPipelineTests()
 	Check(VsmrAviso::NativeResolutionOverscan(0, 2160, 18000000) == 0.0,
 		"Empty viewports cannot produce invalid overscan", failures);
 	TestCompletionAndCoalescing(failures);
+	TestInteractiveZoomScheduling(failures);
 	TestSupersession(failures);
 	TestInvalidation(failures);
 	TestTransientFailureRetry(failures);

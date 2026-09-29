@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- Removed the extra debounce delay on AVISO pan/zoom/resize rebuilds in the shared main/inset renderer. Pending requests still coalesce and obsolete work is cancelled; map quality, polygon-corner preservation and explicit/content-change delays are unchanged.
+
 - Added opt-in zoom performance summaries to normal logging: per-window redraw peaks and frame gaps, wheel routing and message age, plus main/inset cache counters and background rebuild timings. Rendering and zoom behavior are unchanged.
 
 ### Control Center and source maintenance
