@@ -385,6 +385,8 @@
       Boolean(document.querySelector(".icon-settings-stack")),
       "Icons use a dedicated preview column and shared settings cards");
     const symbolScaleRange = document.querySelector("#targetSymbolScale");
+    expect(document.querySelector('#targetIconStyle option[value="diamond"]')?.textContent === "Diamond",
+      "Diamond icon style is capitalized without changing its stored value");
     expect(symbolScaleRange?.min === "0.25" && symbolScaleRange?.max === "5",
       "target symbol scaling exposes the complete 0.25× to 5.00× range");
     const iconPreviewStage = document.querySelector(".icon-preview-stage");

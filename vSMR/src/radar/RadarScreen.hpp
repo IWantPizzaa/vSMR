@@ -78,7 +78,9 @@ public:
 	using DisplayModeStatusVisibility = VsmrRadarTypes::DisplayModeStatusVisibility;
 	using DisplayModeSettings = VsmrRadarTypes::DisplayModeSettings;
 
-	CSMRRadar();
+	explicit CSMRRadar(bool insetsOnly = false, bool needRadarContent = false);
+	bool IsInsetsOnly() const noexcept { return InsetsOnly; }
+	std::string ShowInsetHostMenu();
 	virtual ~CSMRRadar();
 	static bool CanUnloadRuntimeCallbacks() noexcept;
 	POINT ConvertCoordFromPositionToPixel(CPosition position);
@@ -302,6 +304,9 @@ private:
 	std::map<int, std::unique_ptr<Gdiplus::Font>> customFonts;
 	std::map<int, std::unique_ptr<CInsetWindow>> appWindows;
 	ULONG_PTR m_gdiplusToken = 0;
+	const bool InsetsOnly;
+	const bool HostNeedsRadarContent;
+	unsigned int InsetHostRefreshPhasesSeen = 0;
 	int currentFontSize = 1;
 
 	std::map<std::string, CPosition> AirportPositions;

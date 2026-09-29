@@ -1817,6 +1817,10 @@ input[type="range"]:disabled {
   pointer-events: none;
 }
 
+.icon-preview-trail.diamond {
+  gap: 1px;
+}
+
 .icon-preview-trail i {
   display: block;
   box-sizing: border-box;

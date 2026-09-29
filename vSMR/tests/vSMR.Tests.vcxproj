@@ -129,6 +129,7 @@
     <ClInclude Include="ConfigurationRegressionTests.hpp" />
     <ClInclude Include="PluginBridgeTests.hpp" />
     <ClInclude Include="SharedRenderingTests.hpp" />
+    <ClInclude Include="..\src\radar\InsetHostPolicy.hpp" />
     <ClInclude Include="TagColorRuleTests.hpp" />
     <ClInclude Include="UpdaterUrlPolicyTests.hpp" />
     <ClInclude Include="..\src\aircraft\GroundState.hpp" />

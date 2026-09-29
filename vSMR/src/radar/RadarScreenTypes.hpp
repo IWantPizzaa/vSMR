@@ -168,6 +168,7 @@ namespace VsmrRadarTypes
 		int rasterHeight = 0;
 		double rasterScale = 1.0;
 		double displayScale = 1.0;
+		int labelZoomLevel = -1; // -1 retains the main viewport's zoom policy.
 		double displayMinLongitude = 0.0;
 		double displayMinLatitude = 0.0;
 		double displayMaxLongitude = 0.0;
@@ -199,6 +200,7 @@ namespace VsmrRadarTypes
 		unsigned long long groupGeneration = 0;
 		std::string colorPalette = "dark";
 		HBITMAP bitmap = nullptr;
+		int labelZoomLevel = -1;
 		std::string path;
 		int rasterWidth = 0;
 		int rasterHeight = 0;

@@ -460,6 +460,7 @@ VsmrAviso::AvisoRasterPipeline::MakeRequestKey(const Request& request)
 	key.colorPalette = request.colorPalette;
 	key.groupGeneration = request.groupGeneration;
 	key.displayScale = request.displayScale;
+	key.labelZoomLevel = request.labelZoomLevel;
 	key.rasterWidth = request.rasterWidth;
 	key.rasterHeight = request.rasterHeight;
 	key.minLongitude = request.displayMinLongitude;
@@ -490,6 +491,7 @@ bool VsmrAviso::AvisoRasterPipeline::RequestsMatch(
 		previous.colorPalette == request.colorPalette &&
 		previous.groupGeneration == request.groupGeneration &&
 		previous.displayScale == request.displayScale &&
+		previous.labelZoomLevel == request.labelZoomLevel &&
 		std::abs(previous.rasterWidth - request.rasterWidth) <= 2 &&
 		std::abs(previous.rasterHeight - request.rasterHeight) <= 2 &&
 		WithinTolerance(previous.minLongitude, request.displayMinLongitude, longitudeTolerance) &&

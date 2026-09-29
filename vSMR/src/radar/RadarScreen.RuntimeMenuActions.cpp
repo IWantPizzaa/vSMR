@@ -520,6 +520,30 @@ void CSMRRadar::CloseRuntimeMenuPopup()
 	RequestRefresh();
 }
 
+std::string CSMRRadar::ShowInsetHostMenu()
+{
+	if (!IsInsetsOnly())
+		return "Not a CoFrance inset host.";
+	RuntimeMenuMinimized = false;
+	RuntimeMenuPositionInitialized = false;
+	ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;
+	RuntimeMenuPopupScrollOffset = 0;
+	std::string phases;
+	for (unsigned int phase = 0; phase <= 3; ++phase)
+	{
+		if ((InsetHostRefreshPhasesSeen & (1u << phase)) != 0)
+			phases += (phases.empty() ? "" : ",") + std::to_string(phase);
+	}
+	const CRect bounds(GetRadarArea());
+	const std::string status = "CoFrance inset host attached; received phases=" +
+		(phases.empty() ? "none" : phases) + "; radar area=" +
+		std::to_string(bounds.Width()) + "x" + std::to_string(bounds.Height()) +
+		". vSMR menu expanded and recentered.";
+	Logger::info(status);
+	RequestRefresh();
+	return status;
+}
+
 void CSMRRadar::LoadRuntimeMenuPositionFromAsr()
 {
 	const char* minimizedText = GetDataFromAsr("RuntimeMenuMinimized");

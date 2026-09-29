@@ -2,6 +2,7 @@
 #include "platform/windows/ResourceIds.h"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
+#include "radar/InsetHostPolicy.hpp"
 #include "insets/InsetWindow.hpp"
 #include "aircraft/GroundState.hpp"
 #include "control_center/ControlCenterDialog.hpp"
@@ -53,7 +54,9 @@ struct VsmrRadarInteractionAccess
 
 namespace
 {
-	bool gInsetCursorOverride = false;
+	VsmrRadarInteraction::InsetCursorOverride gInsetCursorOverride;
+	HCURSOR gPreInsetSmrCursor = nullptr;
+	bool gPreInsetStandardCursor = true;
 
 	bool IsAppWindowObjectType(int objectType)
 	{
@@ -134,16 +137,28 @@ namespace
 		return CInsetWindow::ResizeRegion::None;
 	}
 
+	void ApplyInsetCursor(HCURSOR cursor)
+	{
+		if (cursor == nullptr) return;
+		if (!gInsetCursorOverride.Active())
+		{
+			gPreInsetSmrCursor = smrCursor;
+			gPreInsetStandardCursor = standardCursor;
+		}
+		HCURSOR previous = ::GetCursor();
+		if (previous == nullptr) previous = ::LoadCursor(nullptr, IDC_ARROW);
+		gInsetCursorOverride.Apply(previous, cursor);
+		ApplyRadarCursor(cursor, false);
+	}
+
 	void ApplyResizeCursor(CInsetWindow::ResizeRegion region)
 	{
-		ApplyRadarCursor(ResizeCursorForRegion(region), false);
-		gInsetCursorOverride = true;
+		ApplyInsetCursor(ResizeCursorForRegion(region));
 	}
 
 	void ApplyMoveCursor()
 	{
-		ApplyRadarCursor(::LoadCursor(nullptr, IDC_SIZEALL), false);
-		gInsetCursorOverride = true;
+		ApplyInsetCursor(::LoadCursor(nullptr, IDC_SIZEALL));
 	}
 
 	void RestoreRadarCursor()
@@ -153,17 +168,27 @@ namespace
 		ApplyRadarCursor(LoadDefaultRadarCursor(), true);
 	}
 
-	void RestoreInsetCursor()
+	void RestoreInsetCursor(bool preserveHostCursor = false)
 	{
-		if (!gInsetCursorOverride)
+		if (!gInsetCursorOverride.Active())
 			return;
-		gInsetCursorOverride = false;
+		const HCURSOR restore = gInsetCursorOverride.Release(::GetCursor());
+		if (preserveHostCursor)
+		{
+			// CoFrance may leave the current cursor unchanged in WM_SETCURSOR.
+			// Restore the borrowed host cursor, but never overwrite a new cursor
+			// that the host has already selected itself.
+			smrCursor = gPreInsetSmrCursor;
+			standardCursor = gPreInsetStandardCursor;
+			if (restore != nullptr) ::SetCursor(restore);
+			return;
+		}
 		RestoreRadarCursor();
 	}
 
 	bool IsPointInMainRadarArea(CSMRRadar* radar, POINT pt)
 	{
-		if (radar == nullptr)
+		if (radar == nullptr || radar->IsInsetsOnly())
 			return false;
 
 		CRect radarArea = radar->ResolveMainAvisoRenderArea();
@@ -229,7 +254,7 @@ namespace
 		return false;
 	}
 
-	CInsetWindow* TopmostVisibleInsetFrameAtPoint(CSMRRadar* radar, POINT pt, int inflation = 0)
+	CInsetWindow* TopmostVisibleInsetFrameAtPoint(CSMRRadar* radar, POINT pt, bool includeResizeHandles = false)
 	{
 		if (radar == nullptr)
 			return nullptr;
@@ -240,9 +265,8 @@ namespace
 				return false;
 			CRect frame = appWindow->GetWindowFrameRect();
 			frame.NormalizeRect();
-			if (inflation > 0)
-				frame.InflateRect(inflation, inflation);
-			return frame.PtInRect(pt) != FALSE;
+			return frame.PtInRect(pt) != FALSE ||
+				(includeResizeHandles && appWindow->HitTestResize(pt) != CInsetWindow::ResizeRegion::None);
 		};
 		auto& windows = VsmrRadarInteractionAccess::Windows(*radar);
 		for (auto it = windows.rbegin(); it != windows.rend(); ++it)
@@ -380,10 +404,27 @@ namespace
 		}
 		return endedPan;
 	}
+
+	bool OwnsOverlayPointer(CSMRRadar* radar, POINT point)
+	{
+		if (!radar->IsInsetsOnly() || IsPointInRuntimeMenuOverlay(radar, point) ||
+			TopmostVisibleInsetFrameAtPoint(radar, point, true) != nullptr ||
+			ActiveInsetWindowInteraction(radar) != nullptr || ActiveAvisoPanViewport(radar) != nullptr)
+			return true;
+		for (const auto& entry : VsmrRadarInteractionAccess::Windows(*radar))
+			if (entry.second && IsAppWindowVisible(radar, entry.first) && !entry.second->m_TagBeingDragged.empty())
+				return true;
+		return false;
+	}
 }
 
 void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
 {
+	if (!OwnsOverlayPointer(this, Pt))
+	{
+		RestoreInsetCursor(IsInsetsOnly());
+		return;
+	}
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnButtonDownScreenObject",
 		reinterpret_cast<std::uintptr_t>(this));
@@ -428,6 +469,11 @@ void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId,
 
 void CSMRRadar::OnButtonUpScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
 {
+	if (!OwnsOverlayPointer(this, Pt))
+	{
+		RestoreInsetCursor(IsInsetsOnly());
+		return;
+	}
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnButtonUpScreenObject",
 		reinterpret_cast<std::uintptr_t>(this));
@@ -463,6 +509,12 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 	}
 	const bool hasObjectId = (sObjectId != nullptr && sObjectId[0] != '\0');
 	const char* objectId = hasObjectId ? sObjectId : "";
+	// A first drag callback can already be outside the frame/resize handle.
+	// Trust only a visible inset's registered chrome object in that case.
+	const bool ownsChromeDrag = IsAppWindowObjectType(ObjectType) &&
+		IsAppWindowVisible(this, ObjectType - APPWINDOW_BASE) &&
+		VsmrRadar::IsInsetChromeDrag(objectId);
+	if (!ownsChromeDrag && !OwnsOverlayPointer(this, Pt)) return;
 	auto isObjectId = [&](const char* expected) -> bool
 	{
 		return expected != nullptr && strcmp(objectId, expected) == 0;
@@ -525,7 +577,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 			appWindow->OnMoveScreenObject(sObjectId, Pt, Area, Released, &avisoLayoutBounds);
 			if (Released)
 			{
-				RestoreInsetCursor();
+				RestoreInsetCursor(IsInsetsOnly());
 				SaveInsetStateToAsrForAirport(getActiveAirport());
 			}
 			else if (resizeRegion != CInsetWindow::ResizeRegion::None)
@@ -699,6 +751,11 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 
 void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area)
 {
+	if (!OwnsOverlayPointer(this, Pt))
+	{
+		RestoreInsetCursor(IsInsetsOnly());
+		return;
+	}
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnOverScreenObject",
 		reinterpret_cast<std::uintptr_t>(this));
@@ -740,16 +797,16 @@ void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT
 			else if (appWindow->HitTestTitleBar(Pt))
 				ApplyMoveCursor();
 			else
-				RestoreInsetCursor();
+				RestoreInsetCursor(IsInsetsOnly());
 		}
 		else
 		{
-			RestoreInsetCursor();
+			RestoreInsetCursor(IsInsetsOnly());
 		}
 	}
 	else
 	{
-		RestoreInsetCursor();
+		RestoreInsetCursor(IsInsetsOnly());
 	}
 	CInsetWindow* activePanViewport = ActiveAvisoPanViewport(this);
 	if (activePanViewport != nullptr)
@@ -776,6 +833,8 @@ void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT
 
 bool CSMRRadar::CanHoverTags(POINT point, const CInsetWindow* inset)
 {
+	if (IsInsetsOnly() && inset == nullptr)
+		return false;
 	if (!CRect(GetRadarArea()).PtInRect(point) || IsPointInRuntimeMenuOverlay(this, point))
 		return false;
 	const CInsetWindow* topmost = TopmostVisibleInsetFrameAtPoint(this, point);
@@ -808,14 +867,14 @@ bool CSMRRadar::HandleInsetSetCursor(HWND hwnd)
 {
 	if (hwnd == nullptr || !::IsWindow(hwnd) || !HasInsetRenderedInWindow(this, hwnd))
 	{
-		RestoreInsetCursor();
+		RestoreInsetCursor(IsInsetsOnly());
 		return false;
 	}
 
 	POINT screenPoint = {};
 	if (!::GetCursorPos(&screenPoint))
 	{
-		RestoreInsetCursor();
+		RestoreInsetCursor(IsInsetsOnly());
 		return false;
 	}
 
@@ -823,6 +882,9 @@ bool CSMRRadar::HandleInsetSetCursor(HWND hwnd)
 	{
 		if (insetWindow == nullptr)
 			return false;
+		if (IsInsetsOnly() && TagHoverPointer.Window() != nullptr)
+			return TagHoverPointer.Resolve(screenPoint, ::WindowFromPoint(screenPoint),
+				::GetForegroundWindow(), clientPoint);
 		HWND renderWindow = insetWindow->m_AvisoRenderWindow;
 		if (renderWindow == nullptr || !::IsWindow(renderWindow))
 			renderWindow = hwnd;
@@ -858,7 +920,7 @@ bool CSMRRadar::HandleInsetSetCursor(HWND hwnd)
 		{
 			activeWindow->CancelWindowInteraction();
 		}
-		RestoreInsetCursor();
+		RestoreInsetCursor(IsInsetsOnly());
 		SaveInsetStateToAsrForAirport(getActiveAirport());
 		MarkPerformanceRefreshReason(
 			VsmrPerformance::FrameRefreshReason::InsetMoveResize);
@@ -889,7 +951,7 @@ bool CSMRRadar::HandleInsetSetCursor(HWND hwnd)
 		frame.NormalizeRect();
 		if (frame.PtInRect(clientPoint))
 		{
-			RestoreInsetCursor();
+			RestoreInsetCursor(IsInsetsOnly());
 			return 2;
 		}
 		return 0;
@@ -916,7 +978,7 @@ bool CSMRRadar::HandleInsetSetCursor(HWND hwnd)
 			return result == 1;
 	}
 
-	RestoreInsetCursor();
+	RestoreInsetCursor(IsInsetsOnly());
 	return false;
 }
 
@@ -934,7 +996,7 @@ void CSMRRadar::CancelInsetWindowInteractions()
 	}
 	// EuroScope owns capture while moving its screen objects. Never release a
 	// capture that may belong to the host or another plug-in from this cleanup.
-	RestoreInsetCursor();
+	RestoreInsetCursor(IsInsetsOnly());
 	if (changed)
 	{
 		SaveInsetStateToAsrForAirport(getActiveAirport());
@@ -993,7 +1055,17 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 
 		POINT insetPoint = {};
 		bool pointMapped = false;
-		for (auto it = appWindows.rbegin(); it != appWindows.rend(); ++it)
+		if (IsInsetsOnly() && TagHoverPointer.Window() != nullptr)
+		{
+			// A buffered DC has no HWND; GetActiveWindow is the frame, not
+			// necessarily the radar child. Reuse the SDK-calibrated origin.
+			if (!HasInsetRenderedInWindow(this, targetWindow))
+				return false;
+			if (!TagHoverPointer.Resolve(point, targetWindow, ::GetForegroundWindow(), insetPoint))
+				return false;
+			pointMapped = true;
+		}
+		for (auto it = appWindows.rbegin(); !pointMapped && it != appWindows.rend(); ++it)
 		{
 			const int appWindowId = it->first;
 			CInsetWindow* appWindow = it->second.get();
@@ -1047,6 +1119,11 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 
 void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
 {
+	if (!OwnsOverlayPointer(this, Pt))
+	{
+		RestoreInsetCursor(IsInsetsOnly());
+		return;
+	}
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnClickScreenObject",
 		reinterpret_cast<std::uintptr_t>(this));

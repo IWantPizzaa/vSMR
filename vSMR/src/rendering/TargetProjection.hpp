@@ -3,6 +3,7 @@
 #include "scene/RadarScene.hpp"
 #include <Windows.h>
 #include <GdiPlus.h>
+#include <cmath>
 
 namespace VsmrTargetRendering
 {
@@ -71,6 +72,26 @@ namespace VsmrTargetRendering
 			trail.reserve(target.trailPositions.size());
 			for (std::size_t i = 0; i < target.trailPositions.size(); ++i)
 			{
+				if (target.style.icon == VsmrScene::IconStyle::Diamond)
+				{
+					// Keep the configured dot count, but sample the recent track at
+					// quarter intervals. Interpolate along each segment, not toward
+					// the current position, so turns retain their actual track shape.
+					constexpr std::size_t samplesPerHistoryInterval = 4;
+					const std::size_t segment = i / samplesPerHistoryInterval;
+					const auto& from = segment == 0 ? target.position : target.trailPositions[segment - 1];
+					const auto& to = target.trailPositions[segment];
+					if (!from.valid || !to.valid) break;
+					const auto start = project(from);
+					const auto end = project(to);
+					const double fraction = static_cast<double>(i % samplesPerHistoryInterval + 1) /
+						static_cast<double>(samplesPerHistoryInterval);
+					const POINT point = {
+						static_cast<LONG>(std::lround(start.x + (static_cast<double>(end.x) - start.x) * fraction)),
+						static_cast<LONG>(std::lround(start.y + (static_cast<double>(end.y) - start.y) * fraction)) };
+					if (visible(point, 7)) trail.push_back({ point, i });
+					continue;
+				}
 				if (!target.trailPositions[i].valid) continue;
 				const auto point = project(target.trailPositions[i]);
 				if (visible(point, 7)) trail.push_back({ point, i });

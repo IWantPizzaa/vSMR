@@ -84,6 +84,7 @@ namespace VsmrAviso
 			std::string colorPalette = "dark";
 			std::uint64_t groupGeneration = 0;
 			double displayScale = 1.0;
+			int labelZoomLevel = -1;
 			int rasterWidth = 0;
 			int rasterHeight = 0;
 			double minLongitude = 0.0;

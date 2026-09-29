@@ -1,7 +1,7 @@
 #pragma once
 
 inline constexpr char VsmrPluginName[] = "vSMR";
-inline constexpr char VsmrPluginVersion[] = "v2.0.0-beta.6";
+inline constexpr char VsmrPluginVersion[] = "v2.0.0";
 inline constexpr char VsmrPluginDeveloper[] =
 	"Mathias Derelle, Pierre Ferran, Even Rognlien, "
 	"Lionel Bischof, Daniel Lange, Juha Holopainen, Keanu Czirjak";
