@@ -311,6 +311,7 @@
     <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp" />
     <ClInclude Include="src\datalink\DatalinkDialog.hpp" />
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp" />
+    <ClInclude Include="src\diagnostics\ZoomDiagnostics.hpp" />
     <ClInclude Include="src\integrations\CdmBridgeClient.hpp" />
     <ClInclude Include="src\integrations\CdmBridgeData.hpp" />
     <ClInclude Include="src\integrations\PluginBridgeClient.hpp" />

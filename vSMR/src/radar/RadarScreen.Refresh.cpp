@@ -1079,6 +1079,17 @@ void CSMRRadar::RecordRefreshPerformance(
 	}
 	performanceFrame.refreshReasonMask = performance.refreshReasonMask;
 	PerformanceDiagnostics.RecordFrame(performanceFrame);
+	// Capture every frame in memory; format/write only once per two-second window.
+	// Frame gaps include host scheduling/idle time, not just vSMR drawing time.
+	try
+	{
+		const auto zoom = ZoomTimings.RecordFrame(performanceFrame,
+			Logger::ENABLED.load(std::memory_order_relaxed));
+		if (zoom)
+			Logger::info(VsmrPerformance::FormatZoomDiagnostics(*zoom, GetPerformanceSnapshot(2, 0)) +
+				" view=" + std::to_string(reinterpret_cast<std::uintptr_t>(this)));
+	}
+	catch (...) { /* Optional diagnostics must not interrupt rendering. */ }
 	SamplePerformanceResourcesIfDue();
 	const unsigned long perfNowTick = ::GetTickCount();
 	if (PerfLastLogTick == 0 || perfNowTick - PerfLastLogTick >= 2000)
