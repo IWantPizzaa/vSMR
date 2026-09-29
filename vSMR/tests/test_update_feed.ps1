@@ -69,6 +69,21 @@ try {
         & $generator -Phase Manifest -FeedDirectory $fixture -ContentCommit $script:commit
         throw 'Promoted a validation payload to a publishable manifest.'
     } catch { if ($_.Exception.Message -notlike 'A validation-only payload cannot*') { throw } }
+    # Stable product versions must select the stable channel automatically,
+    # while keeping local validation artifacts impossible to publish by name.
+    Write-Fixture 'payload/vSMR_Data/default.json' $original
+    $entry.sha256 = (Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant()
+    $entry.size = [long](Get-Item $path).Length
+    $script:record.version = '2.0.0'
+    Save-Record
+    Generate
+    $stablePath = Join-Path $fixture 'stable/version.validation-only.json'
+    $stable = Get-Content -LiteralPath $stablePath -Raw | ConvertFrom-Json
+    if ($stable.version -ne '2.0.0' -or $stable.content_commit -ne $script:commit -or
+        $stable.files.'vSMR_Data/default.json'.sha256 -ne $entry.sha256 -or
+        (Test-Path (Join-Path $fixture 'stable/version.json'))) {
+        throw 'Incorrect stable-channel contract or validation-only isolation.'
+    }
     Write-Fixture 'invalid-build/vSMR.dll' 'This is not a compiled DLL.'
     try {
         & $generator -Phase Prepare -RepositoryRoot $RepositoryRoot -BuildOutputDirectory (Join-Path $fixture 'invalid-build') `

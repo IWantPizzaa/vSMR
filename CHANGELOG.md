@@ -2,6 +2,9 @@
 
 ## [2.0.0] - Unreleased
 
+Release metadata targets 2.0.0; publication is pending the outstanding resource
+and dependency permissions in `vSMR/data/Licenses/ASSET_PROVENANCE.md`.
+
 ### Added
 
 - Added vSMR inset hosting on geo-referenced CoFrance views, with an expanded runtime rail, independent AVISO/SRW/METAR/timer windows and host-main-map rendering/preset isolation. Custom displays no longer depend on native TAG/list rendering phases; `.smr insets` restores the rail and reports host/refresh diagnostics.
