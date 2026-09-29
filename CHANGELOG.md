@@ -6,10 +6,10 @@
 
 - Added Select All to the profile-color, tag-definition, AVISO geometry and text lists; group contents also expose Select All for the currently filtered items.
 - Added confirmed, section-scoped resets for selected colors, tag definitions, AVISO styles, icon/trail options, tag font/layout, color rules and alert options. Other sections, EuroScope runway assignments and manual runway closures are preserved; custom profiles fall back to the bundled Default profile.
-- Harmonized inconsistent C++/resource, browser-test and bundled-source asset filenames. A shared distribution mapping preserves installed filenames and compatibility with existing loaders, custom sounds and configuration migration. Documented conventions in NAMING.md.
+- Harmonized inconsistent C++/resource, browser-test and bundled-source asset filenames. A shared distribution mapping preserves installed filenames and compatibility with existing loaders, custom sounds and configuration migration. Documented conventions in README.md.
 
 Release metadata targets 2.0.0; publication is pending the outstanding resource
-and dependency permissions in `vSMR/data/Licenses/ASSET_PROVENANCE.md`.
+and dependency permissions in `vSMR/data/Licenses/ASSET_PROVENANCE.txt`.
 
 ### Added
 

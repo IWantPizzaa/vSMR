@@ -88,7 +88,7 @@ if ($Phase -eq 'Prepare') {
         $dirty = @(& git -C $RepositoryRoot status --porcelain --untracked-files=normal)
         Assert-GitSuccess 'checking release source'
         if ($dirty.Count) { throw 'Publishable feed artifacts require clean committed source. Use -ValidationOnly for local tests.' }
-        $provenance = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'vSMR/data/Licenses/ASSET_PROVENANCE.md') -Raw
+        $provenance = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'vSMR/data/Licenses/ASSET_PROVENANCE.txt') -Raw
         if ($provenance -match '(?im)\|\s*verification required\s*\|\s*$') { throw 'Bundled asset provenance still requires verification.' }
     }
     if (-not $SkipBuild) {

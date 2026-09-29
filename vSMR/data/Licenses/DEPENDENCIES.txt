@@ -17,7 +17,7 @@ release can be reviewed without inspecting the Visual Studio project.
 
 The Microsoft WebView2 Evergreen Runtime itself is not included. Users install
 the x86 runtime separately. The package also contains data and media assets;
-their provenance review is tracked in `ASSET_PROVENANCE.md`.
+their provenance review is tracked in `ASSET_PROVENANCE.txt`.
 
 RapidJSON headers are an unmodified full copy of `include/rapidjson` from
 https://github.com/Tencent/rapidjson/tree/24b5e7a8b27f42fa16b96fc70aade9106cf7102f.
