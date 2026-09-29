@@ -36,7 +36,7 @@ namespace
 
 	void TestProfiles(const std::filesystem::path& repositoryRoot)
 	{
-		const std::filesystem::path profilePath = repositoryRoot / "vSMR" / "data" / "vSMR_Profiles.json";
+		const std::filesystem::path profilePath = repositoryRoot / "vSMR" / "data" / "profile_templates.json";
 		const std::string profileJson = ReadTextFile(profilePath);
 		Expect(!profileJson.empty(), "default profiles file is readable");
 		std::string profileInputError;
@@ -545,7 +545,7 @@ namespace
 		const std::filesystem::path selectedFile =
 			testRoot / L"profils_\u00E9_\u6D4B\u8BD5.json";
 		std::filesystem::copy_file(
-			repositoryRoot / "vSMR" / "data" / "vSMR_Profiles.json",
+			repositoryRoot / "vSMR" / "data" / "profile_templates.json",
 			selectedFile,
 			std::filesystem::copy_options::overwrite_existing,
 			errorCode);

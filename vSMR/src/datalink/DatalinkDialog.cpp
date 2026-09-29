@@ -1,8 +1,8 @@
-// DataLinkDialog.cpp : implementation file
+// DatalinkDialog.cpp : implementation file
 //
 
 #include "platform/windows/PrecompiledHeader.hpp"
-#include "datalink/DataLinkDialog.hpp"
+#include "datalink/DatalinkDialog.hpp"
 #include "afxdialogex.h"
 
 #include <algorithm>

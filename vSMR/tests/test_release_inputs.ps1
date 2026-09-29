@@ -21,38 +21,38 @@ function Assert-Rejected([string]$MessagePattern) {
     throw "Validator accepted invalid fixture; expected: $MessagePattern"
 }
 try {
-    foreach ($relative in @('vSMR/src/plugin/PluginMetadata.hpp', 'vSMR/resources/vSMR.rc',
-        'vSMR/src/crash/handler/vSMRCrashHandler.rc', 'vSMR/src/bootstrap/loader/LoaderResources.rc',
+    foreach ($relative in @('vSMR/src/plugin/PluginMetadata.hpp', 'vSMR/resources/PluginResources.rc',
+        'vSMR/src/crash/handler/CrashHandlerResources.rc', 'vSMR/src/bootstrap/loader/LoaderResources.rc',
         'vSMR/tools/create_release_package.ps1', 'appveyor.yml')) {
         Write-Fixture $relative ([IO.File]::ReadAllText((Join-Path $RepositoryRoot $relative)))
     }
-    $release = (Get-Content (Join-Path $RepositoryRoot 'vSMR/data/AVISO-UPDATE-POLICY.json') -Raw | ConvertFrom-Json).release
+    $release = (Get-Content (Join-Path $RepositoryRoot 'vSMR/data/aviso_update_policy.json') -Raw | ConvertFrom-Json).release
     Write-Fixture 'vSMR/data/AVISO/AAAA.geojson' '{}'
     $mapHash = (Get-FileHash (Join-Path $fixtureRoot 'vSMR/data/AVISO/AAAA.geojson') -Algorithm SHA256).Hash.ToLowerInvariant()
     $manifest = @{ schema_version = 1; release = $release; file_count = 1;
         files = @{ 'AAAA.geojson' = $mapHash }; removed_since_previous_import = @('BBBB.geojson') }
-    Write-Fixture 'vSMR/tests/fixtures/aviso-set-20260917.json' ($manifest | ConvertTo-Json -Depth 5)
+    Write-Fixture 'vSMR/tests/fixtures/aviso_inventory.json' ($manifest | ConvertTo-Json -Depth 5)
     $policy = @{ schema_version = 1; release = $release; aviso = @{
         update = 'all'; replace = @(); delete = @('BBBB.geojson'); modified_files = 'protect_setting' } }
     $validPolicy = $policy | ConvertTo-Json -Depth 5
-    Write-Fixture 'vSMR/data/AVISO-UPDATE-POLICY.json' $validPolicy
+    Write-Fixture 'vSMR/data/aviso_update_policy.json' $validPolicy
     & $validator -RepositoryRoot $fixtureRoot
 
     Write-Fixture 'vSMR/data/AVISO/AAAA.geojson' '{ }'
     Assert-Rejected 'Bundled AVISO differs*'
     Write-Fixture 'vSMR/data/AVISO/AAAA.geojson' '{}'
     $policy.aviso.delete = @('BBBB.geojson', 'AAAA.geojson')
-    Write-Fixture 'vSMR/data/AVISO-UPDATE-POLICY.json' ($policy | ConvertTo-Json -Depth 5)
+    Write-Fixture 'vSMR/data/aviso_update_policy.json' ($policy | ConvertTo-Json -Depth 5)
     Assert-Rejected 'Unsafe or still-bundled*'
     $policy.aviso.delete = @()
-    Write-Fixture 'vSMR/data/AVISO-UPDATE-POLICY.json' ($policy | ConvertTo-Json -Depth 5)
+    Write-Fixture 'vSMR/data/aviso_update_policy.json' ($policy | ConvertTo-Json -Depth 5)
     Assert-Rejected 'Removed airport missing*'
-    Write-Fixture 'vSMR/data/AVISO-UPDATE-POLICY.json' $validPolicy
+    Write-Fixture 'vSMR/data/aviso_update_policy.json' $validPolicy
     $manifest.file_count = 2
-    Write-Fixture 'vSMR/tests/fixtures/aviso-set-20260917.json' ($manifest | ConvertTo-Json -Depth 5)
+    Write-Fixture 'vSMR/tests/fixtures/aviso_inventory.json' ($manifest | ConvertTo-Json -Depth 5)
     Assert-Rejected 'Bundled AVISO file count differs*'
     $manifest.file_count = 1
-    Write-Fixture 'vSMR/tests/fixtures/aviso-set-20260917.json' ($manifest | ConvertTo-Json -Depth 5)
+    Write-Fixture 'vSMR/tests/fixtures/aviso_inventory.json' ($manifest | ConvertTo-Json -Depth 5)
     foreach ($invalidMap in @(
         '{"features":[{"id":"same"},{"id":"same"}]}',
         '{"features":[{"properties":{}}]}',
@@ -60,12 +60,12 @@ try {
     )) {
         Write-Fixture 'vSMR/data/AVISO/AAAA.geojson' $invalidMap
         $manifest.files.'AAAA.geojson' = (Get-FileHash (Join-Path $fixtureRoot 'vSMR/data/AVISO/AAAA.geojson') -Algorithm SHA256).Hash.ToLowerInvariant()
-        Write-Fixture 'vSMR/tests/fixtures/aviso-set-20260917.json' ($manifest | ConvertTo-Json -Depth 5)
+        Write-Fixture 'vSMR/tests/fixtures/aviso_inventory.json' ($manifest | ConvertTo-Json -Depth 5)
         Assert-Rejected 'Bundled AVISO has missing or duplicate stable*'
     }
     Write-Fixture 'vSMR/data/AVISO/AAAA.geojson' '{}'
     $manifest.files.'AAAA.geojson' = $mapHash
-    Write-Fixture 'vSMR/tests/fixtures/aviso-set-20260917.json' ($manifest | ConvertTo-Json -Depth 5)
+    Write-Fixture 'vSMR/tests/fixtures/aviso_inventory.json' ($manifest | ConvertTo-Json -Depth 5)
     Write-Fixture 'vSMR/src/bootstrap/loader/LoaderResources.rc' 'PRODUCTVERSION 0,0,0,0'
     Assert-Rejected 'Loader product version must contain*'
     Write-Host 'Release-input regression tests passed: valid fixture and eight rejection cases.'
