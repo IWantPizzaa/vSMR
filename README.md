@@ -2,15 +2,15 @@
 
 vSMR is a configurable surface-movement radar plug-in for 32-bit EuroScope. It provides airport surface displays, aircraft tags and symbols, AVISO maps, RIMCAS alerts, native inset windows, CDM data, and Hoppie CPDLC/PDC workflows.
 
-Current development version: **2.0.0-beta.6** (`dev`). This README describes the current source and bundled data; published packages may differ.
+Current source version: **2.0.0** (release preparation). This README describes the current source and bundled data; it does not announce publication of the final package. Public packaging remains blocked by the unresolved entries in the [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.md).
 
-> Beta software should be validated in a safe environment before operational use. Keep a known-good backup and verify the active airport, profile, AVISO map, runway configuration, and alerts before controlling.
+> Verify the active airport, profile, AVISO map, runway configuration, and alerts before controlling. Development and validation-only packages are not official releases.
 
-[Documentation](https://github.com/IWantPizzaa/vSMR/wiki) | [Releases](https://github.com/IWantPizzaa/vSMR/releases) | [Changelog](CHANGELOG.md) | [Beta 6 guide](https://github.com/IWantPizzaa/vSMR/wiki/Beta-6-Release-Notes) | [Report an issue](https://github.com/IWantPizzaa/vSMR/issues)
+[Documentation](https://github.com/IWantPizzaa/vSMR/wiki) | [Releases](https://github.com/IWantPizzaa/vSMR/releases) | [Changelog](CHANGELOG.md) | [2.0.0 release notes](RELEASE_NOTES.md) | [Report an issue](https://github.com/IWantPizzaa/vSMR/issues)
 
 ## Highlights
 
-- Configurable surface radar with NOVA, aircraft-icon, and triangle targets
+- Configurable surface radar with NOVA, aircraft-icon, Triangle, and Diamond targets
 - Normal and detailed tags with status-specific layouts, structured color rules, and optional per-line backgrounds
 - 160 bundled AVISO airport maps, with shared geometry/text editing and airport-specific palettes
 - Resolution presets for AVISO rendering and aircraft icons/tags, without resizing menus or other UI
@@ -23,10 +23,11 @@ Current development version: **2.0.0-beta.6** (`dev`). This README describes the
 - Airport-scoped inset presets and independent active-profile selection for each ASR
 - Atomic configuration saves, Revert, bundled-default recovery, diagnostics, and verified-update support
 
-## Beta 6 behavior and compatibility
+## 2.0.0 behavior and compatibility
 
 - **Resolution:** Settings offers 1080p (100%), 2K (133%), and 4K (200%). These scale AVISO labels/lines and aircraft icons, trails, tags, and their hit areas in the main view and radar insets. They do not resize the Control Center, Runtime Menu, inset controls, weather/timer panels, or FPS display, and do not change geographic positions or radar zoom.
-- **Interface theme:** Night/Day UI colors are independent of the AVISO palette. Dark/Light palettes are available in the current bundled maps; Real is available for LFML, LFMN, LFPG, and LFPO. Other maps may offer different palettes.
+- **Interface theme:** Night/Day UI colors are independent of the AVISO palette and also affect Timer and METAR insets. Dark/Light palettes are available in the current bundled maps; Real is available for LFBO, LFLL, LFML, LFMN, LFPG, and LFPO. Other maps may offer different palettes.
+- **Target presentation:** Tag label font size is edited in pixels (6-72) instead of preset numbers 1-5. Diamond trails use more closely spaced samples while preserving the selected point count. METAR shows a prominent QNH strip and an inward-fading wind-from indicator. PDC/CPDLC composers distinguish editable light-grey fields from dark read-only fields; X uses the Cancel action.
 - **ASR profiles:** Each radar screen keeps its own active profile. Profile definitions and the profiles-file source remain shared; save the ASR to retain its selection.
 - **CDM:** The bridge-enabled CDM plug-in replaces the retired vACDM HTTP integration. The old CDM Auto/reminder workflow, timer, and message queue are no longer present. Manual Hoppie CPDLC/PDC workflows remain available.
 - **Stand data:** `uk_stand` and `remark` come from Ramp Agent through EuroScope Plugin Bridge, not flight strip annotations 3 and 4. Missing providers leave their related values unavailable without disabling the rest of vSMR.
@@ -43,9 +44,9 @@ The current converter-supplied AVISO set contains **160 maps** in [`vSMR/data/AV
 
 The optional vSID, Ramp Agent, and CDM interfaces require [EuroScope Plugin Bridge](https://github.com/AlexisBalzano/Euroscope-Plugin-Bridge), plus a bridge-enabled [vSID](https://github.com/AlexisBalzano/vSID), [Ramp Agent](https://github.com/AlexisBalzano/EuroscopeRampAgent), or [CDM](https://github.com/IWantPizzaa/CDM) build. Stand and stand remark tag values come only from Ramp Agent through the bridge. Load them separately through EuroScope's plug-in settings; vSMR deliberately does not bundle or load their DLLs. The consumed fields are listed in [EuroScope Plugin Bridge data](https://github.com/IWantPizzaa/vSMR/wiki/Integrations).
 
-[Paris configuration](https://github.com/IWantPizzaa/vSMR/wiki/Paris-vSID-Configuration): LFPG uses existing vSID commands for two independent rows: Linked/Unlinked toggles the `opposing` rule, while Minimum Taxiing/Ground Crossing controls geographic areas. No new companion schema is required for these LFPG actions. LFPO's explicit Linked/Unlinked selections and the LFPN/LFPV/LFPT/LFOB WL/EL/IPGW/IPOW selections still require the companion build and configuration. **Auto runways has been removed:** EuroScope runway changes do not select these rules. vSID's separate **Auto mode** for automatic SID assignment remains available. This does not affect RIMCAS, which still follows EuroScope's selected runways automatically.
+[Paris configuration](https://github.com/IWantPizzaa/vSMR/wiki/Paris-vSID-Configuration): LFPG uses existing vSID commands for two independent rows: Linked/Unlinked toggles the `opposing` rule, while Minimum Taxiing/Ground Crossing controls geographic areas. No new companion schema is required for these LFPG actions. LFPO's explicit Linked/Unlinked selections and the LFPN/LFPV/LFPT/LFOB WL/EL/IPGW/IPOW selections still require the companion build and configuration. **Auto runways has been removed:** EuroScope runway changes do not select these rules. The vSMR popup no longer exposes an **Auto mode** button or status row; vSID's underlying automatic SID assignment is unaffected. This does not affect RIMCAS, which still follows EuroScope's selected runways automatically.
 
-For the LFPG configuration with NORTH and SOUTH areas, **Minimum Taxiing** sends `.vsid area LFPG OFF`, then `.vsid area LFPG NORTH`, then `.vsid area LFPG SOUTH`, waiting for each command to be consumed. Resetting first makes repeated clicks enable both areas instead of toggling them off. **Ground Crossing** sends `.vsid area LFPG OFF`. These change no rules. An ambiguous or failed submission stops the sequence without retrying a toggle; inspect vSID's area status before continuing. The taxi-row highlight means **last command sequence sent by vSMR**, not live vSID status, and resets on reload or provider disconnect. Manual commands outside vSMR are not reflected in this highlight. NORTH/SOUTH are geographic areas, not alternate names for the modes.
+For the LFPG configuration with NORTH and SOUTH areas, **Minimum Taxiing** sends `.vsid area LFPG OFF`, then `.vsid area LFPG NORTH`, then `.vsid area LFPG SOUTH`, waiting for each command to be consumed. Resetting first makes repeated clicks enable both areas instead of toggling them off. **Ground Crossing** sends `.vsid area LFPG OFF`. These change no rules. An ambiguous or failed submission stops the sequence without retrying a toggle; inspect vSID's area status before continuing. With the companion's `lfpg_taxi` field (schema 1.4), the taxi-row highlight follows live published area state. Older providers use the **last completed command sequence**, reset on reload/disconnect; manual commands outside vSMR are not reflected in that fallback. NORTH/SOUTH are geographic areas, not alternate names for the modes.
 
 LFPG Linked/Unlinked sends `.vsid rule LFPG opposing`. If the selected link state is already published by vSID, clicking it does nothing. Without published status, either button acts as the native toggle and neither is highlighted. Changing link state never changes the remembered taxi command, and area commands never change the link selection. No installed vSID DLL or configuration files are modified by these UI actions.
 
@@ -132,9 +133,9 @@ After building the native test executable, run the regression suite independentl
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tests\run_tests.ps1
 ```
 
-Release-input checks enforce matching beta 6 versions, the reviewed hashes of all 160 maps, and an update policy that never deletes a bundled airport. LFPG retains the supplied map's 1,468 features plus 89 East arrows and 97 West arrows, independently controlled through the **East Arrows** and **West Arrows** groups. The hash manifest records this post-import restoration.
+Release-input checks enforce matching 2.0.0 versions, the reviewed hashes of all 160 maps, and an update policy that never deletes a bundled airport. LFPG retains the supplied map's 1,468 features plus 89 East arrows and 97 West arrows, independently controlled through the **East Arrows** and **West Arrows** groups. The hash manifest records this post-import restoration.
 
-Publishable artifacts require a clean source commit and verified bundled-asset provenance. Signing is optional; configuring a signing certificate/pin or `-RequireSignature` enforces signed binaries and the matching detached update signature. The packager, binary product versions, and AppVeyor settings target beta 6. Five asset groups still need provenance verification; local validation packages are not distributable releases. See the [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.md).
+Publishable artifacts require a clean source commit and verified bundled-asset provenance. Signing is optional; configuring a signing certificate/pin or `-RequireSignature` enforces signed binaries and the matching detached update signature. The packager, binary product versions, and AppVeyor settings target 2.0.0; loader version remains 1.3.0 and runtime ABI remains 1. Five resource/dependency groups still need provenance verification, including the compiled bridge client shim; local validation packages are not distributable releases. See the [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.md). Keep the changelog entry Unreleased and do not publish the tag or stable feed until those gates are resolved.
 
 ### Per-file update feed
 
@@ -167,6 +168,16 @@ Commit/publish the payload before the channel manifest. The manifest contains `s
 Build outputs (`Release/`, `Debug/`, `bin/`, `obj/`), `.vs/`, `.tmp/`, `artifacts/` and Python caches are not source files. Retain any release packages or private symbols you still need outside the checkout before removing generated outputs. Close Visual Studio and EuroScope first, and remove temporary Git worktrees with `git worktree remove` rather than deleting their directories directly. Keep `vSMR/data/`, generated web bundles and `default.json`: these are tracked application inputs validated by the build.
 
 `vSMR/tools/build_project.ps1` rebuilds Release/Win32 and runs the native and browser regression suites. The installer, migration helpers and legacy updater recovery code remain necessary for existing installations; they are not disposable build artifacts.
+
+### CoFrance insets
+
+AVISO inset label visibility uses `r = min(1, inset drawable diagonal / host drawable diagonal)` and evaluates zoom visibility at `visible ground diagonal / r`. Text and halos retain their normal configured size; resizing does not shrink them. Existing GeoJSON visibility settings remain authoritative; labels without a zoom restriction remain unrestricted. The dimensions exclude title bars/chat and do not depend on raster overscan or a fixed screen resolution. Changes to visibility invalidate label caches. This applies equally to native vSMR and CoFrance insets; aircraft tags, UI controls and the main AVISO labels are unchanged.
+
+vSMR also attaches to the geo-referenced `CoFrance radar display` type. CoFrance continues to own the main radar; vSMR draws its AVISO, SRW, METAR and timer insets plus their existing runtime controls. Other third-party and standard EuroScope views are not opted in.
+
+Load vSMR together with CoFrance, then reopen a CoFrance ASR (an already-open screen must be recreated). The vSMR rail starts expanded on a new CoFrance view: select the airport, then open **Insets** and enable the desired windows. `.smr insets` expands and recenters the rail on all attached CoFrance views and reports received refresh phases and radar bounds; if no view is attached, it reports that explicitly. `.smr editor` opens the Control Center. Saving the ASR stores vSMR's inset state in its own plugin namespace. Keep a backup/test copy of the ASR and test disconnected from VATSIM first.
+
+The adapter skips the main vSMR map, targets, tags, RDF, RIMCAS panels and FPS overlay. AVISO presets cannot recenter the CoFrance map, and linked main/inset movement is unavailable on this host. The shared vSMR profiles and maps remain available to the insets. Custom displays with `DisplayTypeNeedRadarContent:0` use EuroScope's before-TAG phase rather than depending on native TAG/list phases; hosts enabling native radar content use the after-lists phase. If the rail is missing, enable `.smr log normal`, reopen the ASR, run `.smr insets`, and export `.smr diagnostics`. This feature is integrated in `dev` for the upcoming release; integration does not publish a release or update feed.
 
 ## License
 

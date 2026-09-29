@@ -9,6 +9,7 @@
 #include "integrations/PluginBridgeClient.hpp"
 #include "plugin/PluginCommandHandler.hpp"
 #include "radar/RadarScreen.Registry.hpp"
+#include "radar/InsetHostPolicy.hpp"
 #include "shared/TextUtils.hpp"
 
 #include <atomic>
@@ -121,21 +122,24 @@ void CSMRPlugin::OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan)
 CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated)
 {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnRadarScreenCreated");
-	(void)NeedRadarContent;
-	(void)GeoReferenced;
 	(void)CanBeSaved;
 	(void)CanBeCreated;
 	Logger::info(std::string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return NULL;
 
-	if (sDisplayName != nullptr && !strcmp(sDisplayName, VsmrPluginAvisoDisplayName))
+	const auto screenRole = VsmrRadar::ResolveScreenRole(sDisplayName, GeoReferenced);
+	Logger::info("Radar screen requested display=" + std::string(sDisplayName != nullptr ? sDisplayName : "<null>") +
+		" native_radar=" + std::to_string(NeedRadarContent) + " geo=" + std::to_string(GeoReferenced) +
+		" role=" + std::to_string(static_cast<int>(screenRole)));
+	if (screenRole != VsmrRadar::ScreenRole::Unsupported)
 	{
 		try
 		{
 			// Keep ownership local until the screen is published in the registry.
 			// This also tears down a partially registered screen if allocation fails.
-			std::unique_ptr<CSMRRadar> radar = std::make_unique<CSMRRadar>();
+			std::unique_ptr<CSMRRadar> radar = std::make_unique<CSMRRadar>(
+				screenRole == VsmrRadar::ScreenRole::CoFranceInsets, NeedRadarContent);
 			RadarScreensOpened.push_back(radar.get());
 			return radar.release();
 		}
