@@ -1255,6 +1255,12 @@ void CSMRRadar::RenderRefreshTagsAndRdf(
 
 void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 {
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	// Since EuroScope 3.2.6 the background bitmap can be refreshed on a worker
+	// thread. We draw only in foreground phases: do not read radar/configuration
+	// state, publish diagnostics, change phase counters or touch its DC here.
+	if (Phase == REFRESH_PHASE_BACK_BITMAP || hDC == nullptr)
+		return;
 	ScopedHostDcState hostDcState(hDC, IsInsetsOnly());
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnRefresh",
