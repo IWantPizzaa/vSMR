@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- Added opt-in zoom performance summaries to normal logging: per-window redraw peaks and frame gaps, wheel routing and message age, plus main/inset cache counters and background rebuild timings. Rendering and zoom behavior are unchanged.
+
 ### Control Center and source maintenance
 
 - Added Select All to the profile-color, tag-definition, AVISO geometry and text lists; group contents also expose Select All for the currently filtered items.
