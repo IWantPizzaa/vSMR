@@ -31,6 +31,7 @@
 #include "UpdaterUrlPolicyTests.hpp"
 #include "tags/TagDefinitionUtils.hpp"
 #include "weather/WeatherStore.hpp"
+#include "diagnostics/ZoomDiagnostics.hpp"
 
 #include "rapidjson/document.h"
 #include "rapidjson/stringbuffer.h"
@@ -1197,6 +1198,55 @@ namespace
 
 }
 
+void TestZoomDiagnostics()
+{
+	using namespace VsmrPerformance;
+	ZoomTimingWindow window;
+	FrameSample frame;
+	frame.timestampMilliseconds = 100;
+	frame.frameMilliseconds = 5;
+	Expect(!window.RecordFrame(frame, true), "Zoom logging waits for its bounded window");
+	window.RecordWheel(true, 120, 17);
+	window.RecordWheel(false, -120, 3);
+	frame.timestampMilliseconds = 120;
+	frame.frameMilliseconds = 84;
+	frame.avisoMilliseconds = 71;
+	Expect(!window.RecordFrame(frame, true), "Zoom logging retains intervening spikes without per-frame output");
+	frame.timestampMilliseconds = 2100;
+	frame.frameMilliseconds = 6;
+	frame.avisoMilliseconds = 2;
+	const auto report = window.RecordFrame(frame, true);
+	Expect(report.has_value(), "Zoom logging emits at two seconds");
+	if (report) {
+		Expect(report->frames == 3 && report->frameMaxMs == 84 && report->mainMaxMs == 71,
+			"Zoom logging captures maxima not just the last frame");
+		Expect(report->gapMaxMs == 1980 && report->gapTotalMs == 2000 && report->gaps == 2,
+			"Zoom logging separates frame spacing from drawing time");
+		Expect(report->wheelClaimed == 1 && report->wheelPassed == 1 && report->wheelUp == 1 &&
+			report->wheelDown == 1 && report->wheelMessageAgeMaxMs == 17, "Zoom logging counts routed input");
+		Snapshot snapshot;
+		snapshot.mainAviso.rasterBuildsCancelled = 7;
+		snapshot.insetAviso.queue.inFlight = 1;
+		snapshot.insetAviso.rasterRebuildMilliseconds.maximum = 42.5;
+		const auto text = FormatZoomDiagnostics(*report, snapshot);
+		Expect(text.find("ZoomPerf ") == 0 && text.find("cancelled_total=7") != std::string::npos &&
+			text.find("build_max_ms_2s=42.5") != std::string::npos && text.find("in_flight=1") != std::string::npos,
+			"Zoom summaries distinguish lifetime counters and two-second worker timings");
+	}
+	frame.timestampMilliseconds = 4100;
+	const auto next = window.RecordFrame(frame, true);
+	Expect(next && next->frames == 1 && next->wheelClaimed == 0 && next->frameMaxMs == 6 &&
+		next->gapMaxMs == 2000, "Zoom summary resets counters but keeps the boundary frame gap");
+	window.RecordWheel(true, 120, 2);
+	Expect(!window.RecordFrame(frame, false), "Disabled zoom diagnostics produce no report");
+	frame.timestampMilliseconds = 10000;
+	Expect(!window.RecordFrame(frame, true), "Re-enabled diagnostics start a fresh window");
+	frame.timestampMilliseconds = 12000;
+	const auto restarted = window.RecordFrame(frame, true);
+	Expect(restarted && restarted->wheelClaimed == 0 && restarted->gapMaxMs == 2000,
+		"Disabled time and input do not leak into a new capture");
+}
+
 int wmain(int argc, wchar_t** argv)
 {
 	const std::filesystem::path repositoryRoot = argc > 1
@@ -1204,6 +1254,7 @@ int wmain(int argc, wchar_t** argv)
 		: std::filesystem::current_path();
 
 	TestGroundState();
+	TestZoomDiagnostics();
 	TestSharedGroundState();
 	TestRapidJsonUtilities();
 	TestJsonInputLimitBoundaries();

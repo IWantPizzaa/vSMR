@@ -101,7 +101,7 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK KeyboardMessageHookProc(int code, WPARAM wParam, LPARAM lParam);
 void UnhookAvisoThreadHooks();
-bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd);
+bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd, bool recordInput = false);
 
 std::map<std::string, std::string> CSMRRadar::vStripsStands;
 
@@ -1219,7 +1219,7 @@ void RestoreInsetWindowProcHooks()
 	}
 }
 
-bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd)
+bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd, bool recordInput)
 {
 	if (wheelDelta == 0)
 		return false;
@@ -1233,8 +1233,12 @@ bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd)
 		const auto active = gInsetWindowActiveRadarScreen.find(window);
 		if (active == gInsetWindowActiveRadarScreen.end()) continue;
 		CSMRRadar* radar = active->second;
-		return radar != nullptr && !radar->IsShutdownRequested() &&
-			radar->HandleAvisoMouseWheelAtScreenPoint(screenPoint, wheelDelta, sourceHwnd);
+		if (radar == nullptr || radar->IsShutdownRequested()) return false;
+		const bool claimed = radar->HandleAvisoMouseWheelAtScreenPoint(screenPoint, wheelDelta, sourceHwnd);
+		if (recordInput && Logger::ENABLED.load(std::memory_order_relaxed))
+			radar->RecordZoomWheel(claimed, wheelDelta,
+				static_cast<DWORD>(::GetTickCount() - static_cast<DWORD>(::GetMessageTime())));
+		return claimed;
 	}
 
 	for (CSMRRadar* radarScreen : RadarScreensOpened)
@@ -1242,7 +1246,12 @@ bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd)
 		if (radarScreen == nullptr || radarScreen->IsShutdownRequested())
 			continue;
 		if (radarScreen->HandleAvisoMouseWheelAtScreenPoint(screenPoint, wheelDelta, sourceHwnd))
+		{
+			if (recordInput && Logger::ENABLED.load(std::memory_order_relaxed))
+				radarScreen->RecordZoomWheel(true, wheelDelta,
+					static_cast<DWORD>(::GetTickCount() - static_cast<DWORD>(::GetMessageTime())));
 			return true;
+		}
 	}
 	return false;
 }
@@ -1259,7 +1268,8 @@ LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
 		HWND sourceHwnd = mouseData->hwnd;
 		if (sourceHwnd == nullptr || !::IsWindow(sourceHwnd))
 			sourceHwnd = ::WindowFromPoint(mouseData->pt);
-		if (TryHandleAvisoWheel(mouseData->pt, wheelDelta, sourceHwnd))
+		// Count the dequeued event only here, not again in the subclass fallback.
+		if (TryHandleAvisoWheel(mouseData->pt, wheelDelta, sourceHwnd, true))
 			return 1;
 	}
 

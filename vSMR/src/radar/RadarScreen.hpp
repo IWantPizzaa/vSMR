@@ -19,6 +19,7 @@
 #include "aircraft/CallsignLookup.hpp"
 #include "config/RuntimeConfig.hpp"
 #include "diagnostics/PerformanceDiagnostics.hpp"
+#include "diagnostics/ZoomDiagnostics.hpp"
 #include "safety/Rimcas.hpp"
 #include "radar/RadarGeometry.hpp"
 #include "scene/RadarScene.hpp"
@@ -89,6 +90,11 @@ public:
 		std::uint32_t windowSeconds = 60,
 		std::size_t maximumSeriesPoints = 240);
 	void ResetPerformanceDiagnostics();
+	void ResetZoomDiagnostics() noexcept { ZoomTimings.Reset(); }
+	void RecordZoomWheel(bool claimed, int delta, std::uint32_t messageAgeMs) noexcept
+	{
+		ZoomTimings.RecordWheel(claimed, delta, messageAgeMs);
+	}
 	std::string BuildPerformanceReportJson(
 		std::uint32_t windowSeconds = 0,
 		std::size_t maximumSeriesPoints = VsmrPerformance::MaximumFrameSamples);
@@ -230,6 +236,7 @@ private:
 	std::uint64_t RadarSceneFrameId = 0;
 	double PerfLastSceneBuildMs = 0.0;
 	VsmrPerformance::PerformanceDiagnostics PerformanceDiagnostics;
+	VsmrPerformance::ZoomTimingWindow ZoomTimings;
 	std::uint64_t PerformanceLastResourceSampleMilliseconds = 0;
 	std::atomic<std::uint32_t> PendingPerformanceRefreshReasonMask{
 		VsmrPerformance::RefreshReasonMask(VsmrPerformance::FrameRefreshReason::Initial) };

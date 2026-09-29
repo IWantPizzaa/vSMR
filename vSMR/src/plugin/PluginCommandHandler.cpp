@@ -103,8 +103,11 @@ bool VsmrPluginCommandHandler::Handle(
 		const std::string argument = commandLower.size() > prefixLength
 			? TrimAsciiWhitespaceCopy(commandLower.substr(prefixLength))
 			: std::string();
-		const auto publishLogStatus = [&plugin](const std::string& action)
+		const auto publishLogStatus = [&plugin, &radarScreens](const std::string& action)
 		{
+			if (action == "Updated")
+				for (auto* radar : radarScreens)
+					if (radar != nullptr) radar->ResetZoomDiagnostics();
 			std::string detail = action + " - vsmr.log ";
 			detail += Logger::ENABLED ? "enabled" : "disabled";
 			if (Logger::ENABLED)
