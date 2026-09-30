@@ -339,6 +339,7 @@
     <ClInclude Include="src\plugin\PluginRuntimeAudio.Internal.hpp" />
     <ClInclude Include="src\rendering\TagRenderer.hpp" />
     <ClInclude Include="src\rendering\DisplayScale.hpp" />
+    <ClInclude Include="src\rendering\NorthIndicator.hpp" />
     <ClInclude Include="src\radar\RadarHoverPointer.hpp" />
     <ClInclude Include="src\radar\InsetHostPolicy.hpp" />
     <ClInclude Include="src\rdf\RdfGeometry.hpp" />

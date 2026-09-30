@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "insets/InsetWindow.Internal.hpp"
 #include "radar/RadarScreen.hpp"
+#include "rendering/NorthIndicator.hpp"
 #include <chrono>
 #include <cstring>
 
@@ -109,42 +110,13 @@ namespace VsmrInsetWindowInternal
 		if (radarScreen == nullptr)
 			return 0.0;
 
-		CPosition centerPosition;
-		centerPosition.m_Latitude = ClampAvisoLatitude(latitude);
-		centerPosition.m_Longitude = longitude;
-		const POINT centerPixel = radarScreen->ConvertCoordFromPositionToPixel(centerPosition);
-
-		double bestRotationDeg = 0.0;
-		double bestDistanceSquared = 0.0;
-		for (double sampleDelta : { 0.02, 0.05, 0.1, 0.25, 0.5 })
-		{
-			CPosition northPosition = centerPosition;
-			northPosition.m_Latitude = ClampAvisoLatitude(latitude + sampleDelta);
-			if (std::abs(northPosition.m_Latitude - centerPosition.m_Latitude) < 1e-9)
-				continue;
-
-			const POINT northPixel = radarScreen->ConvertCoordFromPositionToPixel(northPosition);
-			const double dx = static_cast<double>(northPixel.x - centerPixel.x);
-			const double dy = static_cast<double>(northPixel.y - centerPixel.y);
-			const double distanceSquared = (dx * dx) + (dy * dy);
-			if (distanceSquared < 4.0)
-				continue;
-
-			const double rotationDeg = std::atan2(dx, -dy) * 180.0 / 3.14159265358979323846;
-			if (!std::isfinite(rotationDeg))
-				continue;
-
-			if (distanceSquared > bestDistanceSquared)
-			{
-				bestDistanceSquared = distanceSquared;
-				bestRotationDeg = rotationDeg;
-			}
-
-			if (distanceSquared >= 2500.0)
-				return bestRotationDeg;
-		}
-
-		return bestRotationDeg;
+		return VsmrRendering::ProjectedNorthRotation(latitude, longitude,
+			[&](double lat, double lon) {
+				CPosition position;
+				position.m_Latitude = lat;
+				position.m_Longitude = lon;
+				return radarScreen->ConvertCoordFromPositionToPixel(position);
+			});
 	}
 
 	constexpr int kInsetToolbarButtonSize = 13;

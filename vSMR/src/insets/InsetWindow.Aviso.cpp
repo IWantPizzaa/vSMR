@@ -7,6 +7,7 @@
 #include "radar/RadarScreen.hpp"
 #include "rendering/TagRenderer.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
+#include "rendering/NorthIndicator.hpp"
 #include "rdf/RdfOverlay.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "shared/logging/Logger.hpp"
@@ -1416,6 +1417,9 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	m_LastRdfRenderMilliseconds += std::chrono::duration<double, std::milli>(
 		std::chrono::steady_clock::now() - rdfStarted).count();
 
+	VsmrRendering::DrawNorthIndicator(*gdi, viewportRect, screenRotationDeg,
+		radar_screen->GetAvisoBackgroundColor());
+	gdi->Flush(Gdiplus::FlushIntentionSync);
 	drawChrome();
 
 	dc.Detach();
