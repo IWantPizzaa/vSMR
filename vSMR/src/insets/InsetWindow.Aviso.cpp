@@ -1417,8 +1417,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	m_LastRdfRenderMilliseconds += std::chrono::duration<double, std::milli>(
 		std::chrono::steady_clock::now() - rdfStarted).count();
 
-	VsmrRendering::DrawNorthIndicator(*gdi, viewportRect, screenRotationDeg,
-		radar_screen->GetAvisoBackgroundColor());
+	if (radar_screen->ShowNorthIndicator && VsmrRendering::DrawNorthIndicator(*gdi, viewportRect, screenRotationDeg,
+		radar_screen->GetAvisoBackgroundColor(), m_NorthIndicatorOffset))
+		radar_screen->AddScreenObject(m_Id, "north.drag",
+			VsmrRendering::NorthIndicatorBounds(viewportRect, m_NorthIndicatorOffset), true, "Drag north indicator");
 	gdi->Flush(Gdiplus::FlushIntentionSync);
 	drawChrome();
 

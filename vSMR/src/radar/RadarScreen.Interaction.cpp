@@ -4,6 +4,7 @@
 #include "radar/RadarScreen.Registry.hpp"
 #include "radar/InsetHostPolicy.hpp"
 #include "insets/InsetWindow.hpp"
+#include "rendering/NorthIndicator.hpp"
 #include "aircraft/GroundState.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashRuntime.hpp"
@@ -432,6 +433,9 @@ void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId,
 	UNREFERENCED_PARAMETER(sObjectId);
 	UNREFERENCED_PARAMETER(Area);
 	mouseLocation = Pt;
+	if (sObjectId && strcmp(sObjectId, "north.drag") == 0 &&
+		(ObjectType == NORTH_INDICATOR || ObjectType == APPWINDOW_AVISO))
+		return; // The compass must not select/raise its parent inset or start a pan.
 	if (IsPointInRuntimeMenuOverlay(this, Pt))
 		return;
 
@@ -506,6 +510,30 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 	{
 		mouseLocation = Pt;
 		return;
+	}
+	// A compass drag owns its registered object until release, even when the
+	// pointer crosses an inset edge. It never moves/raises the parent window.
+	if (ShowNorthIndicator && sObjectId && strcmp(sObjectId, "north.drag") == 0)
+	{
+		if (ObjectType == NORTH_INDICATOR && !IsInsetsOnly())
+		{
+			NorthIndicatorOffset = VsmrRendering::NorthIndicatorDraggedOffset(ResolveMainAvisoRenderArea(), Area);
+			if (Released) SaveNorthIndicatorStateToAsr();
+			RequestRefresh();
+			return;
+		}
+		if (ObjectType == APPWINDOW_AVISO && IsAppWindowVisible(this, ObjectType - APPWINDOW_BASE))
+		{
+			const auto window = appWindows.find(ObjectType - APPWINDOW_BASE);
+			if (window != appWindows.end() && window->second)
+			{
+				window->second->m_NorthIndicatorOffset = VsmrRendering::NorthIndicatorDraggedOffset(
+					window->second->GetWindowContentRect(), Area);
+				if (Released) SaveInsetStateToAsrForAirport(getActiveAirport());
+				RequestRefresh();
+			}
+			return;
+		}
 	}
 	const bool hasObjectId = (sObjectId != nullptr && sObjectId[0] != '\0');
 	const char* objectId = hasObjectId ? sObjectId : "";
@@ -1132,6 +1160,9 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	MarkPerformanceRefreshReason(
 		VsmrPerformance::FrameRefreshReason::UserActionExternal);
 	if (HandleRuntimeMenuClick(ObjectType, sObjectId, Pt, Area, Button))
+		return;
+	if (sObjectId && strcmp(sObjectId, "north.drag") == 0 &&
+		(ObjectType == NORTH_INDICATOR || ObjectType == APPWINDOW_AVISO))
 		return;
 	if (ActiveRuntimeMenuPopup != RuntimeMenuPopup::None)
 		CloseRuntimeMenuPopup();

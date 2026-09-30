@@ -63,6 +63,7 @@ public:
 	double m_Rotation = 0;
 	Mode m_Mode = Mode::SecondaryRadar;
 	int m_AvisoScale = 350;
+	POINT m_NorthIndicatorOffset = { -1, -1 };
 	double m_AvisoCenterLatitude = 0.0;
 	double m_AvisoCenterLongitude = 0.0;
 	double m_AvisoDragStartLatitude = 0.0;
