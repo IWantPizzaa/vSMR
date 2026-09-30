@@ -7,6 +7,7 @@
 #include "rendering/TagRenderer.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
 #include "rendering/DisplayScale.hpp"
+#include "rendering/NorthIndicator.hpp"
 #include "radar/RadarHoverPointer.hpp"
 #include "radar/InsetHostPolicy.hpp"
 #include "rdf/RdfGeometry.hpp"
@@ -14,6 +15,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <utility>
 
 namespace
@@ -25,6 +27,64 @@ namespace
 	{
 		if (!condition)
 			failures.emplace_back(message);
+	}
+
+	void TestNorthIndicator(std::vector<std::string>& failures)
+	{
+		using namespace VsmrRendering;
+		Check(!ShowNorthIndicator(0) && !ShowNorthIndicator(360) && !ShowNorthIndicator(-720) &&
+			!ShowNorthIndicator(0.2) && !ShowNorthIndicator(std::numeric_limits<double>::quiet_NaN()),
+			"North compass is hidden for north-up, pixel rounding noise and invalid rotations", failures);
+		for (double angle : { -175.0, -90.0, -4.5, 4.5, 90.0, 180.0 })
+		{
+			const double radians = angle * 3.14159265358979323846 / 180;
+			const auto project = [&](double lat, double lon) -> POINT {
+				const double x = (lon - 2.55) * 10000;
+				const double y = -(lat - 49.0) * 10000;
+				return { static_cast<LONG>(std::lround(300 + x * std::cos(radians) - y * std::sin(radians))),
+					static_cast<LONG>(std::lround(250 + x * std::sin(radians) + y * std::cos(radians))) };
+			};
+			const double measured = ProjectedNorthRotation(49.0, 2.55, project);
+			Check(ShowNorthIndicator(measured) && std::abs(std::remainder(measured - angle, 360.0)) < 0.3,
+				"North compass follows clockwise/counterclockwise host projection, including LFPG at 4.5 degrees", failures);
+		}
+		Check(ProjectedNorthRotation(49, 2.55, [](double, double) { return POINT{ 0, 0 }; }) == 0,
+			"Collapsed projections cannot produce a spurious compass", failures);
+		Gdiplus::Bitmap canvas(240, 160, PixelFormat32bppARGB);
+		Gdiplus::Graphics graphics(&canvas);
+		const RECT viewport{ 30, 20, 220, 150 };
+		const Gdiplus::Color clear(255, 12, 15, 18);
+		graphics.Clear(clear);
+		graphics.SetSmoothingMode(Gdiplus::SmoothingModeNone);
+		graphics.SetClip(Gdiplus::Rect(25, 15, 205, 140));
+		Gdiplus::RectF clipBefore;
+		graphics.GetClipBounds(&clipBefore);
+		Check(!DrawNorthIndicator(graphics, viewport, 0, RGB(40, 50, 55)) &&
+			!DrawNorthIndicator(graphics, RECT{ 0, 0, 60, 50 }, 90, RGB(40, 50, 55)),
+			"North-up and undersized viewports do not draw an overlay", failures);
+		for (const COLORREF background : { RGB(40, 50, 55), RGB(210, 220, 225) })
+		{
+			graphics.Clear(clear);
+			Check(DrawNorthIndicator(graphics, viewport, 4.5, background),
+				"North compass draws on light and dark AVISO backgrounds", failures);
+			graphics.Flush(Gdiplus::FlushIntentionSync);
+			bool changed = false;
+			bool outside = false;
+			for (int y = 0; y < 160; ++y)
+				for (int x = 0; x < 240; ++x)
+				{
+					Gdiplus::Color pixel;
+					canvas.GetPixel(x, y, &pixel);
+					if (pixel.GetValue() == clear.GetValue()) continue;
+					changed = true;
+					outside |= x < 140 || x >= 212 || y < 28 || y >= 100;
+				}
+			Check(changed && !outside, "North compass stays inside its top-right screen-space footprint", failures);
+		}
+		Gdiplus::RectF clipAfter;
+		graphics.GetClipBounds(&clipAfter);
+		Check(graphics.GetSmoothingMode() == Gdiplus::SmoothingModeNone && clipBefore.Equals(clipAfter),
+			"North compass restores graphics state for aircraft, inset chrome and host rendering", failures);
 	}
 
 	void TestRdfInsetOcclusion(std::vector<std::string>& failures)
@@ -739,6 +799,7 @@ std::vector<std::string> RunSharedRenderingBehaviorTests()
 	}
 
 	{
+		TestNorthIndicator(failures);
 		TestAvisoRasterBlending(failures);
 		TestResolutionScaling(failures);
 		TestTagBackgroundFitsLines(failures);

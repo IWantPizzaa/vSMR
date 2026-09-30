@@ -3,6 +3,7 @@
 #include "radar/RadarScreen.hpp"
 #include "radar/InsetHostPolicy.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
+#include "rendering/NorthIndicator.hpp"
 #include "insets/InsetWindow.hpp"
 #include "rdf/RdfOverlay.hpp"
 #include "crash/CrashReporter.hpp"
@@ -1379,6 +1380,24 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 			// Tag deconflicting
 			DeconflictRefreshTags(frameScene, performance, setRefreshStage);
+
+			if (!AvisoGeoJsonRenderDisabled && !AvisoGeoJsonLoadedPath.empty())
+			{
+				const CRect avisoArea = ResolveMainAvisoRenderArea();
+				if (!avisoArea.IsRectEmpty())
+				{
+					const CPosition center = ConvertCoordFromPixelToPosition(avisoArea.CenterPoint());
+					const double northRotation = VsmrRendering::ProjectedNorthRotation(
+						center.m_Latitude, center.m_Longitude, [&](double lat, double lon) {
+							CPosition position;
+							position.m_Latitude = lat;
+							position.m_Longitude = lon;
+							return ConvertCoordFromPositionToPixel(position);
+						});
+					VsmrRendering::DrawNorthIndicator(graphics, avisoArea, northRotation, GetAvisoBackgroundColor());
+					graphics.Flush(Gdiplus::FlushIntentionSync);
+				}
+			}
 		}
 
 		// App windows
