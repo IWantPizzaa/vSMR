@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- Added a north-indicator toggle in Control Center > Settings > Display and drag-and-drop positioning in main AVISO and inset views. Positions are retained in the ASR; the main compass stays below insets and covered indicators do not intercept inset clicks.
+
 - Added an automatic, compact north compass at the top right of rotated AVISO views (main view and insets, including CoFrance). It follows the actual map projection and hides when north is up.
 - Fixed label font-size stepping by leaving native spinner values untouched during changes; removed the oversized font suggestion dropdown. Pixel sizing and existing profiles remain compatible.
 

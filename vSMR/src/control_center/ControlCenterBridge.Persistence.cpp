@@ -41,6 +41,8 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 
 	bool hasStagedShowFps = false;
 	bool stagedShowFps = Owner->ShowFps;
+	bool hasStagedShowNorthIndicator = false;
+	bool stagedShowNorthIndicator = Owner->ShowNorthIndicator;
 	bool hasStagedRdfEnabled = false;
 	bool stagedRdfEnabled = VsmrRdf::GetStatus().enabled;
 	bool hasStagedAvisoColorPalette = false;
@@ -64,6 +66,16 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 			}
 			hasStagedShowFps = true;
 			stagedShowFps = settings["showFps"].GetBool();
+		}
+		if (settings.HasMember("showNorthIndicator"))
+		{
+			if (!settings["showNorthIndicator"].IsBool())
+			{
+				error = "North indicator must be a boolean setting.";
+				return false;
+			}
+			hasStagedShowNorthIndicator = true;
+			stagedShowNorthIndicator = settings["showNorthIndicator"].GetBool();
 		}
 		if (settings.HasMember("rdfEnabled"))
 		{
@@ -477,6 +489,11 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 	}
 	if (hasStagedRdfEnabled)
 		ApplyRdfEnabled(stagedRdfEnabled);
+	if (hasStagedShowNorthIndicator)
+	{
+		Owner->ShowNorthIndicator = stagedShowNorthIndicator;
+		Owner->SaveNorthIndicatorStateToAsr();
+	}
 	if (hasStagedAvisoColorPalette)
 		Owner->SetAvisoColorPalette(stagedAvisoColorPalette, true);
 	if (hasStagedUiColorTheme)

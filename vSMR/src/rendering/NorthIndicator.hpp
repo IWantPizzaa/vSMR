@@ -41,16 +41,33 @@ namespace VsmrRendering
 		return std::isfinite(degrees) && std::abs(std::remainder(degrees, 360.0)) > 0.5;
 	}
 
-	// Small screen-space overlay: no raster rebuild, hit targets, or zoom scaling.
-	inline bool DrawNorthIndicator(Gdiplus::Graphics& graphics, const RECT& viewport,
-		double degrees, COLORREF background)
+	inline RECT NorthIndicatorBounds(const RECT& viewport, POINT offset = { -1, -1 }) noexcept
 	{
-		constexpr float diameter = 72.0f;
-		constexpr float margin = 8.0f;
-		if (!ShowNorthIndicator(degrees) || viewport.right - viewport.left < diameter + 2 * margin ||
-			viewport.bottom - viewport.top < diameter + 2 * margin) return false;
-		const Gdiplus::PointF center(viewport.right - margin - diameter / 2,
-			viewport.top + margin + diameter / 2);
+		constexpr LONG diameter = 72;
+		constexpr LONG margin = 8;
+		const LONG maxX = viewport.right - viewport.left - diameter - margin;
+		const LONG maxY = viewport.bottom - viewport.top - diameter - margin;
+		if (maxX < margin || maxY < margin) return {};
+		const LONG x = viewport.left + (offset.x < 0 ? maxX : std::clamp(offset.x, margin, maxX));
+		const LONG y = viewport.top + (offset.y < 0 ? margin : std::clamp(offset.y, margin, maxY));
+		return { x, y, x + diameter, y + diameter };
+	}
+
+	inline POINT NorthIndicatorDraggedOffset(const RECT& viewport, const RECT& moved) noexcept
+	{
+		const RECT bounds = NorthIndicatorBounds(viewport,
+			{ (std::max)(0L, moved.left - viewport.left), (std::max)(0L, moved.top - viewport.top) });
+		if (bounds.right <= bounds.left) return { -1, -1 };
+		return { bounds.left - viewport.left, bounds.top - viewport.top };
+	}
+
+	// Small screen-space overlay: no raster rebuild or zoom scaling.
+	inline bool DrawNorthIndicator(Gdiplus::Graphics& graphics, const RECT& viewport,
+		double degrees, COLORREF background, POINT offset = { -1, -1 })
+	{
+		const RECT bounds = NorthIndicatorBounds(viewport, offset);
+		if (!ShowNorthIndicator(degrees) || bounds.right <= bounds.left) return false;
+		const Gdiplus::PointF center((bounds.left + bounds.right) * 0.5f, (bounds.top + bounds.bottom) * 0.5f);
 		const auto saved = graphics.Save();
 		graphics.SetClip(Gdiplus::Rect(viewport.left, viewport.top,
 			viewport.right - viewport.left, viewport.bottom - viewport.top), Gdiplus::CombineModeIntersect);

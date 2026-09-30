@@ -53,6 +53,22 @@ namespace
 		Gdiplus::Bitmap canvas(240, 160, PixelFormat32bppARGB);
 		Gdiplus::Graphics graphics(&canvas);
 		const RECT viewport{ 30, 20, 220, 150 };
+		const RECT defaultCompass = NorthIndicatorBounds(viewport);
+		Check(defaultCompass.left == 140 && defaultCompass.top == 28,
+			"Unpositioned north indicator defaults to the top right", failures);
+		const POINT dragged = NorthIndicatorDraggedOffset(viewport, RECT{ 55, 61, 127, 133 });
+		const RECT movedCompass = NorthIndicatorBounds(viewport, dragged);
+		Check(dragged.x == 25 && dragged.y == 41 && movedCompass.left == 55 && movedCompass.top == 61,
+			"Compass drag keeps its grab offset instead of centering on the pointer", failures);
+		const RECT movedInsetCompass = NorthIndicatorBounds(RECT{ 130, 120, 320, 250 }, dragged);
+		Check(movedInsetCompass.left == 155 && movedInsetCompass.top == 161,
+			"Compass placement is relative to its viewport and follows a moved inset", failures);
+		const POINT clamped = NorthIndicatorDraggedOffset(viewport, RECT{ -100, 900, -28, 972 });
+		Check(clamped.x == 8 && clamped.y == 50,
+			"Out-of-bounds compass drops are clamped inside the viewport", failures);
+		const RECT resized = NorthIndicatorBounds(RECT{ 0, 0, 100, 100 }, dragged);
+		Check(resized.left == 20 && resized.top == 20,
+			"A saved compass position remains reachable after shrinking the viewport", failures);
 		const Gdiplus::Color clear(255, 12, 15, 18);
 		graphics.Clear(clear);
 		graphics.SetSmoothingMode(Gdiplus::SmoothingModeNone);

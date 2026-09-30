@@ -711,6 +711,18 @@
       "UI theme changes shared design colors without changing the AVISO palette");
 
     const rdfToggle = document.querySelector("#settingsRdfEnabled");
+    const northToggle = document.querySelector("#settingsShowNorthIndicator");
+    expect(northToggle?.checked, "Settings exposes the automatic north indicator, enabled by default");
+    for (const enabled of [false, true]) {
+      const saveStart = outbound.length;
+      northToggle.checked = enabled;
+      northToggle.dispatchEvent(new Event("change", { bubbles: true }));
+      expect(api.getState().settings?.showNorthIndicator === enabled,
+        "North indicator visibility stages immediately");
+      await waitFor(() => outbound.slice(saveStart).some(message => message.type === "state.save" &&
+        message.payload?.settings?.showNorthIndicator === enabled),
+        "North indicator visibility is included in automatic settings saves");
+    }
     expect(Boolean(rdfToggle) && rdfToggle.checked,
       "Settings exposes the native RDF toggle, enabled by default");
     rdfToggle.checked = false;

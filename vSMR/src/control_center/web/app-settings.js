@@ -357,6 +357,7 @@
     $("#settingsAliasFile").title = aliasFile || "No alias file found";
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
+    $("#settingsShowNorthIndicator").checked = settings.showNorthIndicator !== false;
     $("#settingsRdfEnabled").checked = settings.rdfEnabled !== false;
     const uiColorTheme = settings.uiColorTheme === "day" ? "day" : "night";
     syncToggleButtons('[data-ui-color-theme]', uiColorTheme, "uiColorTheme");
@@ -377,6 +378,7 @@
       avisoFile: $("#settingsAvisoFile").value,
       resolutionPreset: $("#settingsResolutionPreset").value || "1080p",
       showFps: $("#settingsShowFps").checked,
+      showNorthIndicator: $("#settingsShowNorthIndicator").checked,
       rdfEnabled: $("#settingsRdfEnabled").checked
     });
     state.profiles.forEach(record => {

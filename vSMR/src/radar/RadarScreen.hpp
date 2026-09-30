@@ -287,6 +287,10 @@ private:
 	int FpsFrameCount = 0;
 	int FpsDisplayValue = 0;
 	bool ShowFps = true;
+	bool ShowNorthIndicator = true;
+	POINT NorthIndicatorOffset = { -1, -1 };
+	void LoadNorthIndicatorStateFromAsr();
+	void SaveNorthIndicatorStateToAsr();
 	bool UiUseDayColorTheme = false;
 	std::string AvisoColorPalette = "dark";
 	COLORREF AvisoDarkBackgroundColor = RGB(67, 74, 79);
