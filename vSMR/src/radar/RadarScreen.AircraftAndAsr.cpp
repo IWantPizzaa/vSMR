@@ -615,6 +615,7 @@ void CSMRRadar::ResetInsetWindowState(int appWindowId, bool preserveVisibility)
 	{
 		window->m_Area = { 260, 260, 760, 560 };
 		window->m_AvisoScale = 350;
+		window->m_NorthIndicatorOffset = { -1, -1 };
 		window->m_AvisoCenterLatitude = 0.0;
 		window->m_AvisoCenterLongitude = 0.0;
 		window->m_AvisoDragStartLatitude = 0.0;
@@ -648,6 +649,23 @@ void CSMRRadar::ResetAllInsetWindowStates(bool preserveVisibility)
 	ResetInsetWindowState(APPWINDOW_AVISO - APPWINDOW_BASE, preserveVisibility);
 	ResetInsetWindowState(APPWINDOW_WEATHER - APPWINDOW_BASE, preserveVisibility);
 	ResetInsetWindowState(APPWINDOW_TIMER - APPWINDOW_BASE, preserveVisibility);
+}
+
+void CSMRRadar::LoadNorthIndicatorStateFromAsr()
+{
+	int enabled = 1, x = -1, y = -1;
+	ParseAsrInt(GetDataFromAsr("ShowNorthIndicator"), 0, 1, enabled);
+	ParseAsrInt(GetDataFromAsr("NorthIndicatorX"), -1, 100000, x);
+	ParseAsrInt(GetDataFromAsr("NorthIndicatorY"), -1, 100000, y);
+	ShowNorthIndicator = enabled != 0;
+	NorthIndicatorOffset = { x, y };
+}
+
+void CSMRRadar::SaveNorthIndicatorStateToAsr()
+{
+	SaveDataToAsr("ShowNorthIndicator", "Show compass on rotated AVISO", ShowNorthIndicator ? "1" : "0");
+	SaveDataToAsr("NorthIndicatorX", "Compass viewport X offset", std::to_string(NorthIndicatorOffset.x).c_str());
+	SaveDataToAsr("NorthIndicatorY", "Compass viewport Y offset", std::to_string(NorthIndicatorOffset.y).c_str());
 }
 
 void CSMRRadar::SaveInsetStateToAsrForAirport(const std::string& airport)
@@ -711,6 +729,8 @@ void CSMRRadar::SaveInsetStateToAsrForAirport(const std::string& airport)
 		save(windowPrefix + "CenterLat", "AVISO viewport center", std::to_string(window->m_AvisoCenterLatitude));
 		save(windowPrefix + "CenterLon", "AVISO viewport center", std::to_string(window->m_AvisoCenterLongitude));
 		save(windowPrefix + "Scale", "AVISO viewport zoom", std::to_string(window->m_AvisoScale));
+		save(windowPrefix + "NorthX", "AVISO compass X offset", std::to_string(window->m_NorthIndicatorOffset.x));
+		save(windowPrefix + "NorthY", "AVISO compass Y offset", std::to_string(window->m_NorthIndicatorOffset.y));
 		save(windowPrefix + "LayoutMode", "AVISO viewport layout mode", std::to_string(static_cast<int>(window->m_AvisoLayoutMode)));
 		const auto displayIt = appWindowDisplays.find(avisoWindowId);
 		save(windowPrefix + "Display", "Display AVISO viewport",
@@ -1013,6 +1033,10 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 		centerLoaded = latitudeLoaded && longitudeLoaded;
 		window->m_AvisoViewInitialized = centerLoaded;
 		readInt(windowPrefix + "Scale", 1, 2400, window->m_AvisoScale);
+		int northX = -1, northY = -1;
+		readInt(windowPrefix + "NorthX", -1, 100000, northX);
+		readInt(windowPrefix + "NorthY", -1, 100000, northY);
+		window->m_NorthIndicatorOffset = { northX, northY };
 		int layoutMode = static_cast<int>(window->m_AvisoLayoutMode);
 		readInt(windowPrefix + "LayoutMode", 0, 8, layoutMode);
 		window->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(layoutMode);
@@ -1210,6 +1234,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 		SetUiColorTheme(p_value, false);
 
 	LoadRuntimeMenuPositionFromAsr();
+	LoadNorthIndicatorStateFromAsr();
 
 	ResetAllInsetWindowStates(false);
 	ResetAvisoPresetStateForActiveAirport(false);
@@ -1269,6 +1294,7 @@ void CSMRRadar::OnAsrContentToBeSaved()
 		GetUiColorTheme().c_str());
 
 	SaveRuntimeMenuPositionToAsr();
+	SaveNorthIndicatorStateToAsr();
 	if (!InitialInsetStateRestorePending)
 		SaveInsetStateToAsrForAirport(getActiveAirport());
 }

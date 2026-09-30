@@ -1381,7 +1381,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			// Tag deconflicting
 			DeconflictRefreshTags(frameScene, performance, setRefreshStage);
 
-			if (!AvisoGeoJsonRenderDisabled && !AvisoGeoJsonLoadedPath.empty())
+			if (ShowNorthIndicator && !AvisoGeoJsonRenderDisabled && !AvisoGeoJsonLoadedPath.empty())
 			{
 				const CRect avisoArea = ResolveMainAvisoRenderArea();
 				if (!avisoArea.IsRectEmpty())
@@ -1394,7 +1394,23 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 							position.m_Longitude = lon;
 							return ConvertCoordFromPositionToPixel(position);
 						});
-					VsmrRendering::DrawNorthIndicator(graphics, avisoArea, northRotation, GetAvisoBackgroundColor());
+					// Keep this pass before RenderRefreshInsets, including during a drag.
+					if (VsmrRendering::DrawNorthIndicator(graphics, avisoArea, northRotation,
+						GetAvisoBackgroundColor(), NorthIndicatorOffset))
+					{
+						const CRect compass(VsmrRendering::NorthIndicatorBounds(avisoArea, NorthIndicatorOffset));
+						bool covered = false;
+						for (const auto& display : appWindowDisplays)
+						{
+							const auto window = appWindows.find(display.first);
+							if (!display.second || window == appWindows.end() || !window->second) continue;
+							CRect overlap;
+							if (overlap.IntersectRect(compass, window->second->GetWindowFrameRect())) covered = true;
+						}
+						// Never leave an invisible draggable target over an inset, even
+						// when EuroScope resolves overlapping screen objects differently.
+						if (!covered) AddScreenObject(NORTH_INDICATOR, "north.drag", compass, true, "Drag north indicator");
+					}
 					graphics.Flush(Gdiplus::FlushIntentionSync);
 				}
 			}
