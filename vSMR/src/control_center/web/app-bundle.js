@@ -5841,9 +5841,9 @@
       if (actionButton) handleAction(actionButton.dataset.action, actionButton);
     });
 
-    $("#tagLabelFontSize").addEventListener("change", event => {
-      event.target.value = String(Math.round(clamp(event.target.value, 6, Number(event.target.max) || 72)));
-    });
+    // Leave number-input stepping to the browser. Reassigning .value from its
+    // change event interrupts Chromium's native spinner interaction; validation
+    // and persistence are already handled by stageEditorControl/applyTag.
 
     $("#colorHex").addEventListener("input", event => {
       if (/^#?[0-9a-f]{6}$/i.test(event.target.value.trim())) setColorDraftFromHex(event.target.value);

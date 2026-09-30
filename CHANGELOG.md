@@ -2,6 +2,9 @@
 
 ## [2.0.0] - Unreleased
 
+- Added an automatic, compact north compass at the top right of rotated AVISO views (main view and insets, including CoFrance). It follows the actual map projection and hides when north is up.
+- Fixed label font-size stepping by leaving native spinner values untouched during changes; removed the oversized font suggestion dropdown. Pixel sizing and existing profiles remain compatible.
+
 - Removed the extra debounce delay on AVISO pan/zoom/resize rebuilds in the shared main/inset renderer. Pending requests still coalesce and obsolete work is cancelled; map quality, polygon-corner preservation and explicit/content-change delays are unchanged.
 
 - Added opt-in zoom performance summaries to normal logging: per-window redraw peaks and frame gaps, wheel routing and message age, plus main/inset cache counters and background rebuild timings. Rendering and zoom behavior are unchanged.
