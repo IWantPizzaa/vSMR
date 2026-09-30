@@ -434,9 +434,29 @@
     sampleSharedList("#tagDefinitionList", "Tags");
     const labelSizeInput = document.querySelector("#tagLabelFontSize");
     expect(Number(labelSizeInput?.value) >= 6, "Tag font size shows pixels rather than a legacy slot number");
-    expect([6, 8, 10, 12, 14, 18, 24, 72].every(size =>
-      document.querySelector(`#tagLabelFontSizes option[value="${size}"]`)),
-      "Tag font size offers familiar numeric sizes");
+    expect(!labelSizeInput.hasAttribute("list") && labelSizeInput.step === "1",
+      "Tag font size uses a one-pixel spinner without oversized dropdown suggestions");
+    labelSizeInput.focus();
+    labelSizeInput.value = "12";
+    // Watch the value setter: writing even the same value from a change handler
+    // cancels the browser's ongoing native spin-button interaction.
+    const nativeValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+    let rewrittenValues = 0;
+    Object.defineProperty(labelSizeInput, "value", {
+      configurable: true,
+      get() { return nativeValue.get.call(this); },
+      set(value) { ++rewrittenValues; nativeValue.set.call(this, value); }
+    });
+    for (const direction of [1, 1, 1, -1, -1, -1]) {
+      const before = labelSizeInput.valueAsNumber;
+      if (direction > 0) labelSizeInput.stepUp(); else labelSizeInput.stepDown();
+      labelSizeInput.dispatchEvent(new Event("input", { bubbles: true }));
+      labelSizeInput.dispatchEvent(new Event("change", { bubbles: true }));
+      expect(labelSizeInput.valueAsNumber === before + direction && document.activeElement === labelSizeInput,
+        "Repeated font-size steps preserve focus and move by exactly one pixel");
+    }
+    expect(rewrittenValues === 0, "Font-size event handlers do not reset the native spinner value");
+    delete labelSizeInput.value;
     for (const size of [14, 6, 11]) {
       const saveStart = outbound.length;
       labelSizeInput.value = String(size);
