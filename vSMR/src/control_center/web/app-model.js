@@ -727,6 +727,7 @@
         showFps: true,
         rdfEnabled: true,
         uiColorTheme: "night",
+        showNorthIndicator: true,
         avisoColorPalette: "dark",
         avisoColorPalettes: ["dark", "light", "real"],
         dataHealth: {
