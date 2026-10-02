@@ -11,7 +11,7 @@ namespace VsmrAvisoSharedConfig
 {
 	struct Snapshot
 	{
-		// Contains only effective 'aviso' and '_migration' roots. Null on error.
+		// Effective aviso, migration and runway_group_visibility roots. Null on error.
 		std::shared_ptr<const rapidjson::Document> document;
 		std::string revision;
 		std::string error;

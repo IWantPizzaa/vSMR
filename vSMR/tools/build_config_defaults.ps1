@@ -38,7 +38,8 @@ foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'vSMR/
     if ($file.Name -notmatch '^[A-Z0-9]{4}\.geojson$') { continue }
     $assetHashes.Add('AVISO/' + $file.Name, (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant())
 }
-$document = [ordered]@{ schema_version = 1; profiles = $profiles; metadata = $metadata; asset_hashes = $assetHashes }
+$runwayVisibility = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'vSMR/data/runway_group_visibility.json') -Raw | ConvertFrom-Json
+$document = [ordered]@{ schema_version = 1; profiles = $profiles; metadata = $metadata; asset_hashes = $assetHashes; runway_group_visibility = $runwayVisibility }
 $serialized = ($document | ConvertTo-Json -Depth 100 -Compress) + "`n"
 if ($Check) {
     if (-not (Test-Path -LiteralPath $destination -PathType Leaf) -or

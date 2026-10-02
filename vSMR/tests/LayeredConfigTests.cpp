@@ -127,11 +127,15 @@ namespace
 		auto extension = Parse(R"({"value":null,"unknown":{"kept":true}})");
 		Expect(config.saveUserConfigSection("nullable_extension", &extension, config.getConfigRevision(), error), "arbitrary user section saves under same transaction");
 		Expect(config.getEffectiveConfigSection("nullable_extension")->operator[]("value").IsNull(), "explicit null remains distinguishable in effective config");
+		auto visibility = Parse(R"({"LFPG":{"ground-layout-west":{"airport":"LFPO","runways":["06","07"],"exclude_runways":[]}}})");
+		Expect(config.saveUserConfigSection("runway_group_visibility", &visibility, config.getConfigRevision(), error), "custom cross-airport visibility section saves");
 		config.getMutableActiveProfile()["name"].SetString("Renamed", config.document.GetAllocator());
 		Expect(config.saveConfig(), "renaming a built-in succeeds");
 		sparse = Parse(Read(userPath));
 		Expect(sparse["profiles"].HasMember("builtin-default") && sparse["profiles"].MemberCount() == 1,
 			"renaming retains stable profile ID");
+		Expect(sparse.HasMember("runway_group_visibility") && Serialize(sparse["runway_group_visibility"]) == Serialize(visibility),
+			"profile saves preserve cross-airport visibility overrides");
 		Write(defaultsPath, Defaults(12));
 		Expect(!config.saveConfig(), "default revision change blocks stale save");
 		Expect(config.reload(), "updated defaults reload");
@@ -149,6 +153,8 @@ namespace
 		sparse = Parse(Read(userPath));
 		Expect(!sparse.HasMember("profiles") && sparse.HasMember("nullable_extension") && sparse.HasMember("_migration"),
 			"profile reset keeps unrelated user data and migration state");
+		Expect(sparse.HasMember("runway_group_visibility") && Serialize(sparse["runway_group_visibility"]) == Serialize(visibility),
+			"default updates and profile resets preserve visibility overrides");
 		Document resetProfiles;
 		Expect(config.getDefaultProfiles(resetProfiles, error), "reset source is current default.json");
 		Expect(config.replaceInMemoryConfig(resetProfiles, "Default", error), "stage current defaults");
