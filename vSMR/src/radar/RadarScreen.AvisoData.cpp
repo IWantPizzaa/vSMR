@@ -1185,7 +1185,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 
 	// Apply live runway direction before publishing the first render snapshot,
 	// including map reloads whose stored defaults have both arrow groups enabled.
-	ApplyRunwayArrowGroupVisibility(parsedGroups);
+	ApplyRunwayGroupVisibility(parsedGroups);
 	auto featureSnapshot =
 		std::make_shared<const std::vector<AvisoFeature>>(parsedFeatures);
 	auto labelSnapshot =

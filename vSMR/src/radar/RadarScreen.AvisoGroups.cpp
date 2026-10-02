@@ -2,7 +2,8 @@
 #include "aviso/AvisoDocumentModel.hpp"
 #include "aviso/AvisoFeatureMetadata.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
-#include "aviso/AvisoRunwayArrows.hpp"
+#include "aviso/AvisoRunwayVisibility.hpp"
+#include "aviso/AvisoSharedConfig.hpp"
 #include "insets/InsetWindow.hpp"
 #include "radar/RadarScreen.hpp"
 
@@ -324,24 +325,32 @@ bool CSMRRadar::SetAvisoColorPalette(const std::string& rawPalette, bool persist
 	return true;
 }
 
-bool CSMRRadar::ApplyRunwayArrowGroupVisibility(std::vector<AvisoGroup>& groups) const
+bool CSMRRadar::ApplyRunwayGroupVisibility(std::vector<AvisoGroup>& groups) const
 {
-	const std::string airport = getActiveAirport();
-	std::vector<std::string> activeRunways;
-	if (airport == "LFPG" && RimcasInstance != nullptr && RunwayStatusLastAirport == airport)
-		for (const auto& runway : RimcasInstance->RunwayStatuses)
-			if (runway.second == CRimcas::ARR || runway.second == CRimcas::DEP || runway.second == CRimcas::BOTH)
-				activeRunways.push_back(runway.first);
-	return VsmrAviso::ApplyLfpgRunwayArrows(airport, activeRunways, groups);
+	// Canonical defaults + user overrides are shared even when the controller
+	// uses an external legacy profile file. Reads/stat checks are cached.
+	const auto config = VsmrAvisoSharedConfig::Read(fs::u8path(DllPath) / "vSMR_Data");
+	std::string error = config.error;
+	bool changed = false;
+	if (config.document)
+	{
+		const auto* airports = VsmrAviso::RuleMember(*config.document, "runway_group_visibility");
+		const auto* rules = airports ? VsmrAviso::RuleMember(*airports, getActiveAirport().c_str()) : nullptr;
+		changed = VsmrAviso::ApplyRunwayVisibilityRules(rules, AirportRunwayActivity, groups, error);
+	}
+	if (!error.empty() && error != RunwayVisibilityRuleError)
+		Logger::info("AVISO runway visibility: " + error);
+	RunwayVisibilityRuleError = error;
+	return changed;
 }
 
-void CSMRRadar::SyncRunwayArrowGroups()
+void CSMRRadar::SyncRunwayGroups()
 {
 	auto groups = GetAvisoGroups();
-	if (!ApplyRunwayArrowGroupVisibility(groups)) return;
+	if (!ApplyRunwayGroupVisibility(groups)) return;
 	std::vector<std::pair<std::string, bool>> visibility;
 	for (const auto& group : groups) visibility.emplace_back(group.id, group.visible);
-	// One generation change for both directions, shared by main/inset caches.
+	// One generation change for all affected groups, shared by main/inset caches.
 	// Runtime only: never rewrite user overrides or EuroScope runway selections.
 	SetAvisoGroupVisibilities(visibility);
 }
