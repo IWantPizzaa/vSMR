@@ -93,6 +93,60 @@ Older loaders still use the full ZIP and `.update.json` package mechanism; that 
 
 Bundled operational data is a starting point and must be checked for the local airport and controlling position.
 
+### Runway-driven AVISO group visibility
+
+Add `runway_group_visibility` to your existing `vSMR_Data/config.json` root, alongside `profiles` or `aviso`; do not replace the rest of your file. Bundled rules live in replaceable `default.json`, so put customizations in `config.json` to preserve them across updates. Close the Control Center before editing externally.
+
+For example, show LFPG's West Arrows based on **LFPO departure runways 06 or 07**:
+
+```json
+{
+  "schema_version": 1,
+  "runway_group_visibility": {
+    "LFPG": {
+      "ground-layout-west": {
+        "enabled": true,
+        "airport": "LFPO",
+        "operation": "departure",
+        "runways": ["06", "07"],
+        "exclude_runways": [],
+        "match": "any",
+        "visible_when_matched": true,
+        "visible_when_unmatched": false
+      }
+    }
+  }
+}
+```
+
+The outer airport (`LFPG`) identifies the AVISO being displayed. The next key is an **existing group ID**, not its displayed name; find IDs in the map's `vsmr_groups` array. `airport` identifies the airport to monitor, which must have runway data in the loaded EuroScope sector. It does not need to be the selected vSMR airport. Rules affect the main AVISO and its insets, including CoFrance.
+
+| Field | Meaning |
+| --- | --- |
+| `enabled` | Defaults to `true`. Set to `false` to return this group to manual control. |
+| `airport` | Required source airport ICAO. |
+| `operation` | `either` (default), `arrival`, or `departure`, using EuroScope's actual runway selections. |
+| `runways` | Required nonempty list. `26` matches 26/26L/26C/26R; `26L` matches only 26L. |
+| `exclude_runways` | Optional list; any active matching runway blocks the rule. Uses the same operation filter. |
+| `match` | `any` (default): at least one requested runway; `all`: every requested runway. Other active runways are allowed unless excluded. |
+| `visible_when_matched` | Defaults to `true`. |
+| `visible_when_unmatched` | Defaults to `false`, including when the source airport is unavailable or no runway is selected. |
+
+Objects merge by airport and group ID; runway arrays replace inherited arrays. Use `"exclude_runways": []` to clear bundled exclusions when changing a rule. Unknown fields or invalid values cause that group's rule to be ignored and logged. Rules never create groups. Groups without rules retain manual behavior; enabled rules continuously control their groups, so disable a rule before changing its visibility manually. JSON edits and runway changes are picked up automatically while the radar refreshes; neither EuroScope runway selections nor saved user settings are rewritten.
+
+LFPG defaults show East Arrows (`ground-layout-east`) for 08/09 and West Arrows (`ground-layout-west`) for 26/27, considering both arrivals and departures. No active direction or mixed east/west directions hides both. Each rule is independent: overriding West does not change East. To disable both defaults, merge this into your configuration:
+
+```json
+"runway_group_visibility": {
+  "LFPG": {
+    "ground-layout-east": { "enabled": false },
+    "ground-layout-west": { "enabled": false }
+  }
+}
+```
+
+This only controls map-group visibility; it does not select vSID rules or configurations.
+
 ## Documentation
 
 | Topic | Wiki page |

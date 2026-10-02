@@ -4,7 +4,7 @@
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
-#include "aviso/AvisoRunwayArrows.hpp"
+#include "aviso/AvisoRunwayVisibility.hpp"
 #include "bootstrap/loader/RuntimeReleaseState.hpp"
 #include "config/RuntimeConfig.hpp"
 #include "config/RuntimeConfig.Internal.hpp"
@@ -1248,43 +1248,68 @@ void TestZoomDiagnostics()
 		"Disabled time and input do not leak into a new capture");
 }
 
-void TestLfpgRunwayArrows()
+void TestRunwayVisibilityRules(const std::filesystem::path& repositoryRoot)
 {
 	using namespace VsmrAviso;
-	for (const auto& runways : std::vector<std::vector<std::string>>{
-		{ "26L", "26R", "27L", "27R" }, { "26" }, { "27R" }, { " 26l " } })
-	{
-		const auto arrows = LfpgRunwayArrows(runways);
-		Expect(arrows.west && !arrows.east, "LFPG active 26/27 ends select West arrows only");
-	}
-	for (const auto& runways : std::vector<std::vector<std::string>>{
-		{ "08L", "08R", "09L", "09R" }, { "08" }, { "9R" }, { " 08l " } })
-	{
-		const auto arrows = LfpgRunwayArrows(runways);
-		Expect(arrows.east && !arrows.west, "LFPG active 08/09 ends select East arrows only");
-	}
-	for (const auto& runways : std::vector<std::vector<std::string>>{
-		{}, { "26L", "09R" }, { "08L", "27R" },
-		{ "06", "07", "24", "25", "", " ", "026L", "26R/08L", "09X", "8foo" } })
-	{
-		const auto arrows = LfpgRunwayArrows(runways);
-		Expect(!arrows.east && !arrows.west, "Missing, conflicting or unrelated runway directions hide both LFPG arrow sets");
-	}
 	struct Group { std::string id; bool visible; };
 	std::vector<Group> groups{ { "ground-layout-east", true }, { "ground-layout-west", true }, { "custom", true } };
-	Expect(ApplyLfpgRunwayArrows("LFPG", { "26R", "27L" }, groups) && !groups[0].visible && groups[1].visible && groups[2].visible,
-		"Legacy maps with both arrow groups enabled are corrected without touching other custom groups");
-	Expect(!ApplyLfpgRunwayArrows("LFPG", { "26R", "27L" }, groups),
-		"Unchanged runway direction does not invalidate the AVISO cache again");
-	Expect(ApplyLfpgRunwayArrows("LFPG", { "08L", "09R" }, groups) && groups[0].visible && !groups[1].visible,
-		"A runway change switches the two groups together");
-	Expect(!ApplyLfpgRunwayArrows("LFPO", { "26R" }, groups) && groups[0].visible && !groups[1].visible,
-		"LFPG arrow logic cannot alter another airport's groups");
-	Expect(ApplyLfpgRunwayArrows("LFPG", {}, groups) && !groups[0].visible && !groups[1].visible,
-		"Clearing active runways also clears directional arrows");
-	std::vector<Group> partial{ { "ground-layout-west", true } };
-	Expect(ApplyLfpgRunwayArrows("LFPG", { "08R" }, partial) && !partial[0].visible && partial.size() == 1,
-		"Custom maps with a deleted arrow group do not recreate it or leave its opposite visible");
+	std::ifstream input(repositoryRoot / "vSMR/data/default.json");
+	std::stringstream bytes; bytes << input.rdbuf();
+	rapidjson::Document defaults;
+	defaults.Parse(bytes.str().c_str());
+	const auto* root = RuleMember(defaults, "runway_group_visibility");
+	const auto* rules = root ? RuleMember(*root, "LFPG") : nullptr;
+	Expect(rules != nullptr, "Generated defaults contain configurable LFPG arrow rules");
+	if (!rules) return;
+	std::string error;
+	AirportRunwayActivity activity;
+	activity["LFPG"]["26R"] = { false, true };
+	activity["LFPG"]["27L"] = { true, false };
+	Expect(ApplyRunwayVisibilityRules(rules, activity, groups, error) && !groups[0].visible && groups[1].visible && groups[2].visible,
+		"JSON defaults select West and leave unrelated custom groups alone");
+	Expect(!ApplyRunwayVisibilityRules(rules, activity, groups, error), "Unchanged visibility does not invalidate render caches");
+	activity["LFPG"].clear(); activity["LFPG"]["8l"] = { true, false };
+	ApplyRunwayVisibilityRules(rules, activity, groups, error);
+	Expect(groups[0].visible && !groups[1].visible, "Runway normalization and East default work");
+	activity["LFPG"]["27R"] = { false, true };
+	ApplyRunwayVisibilityRules(rules, activity, groups, error);
+	Expect(!groups[0].visible && !groups[1].visible, "Excluded opposite runways hide both default groups");
+	activity.clear(); ApplyRunwayVisibilityRules(rules, activity, groups, error);
+	Expect(!groups[0].visible && !groups[1].visible, "No active runways hides both default groups");
+	rapidjson::Document custom;
+	custom.Parse(R"({"custom":{"airport":"lfpo","operation":"departure","runways":["06","07"],"match":"any"}})");
+	activity["LFPG"]["06"] = { false, true };
+	activity["LFPO"]["06"] = { true, false };
+	ApplyRunwayVisibilityRules(&custom, activity, groups, error);
+	Expect(!groups[2].visible, "Rules use the requested airport and departure activity, not local or ARR activity");
+	activity["LFPO"]["06"].departure = true;
+	ApplyRunwayVisibilityRules(&custom, activity, groups, error);
+	Expect(groups[2].visible, "An LFPG group can follow departures at LFPO");
+	RunwayVisibilityRule rule;
+	Expect(ParseRunwayVisibilityRule(custom["custom"], rule), "Cross-airport rule parses");
+	rule.all = true;
+	Expect(!RunwayRuleMatches(rule, activity), "All matching requires every configured runway");
+	activity["LFPO"]["07"] = { true, true };
+	Expect(RunwayRuleMatches(rule, activity), "BOTH activity satisfies departure matches");
+	rule.operation = "arrival";
+	Expect(RunwayRuleMatches(rule, activity), "Arrival-only matching includes BOTH activity");
+	rule.runways = { "06L" }; rule.all = false;
+	Expect(!RunwayRuleMatches(rule, activity), "A suffix-specific rule does not match another end");
+	custom.Parse(R"({"custom":{"airport":"LFPO","runways":["06"],"visible_when_matched":false,"visible_when_unmatched":true}})");
+	ApplyRunwayVisibilityRules(&custom, activity, groups, error);
+	Expect(!groups[2].visible, "Visibility can be inverted");
+	custom.Parse(R"({"custom":{"enabled":false}})"); groups[2].visible = true;
+	Expect(!ApplyRunwayVisibilityRules(&custom, activity, groups, error) && groups[2].visible && error.empty(),
+		"Disabled rules preserve manual visibility");
+	for (const char* invalid : { R"({"airport":"LFPO","runways":[]})", R"({"airport":"LFPO","runways":["026"]})",
+		R"({"airport":"LFPO","runways":["06"],"operation":"typo"})", R"({"enabled":"false"})",
+		R"({"airport":"LFPO","runways":["06"],"match":"typo"})", R"({"airport":"LFPO","runways":["06"],"airpot":"LFPG"})" })
+	{
+		rapidjson::Document bad; bad.Parse(invalid);
+		Expect(!ParseRunwayVisibilityRule(bad, rule), "Malformed rules are rejected rather than partially applied");
+	}
+	Expect(NormalizeRunway(" 9r ") == "09R" && NormalizeRunway("37").empty() && NormalizeRunway("09X").empty(),
+		"Runway names are normalized and validated");
 }
 
 int wmain(int argc, wchar_t** argv)
@@ -1294,7 +1319,7 @@ int wmain(int argc, wchar_t** argv)
 		: std::filesystem::current_path();
 
 	TestGroundState();
-	TestLfpgRunwayArrows();
+	TestRunwayVisibilityRules(repositoryRoot);
 	TestZoomDiagnostics();
 	TestSharedGroundState();
 	TestRapidJsonUtilities();
