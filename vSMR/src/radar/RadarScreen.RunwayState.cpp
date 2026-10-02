@@ -264,11 +264,15 @@ void CSMRRadar::RefreshRunwayStatuses(bool force)
 		runwayStatuses[runwayNameB] = getRunwayStatus(rwy, 1);
 	}
 
+	const bool runwayActivityChanged = RunwayStatusLastAirport != activeAirport ||
+		RimcasInstance->RunwayStatuses != runwayStatuses;
 	RunwayStatusLastRefreshTick = nowTick;
 	RunwayStatusLastAirport = activeAirport;
 
 	if (RimcasInstance->RunwayStatuses != runwayStatuses)
 		RimcasInstance->RunwayStatuses = std::move(runwayStatuses);
+	if (force || runwayActivityChanged)
+		SyncRunwayArrowGroups();
 }
 
 void CSMRRadar::RefreshRimcasRunwayMonitoring()
