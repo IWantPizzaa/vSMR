@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- LFPG East/West arrow groups now follow EuroScope's live ARR/DEP runway selection at map load and on runway changes: 08/09 shows East, 26/27 shows West. No active direction or mixed directions hides both. Main AVISO and insets share the update without changing EuroScope runways or rewriting user configuration.
+
 - Added a north-indicator toggle in Control Center > Settings > Display and drag-and-drop positioning in main AVISO and inset views. Positions are retained in the ASR; the main compass stays below insets and covered indicators do not intercept inset clicks.
 
 - Added an automatic, compact north compass at the top right of rotated AVISO views (main view and insets, including CoFrance). It follows the actual map projection and hides when north is up.

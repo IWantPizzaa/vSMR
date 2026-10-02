@@ -293,6 +293,7 @@
     <ClInclude Include="src\config\LayeredConfig.hpp" />
     <ClInclude Include="src\aviso\AvisoOverrides.hpp" />
     <ClInclude Include="src\aviso\AvisoSharedConfig.hpp" />
+    <ClInclude Include="src\aviso\AvisoRunwayArrows.hpp" />
     <ClInclude Include="src\config\RuntimeConfig.Internal.hpp" />
     <ClInclude Include="src\control_center\ControlCenterBridge.hpp" />
     <ClInclude Include="src\control_center\ControlCenterBridge.Internal.hpp" />
