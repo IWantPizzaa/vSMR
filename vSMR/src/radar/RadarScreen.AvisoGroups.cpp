@@ -2,6 +2,7 @@
 #include "aviso/AvisoDocumentModel.hpp"
 #include "aviso/AvisoFeatureMetadata.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
+#include "aviso/AvisoRunwayArrows.hpp"
 #include "insets/InsetWindow.hpp"
 #include "radar/RadarScreen.hpp"
 
@@ -321,6 +322,28 @@ bool CSMRRadar::SetAvisoColorPalette(const std::string& rawPalette, bool persist
 			GetAvisoColorPalette().c_str());
 	}
 	return true;
+}
+
+bool CSMRRadar::ApplyRunwayArrowGroupVisibility(std::vector<AvisoGroup>& groups) const
+{
+	const std::string airport = getActiveAirport();
+	std::vector<std::string> activeRunways;
+	if (airport == "LFPG" && RimcasInstance != nullptr && RunwayStatusLastAirport == airport)
+		for (const auto& runway : RimcasInstance->RunwayStatuses)
+			if (runway.second == CRimcas::ARR || runway.second == CRimcas::DEP || runway.second == CRimcas::BOTH)
+				activeRunways.push_back(runway.first);
+	return VsmrAviso::ApplyLfpgRunwayArrows(airport, activeRunways, groups);
+}
+
+void CSMRRadar::SyncRunwayArrowGroups()
+{
+	auto groups = GetAvisoGroups();
+	if (!ApplyRunwayArrowGroupVisibility(groups)) return;
+	std::vector<std::pair<std::string, bool>> visibility;
+	for (const auto& group : groups) visibility.emplace_back(group.id, group.visible);
+	// One generation change for both directions, shared by main/inset caches.
+	// Runtime only: never rewrite user overrides or EuroScope runway selections.
+	SetAvisoGroupVisibilities(visibility);
 }
 
 bool CSMRRadar::SetAvisoGroupVisibility(const std::string& rawGroupId, bool visible)

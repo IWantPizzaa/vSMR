@@ -4,6 +4,7 @@
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
+#include "aviso/AvisoRunwayArrows.hpp"
 #include "bootstrap/loader/RuntimeReleaseState.hpp"
 #include "config/RuntimeConfig.hpp"
 #include "config/RuntimeConfig.Internal.hpp"
@@ -1247,6 +1248,45 @@ void TestZoomDiagnostics()
 		"Disabled time and input do not leak into a new capture");
 }
 
+void TestLfpgRunwayArrows()
+{
+	using namespace VsmrAviso;
+	for (const auto& runways : std::vector<std::vector<std::string>>{
+		{ "26L", "26R", "27L", "27R" }, { "26" }, { "27R" }, { " 26l " } })
+	{
+		const auto arrows = LfpgRunwayArrows(runways);
+		Expect(arrows.west && !arrows.east, "LFPG active 26/27 ends select West arrows only");
+	}
+	for (const auto& runways : std::vector<std::vector<std::string>>{
+		{ "08L", "08R", "09L", "09R" }, { "08" }, { "9R" }, { " 08l " } })
+	{
+		const auto arrows = LfpgRunwayArrows(runways);
+		Expect(arrows.east && !arrows.west, "LFPG active 08/09 ends select East arrows only");
+	}
+	for (const auto& runways : std::vector<std::vector<std::string>>{
+		{}, { "26L", "09R" }, { "08L", "27R" },
+		{ "06", "07", "24", "25", "", " ", "026L", "26R/08L", "09X", "8foo" } })
+	{
+		const auto arrows = LfpgRunwayArrows(runways);
+		Expect(!arrows.east && !arrows.west, "Missing, conflicting or unrelated runway directions hide both LFPG arrow sets");
+	}
+	struct Group { std::string id; bool visible; };
+	std::vector<Group> groups{ { "ground-layout-east", true }, { "ground-layout-west", true }, { "custom", true } };
+	Expect(ApplyLfpgRunwayArrows("LFPG", { "26R", "27L" }, groups) && !groups[0].visible && groups[1].visible && groups[2].visible,
+		"Legacy maps with both arrow groups enabled are corrected without touching other custom groups");
+	Expect(!ApplyLfpgRunwayArrows("LFPG", { "26R", "27L" }, groups),
+		"Unchanged runway direction does not invalidate the AVISO cache again");
+	Expect(ApplyLfpgRunwayArrows("LFPG", { "08L", "09R" }, groups) && groups[0].visible && !groups[1].visible,
+		"A runway change switches the two groups together");
+	Expect(!ApplyLfpgRunwayArrows("LFPO", { "26R" }, groups) && groups[0].visible && !groups[1].visible,
+		"LFPG arrow logic cannot alter another airport's groups");
+	Expect(ApplyLfpgRunwayArrows("LFPG", {}, groups) && !groups[0].visible && !groups[1].visible,
+		"Clearing active runways also clears directional arrows");
+	std::vector<Group> partial{ { "ground-layout-west", true } };
+	Expect(ApplyLfpgRunwayArrows("LFPG", { "08R" }, partial) && !partial[0].visible && partial.size() == 1,
+		"Custom maps with a deleted arrow group do not recreate it or leave its opposite visible");
+}
+
 int wmain(int argc, wchar_t** argv)
 {
 	const std::filesystem::path repositoryRoot = argc > 1
@@ -1254,6 +1294,7 @@ int wmain(int argc, wchar_t** argv)
 		: std::filesystem::current_path();
 
 	TestGroundState();
+	TestLfpgRunwayArrows();
 	TestZoomDiagnostics();
 	TestSharedGroundState();
 	TestRapidJsonUtilities();

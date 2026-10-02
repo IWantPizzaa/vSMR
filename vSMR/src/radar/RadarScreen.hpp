@@ -341,6 +341,8 @@ private:
 	void EnsureAirportPositionCache();
 	void EnsureRunwayGeometryCache();
 	void RefreshRunwayStatuses(bool force);
+	bool ApplyRunwayArrowGroupVisibility(std::vector<AvisoGroup>& groups) const;
+	void SyncRunwayArrowGroups();
 	void RefreshRimcasRunwayMonitoring();
 	VsmrTargetRendering::IconCacheCallbacks CreateTargetIconCacheCallbacks();
 	struct RefreshPerformance;
