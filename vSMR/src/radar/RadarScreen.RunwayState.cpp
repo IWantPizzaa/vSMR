@@ -3,6 +3,7 @@
 #include "radar/RadarScreen.Registry.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "safety/RimcasLogic.hpp"
+#include <cctype>
 
 void CSMRRadar::InvalidateAirportPositionCache()
 {
@@ -17,6 +18,7 @@ void CSMRRadar::InvalidateRunwayGeometryCache()
 	CachedRunwayGeometries.clear();
 	RunwayStatusLastRefreshTick = 0;
 	RunwayStatusLastAirport.clear();
+	AirportRunwayActivity.clear();
 	LastMapRunwayStatuses.clear();
 	LastMapActiveAirport.clear();
 
@@ -243,6 +245,7 @@ void CSMRRadar::RefreshRunwayStatuses(bool force)
 	};
 
 	std::map<std::string, CRimcas::RunwayStatus> runwayStatuses;
+	VsmrAviso::AirportRunwayActivity airportActivity;
 	CSectorElement rwy;
 	for (rwy = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);
 		rwy.IsValid();
@@ -252,27 +255,39 @@ void CSMRRadar::RefreshRunwayStatuses(bool force)
 		if (runwayAirportName == nullptr || runwayAirportName[0] == '\0')
 			continue;
 
-		if (!VsmrRadarUiSupport::startsWith(activeAirport.c_str(), runwayAirportName))
-			continue;
-
 		const char* runwayNameA = rwy.GetRunwayName(0);
 		const char* runwayNameB = rwy.GetRunwayName(1);
 		if (runwayNameA == nullptr || runwayNameB == nullptr || runwayNameA[0] == '\0' || runwayNameB[0] == '\0')
 			continue;
 
-		runwayStatuses[runwayNameA] = getRunwayStatus(rwy, 0);
-		runwayStatuses[runwayNameB] = getRunwayStatus(rwy, 1);
+		// Read every airport from this screen's selected sector source. Rules can
+		// reference another airport without making it vSMR's active airport.
+		const auto statusA = getRunwayStatus(rwy, 0);
+		const auto statusB = getRunwayStatus(rwy, 1);
+		auto activity = [](CRimcas::RunwayStatus status) -> VsmrAviso::RunwayActivity {
+			return { status == CRimcas::ARR || status == CRimcas::BOTH,
+				status == CRimcas::DEP || status == CRimcas::BOTH };
+		};
+		std::string airport(runwayAirportName);
+		std::transform(airport.begin(), airport.end(), airport.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+		airportActivity[airport][runwayNameA] = activity(statusA);
+		airportActivity[airport][runwayNameB] = activity(statusB);
+		if (airport == activeAirport)
+		{
+			runwayStatuses[runwayNameA] = statusA;
+			runwayStatuses[runwayNameB] = statusB;
+		}
 	}
 
-	const bool runwayActivityChanged = RunwayStatusLastAirport != activeAirport ||
-		RimcasInstance->RunwayStatuses != runwayStatuses;
+	AirportRunwayActivity = std::move(airportActivity);
 	RunwayStatusLastRefreshTick = nowTick;
 	RunwayStatusLastAirport = activeAirport;
 
 	if (RimcasInstance->RunwayStatuses != runwayStatuses)
 		RimcasInstance->RunwayStatuses = std::move(runwayStatuses);
-	if (force || runwayActivityChanged)
-		SyncRunwayArrowGroups();
+	// Also pick up edited JSON rules and changes at airports other than the
+	// current AVISO. Unchanged effective visibility does not rebuild the cache.
+	SyncRunwayGroups();
 }
 
 void CSMRRadar::RefreshRimcasRunwayMonitoring()

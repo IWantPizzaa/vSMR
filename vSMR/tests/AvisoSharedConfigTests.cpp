@@ -35,6 +35,16 @@ std::vector<std::string> RunAvisoSharedConfigTests(const std::filesystem::path&)
 		}
 		const auto cached = VsmrAvisoSharedConfig::Read(directory);
 		expect(cached.document == external.document && cached.revision == external.revision, "unchanged render reads reuse snapshot");
+		write("default.json", R"({"schema_version":1,"runway_group_visibility":{"LFPG":{"arrows":{"airport":"LFPG","runways":["26","27"],"exclude_runways":["08"]},"other":{"enabled":false}}}})");
+		write("config.json", R"({"schema_version":1,"runway_group_visibility":{"LFPG":{"arrows":{"airport":"LFPO","runways":["06"],"exclude_runways":[]}}}})");
+		const auto ruleConfig = VsmrAvisoSharedConfig::Read(directory, true);
+		expect(ruleConfig.document != nullptr && ruleConfig.error.empty(), "visibility rules load through canonical config for external profiles too");
+		if (ruleConfig.document) {
+			const auto& rules = (*ruleConfig.document)["runway_group_visibility"]["LFPG"];
+			expect(std::string(rules["arrows"]["airport"].GetString()) == "LFPO" && rules["arrows"]["runways"].Size() == 1 &&
+				rules["arrows"]["exclude_runways"].Empty() && rules.HasMember("other"), "user rules merge by group ID and replace runway arrays");
+		}
+		write("default.json", R"({"schema_version":1,"profiles":{"not-copied":{}},"aviso":{"LFPG":{"style":{"a":1,"b":2}}}})");
 		write("config.json", R"({"schema_version":1,"aviso":{"LFPG":{"style":{"a":9}}}})");
 		const auto updated = VsmrAvisoSharedConfig::Read(directory, true);
 		expect(updated.document != nullptr && updated.revision != external.revision &&

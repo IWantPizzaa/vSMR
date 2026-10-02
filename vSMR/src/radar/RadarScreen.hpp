@@ -1,5 +1,6 @@
 #pragma once
 #include "tags/TagTokenValues.hpp"
+#include "aviso/AvisoRunwayVisibility.hpp"
 #include <EuroScopePlugIn.h>
 #include <string>
 #include <vector>
@@ -306,6 +307,8 @@ private:
 	bool CachedRunwayIsLvp = false;
 	unsigned long RunwayStatusLastRefreshTick = 0;
 	std::string RunwayStatusLastAirport;
+	VsmrAviso::AirportRunwayActivity AirportRunwayActivity;
+	mutable std::string RunwayVisibilityRuleError;
 
 	std::map<std::string, std::chrono::steady_clock::time_point> RecentlyAutoMovedTags;
 
@@ -341,8 +344,8 @@ private:
 	void EnsureAirportPositionCache();
 	void EnsureRunwayGeometryCache();
 	void RefreshRunwayStatuses(bool force);
-	bool ApplyRunwayArrowGroupVisibility(std::vector<AvisoGroup>& groups) const;
-	void SyncRunwayArrowGroups();
+	bool ApplyRunwayGroupVisibility(std::vector<AvisoGroup>& groups) const;
+	void SyncRunwayGroups();
 	void RefreshRimcasRunwayMonitoring();
 	VsmrTargetRendering::IconCacheCallbacks CreateTargetIconCacheCallbacks();
 	struct RefreshPerformance;
