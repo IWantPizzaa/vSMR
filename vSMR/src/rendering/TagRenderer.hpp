@@ -135,6 +135,29 @@ namespace VsmrTagRendering
 		CRect area;
 	};
 
+	// Retain the painted, clipped cells independently of the parent rectangle
+	// selected by EuroScope. Later painted tags/cells own overlapping pixels.
+	class ScreenHitMap
+	{
+	public:
+		struct Hit { std::string callsign; int action; CRect area; };
+		void Clear() { hits_.clear(); }
+		void Add(const std::string& callsign, int action, const CRect& area, const CRect& viewport)
+		{
+			CRect clipped;
+			if (!callsign.empty() && clipped.IntersectRect(area, viewport))
+				hits_.push_back({ callsign, action, clipped });
+		}
+		const Hit* At(POINT point) const
+		{
+			for (auto hit = hits_.rbegin(); hit != hits_.rend(); ++hit)
+				if (hit->area.PtInRect(point)) return &*hit;
+			return nullptr;
+		}
+	private:
+		std::vector<Hit> hits_;
+	};
+
 	struct PaintResult
 	{
 		CRect bounds;
