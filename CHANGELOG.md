@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- Manual AVISO group visibility choices now remain in place while runway selections are unchanged. Automatic rules reapply when their source airport's ARR/DEP selection or the rule changes, including changes within the same runway direction; unrelated airports/profile saves do not cancel manual choices.
+
 - Hardened automatic AVISO group visibility reads: use EuroScope's active sector for operational runway selections, normalize padded airport/runway identifiers, copy borrowed SDK strings immediately and combine duplicate runway observations. Restore the view's sector source after reading; log observed runways and group decisions only when they change.
 
 - Made runway-driven AVISO group visibility configurable through `runway_group_visibility` in layered JSON configuration. Each group can monitor any airport's arrival/departure runways, match any/all runway ends, exclude opposing runways, invert visibility or disable automation. LFPG East/West behavior is now a bundled default, not hardcoded; user overrides survive updates.
