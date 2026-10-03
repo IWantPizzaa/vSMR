@@ -1408,7 +1408,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		{
 			if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
 			{
-				appWindow->OnClickScreenObject(objectId, Pt, Button);
+				appWindow->OnClickScreenObject(objectId, Pt, Button, this);
 				RequestRefresh();
 			}
 			return;
@@ -1508,7 +1508,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		const int appWindowId = ObjectType - DRAWING_AC_SYMBOL_APPWINDOW_BASE;
 		auto appWindowIt = appWindows.find(appWindowId);
 		if (appWindowIt != appWindows.end() && appWindowIt->second != nullptr)
-			appWindowIt->second->OnClickScreenObject(objectId, Pt, Button);
+			appWindowIt->second->OnClickScreenObject(objectId, Pt, Button, this);
 	}
 
 	if (Button == BUTTON_LEFT) {
