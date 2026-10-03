@@ -905,15 +905,6 @@ bool CSMRRadar::IsAppWindowDisplayed(int appWindowId) const
 	return display != appWindowDisplays.end() && display->second;
 }
 
-bool CSMRRadar::UpdateTimerInsetCountdowns()
-{
-	const int timerWindowId = APPWINDOW_TIMER - APPWINDOW_BASE;
-	const auto timerWindow = appWindows.find(timerWindowId);
-	return timerWindow != appWindows.end() &&
-		timerWindow->second != nullptr &&
-		timerWindow->second->UpdateTimerCountdowns();
-}
-
 void CSMRRadar::InvalidateStructuredTagRuleCache()
 {
 	CompiledTagDefinitions.Clear();

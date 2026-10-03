@@ -113,7 +113,6 @@ public:
 		bool persistToAsr = true);
 	void RefreshAfterAirportRunwayActivityChange();
 	bool IsAppWindowDisplayed(int appWindowId) const;
-	bool UpdateTimerInsetCountdowns();
 
 private:
 	// These collaborators implement tightly coupled rendering or same-screen

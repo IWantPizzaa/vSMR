@@ -1,6 +1,7 @@
 #pragma once
 #include "EuroScopePlugIn.h"
 #include "plugin/PluginMetadata.hpp"
+#include "insets/TimerCountdownState.hpp"
 #include "platform/windows/network/HttpHelper.hpp"
 #include "datalink/CpdlcSettingsDialog.hpp"
 #include "datalink/DatalinkDialog.hpp"
@@ -56,6 +57,8 @@ class CSMRPlugin :
 public:
 	CSMRPlugin();
 	virtual ~CSMRPlugin();
+	const TimerCountdownState& GetTimerCountdowns() const { return TimerCountdowns; }
+	void ChangeTimerCountdown(int durationMinutes, bool reset);
 
 	DatalinkControlState GetDatalinkControlState() const;
 	bool UpdateDatalinkControlSettings(
@@ -121,6 +124,7 @@ public:
 	virtual CRadarScreen * OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated);
 
 private:
+	TimerCountdownState TimerCountdowns;
 	friend class VsmrPluginCommandHandler;
 	friend bool VsmrShutdownPlugin();
 
