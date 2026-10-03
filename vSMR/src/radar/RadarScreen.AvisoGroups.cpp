@@ -331,13 +331,18 @@ bool CSMRRadar::ApplyRunwayGroupVisibility(std::vector<AvisoGroup>& groups) cons
 	// uses an external legacy profile file. Reads/stat checks are cached.
 	const auto config = VsmrAvisoSharedConfig::Read(fs::u8path(DllPath) / "vSMR_Data");
 	std::string error = config.error;
+	std::string diagnostic;
 	bool changed = false;
 	if (config.document)
 	{
 		const auto* airports = VsmrAviso::RuleMember(*config.document, "runway_group_visibility");
 		const auto* rules = airports ? VsmrAviso::RuleMember(*airports, getActiveAirport().c_str()) : nullptr;
-		changed = VsmrAviso::ApplyRunwayVisibilityRules(rules, AirportRunwayActivity, groups, error);
+		changed = VsmrAviso::ApplyRunwayVisibilityRules(rules, AirportRunwayActivity, groups, error, &diagnostic);
 	}
+	if (!diagnostic.empty()) diagnostic = getActiveAirport() + diagnostic;
+	if (!diagnostic.empty() && diagnostic != RunwayVisibilityDiagnostic)
+		Logger::info("AVISO runway visibility:" + diagnostic);
+	RunwayVisibilityDiagnostic = std::move(diagnostic);
 	if (!error.empty() && error != RunwayVisibilityRuleError)
 		Logger::info("AVISO runway visibility: " + error);
 	RunwayVisibilityRuleError = error;

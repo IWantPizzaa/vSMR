@@ -1248,6 +1248,31 @@ void TestZoomDiagnostics()
 		"Disabled time and input do not leak into a new capture");
 }
 
+struct RunwaySourceFixture
+{
+	struct Record { std::string airport; std::string ends[2]; VsmrAviso::RunwayActivity activity[2]; };
+	std::vector<Record> active, screen;
+	bool activeSelected = false;
+	std::string borrowed;
+	int* restoredScreen = nullptr;
+	struct Element {
+		RunwaySourceFixture* source;
+		size_t index;
+		const Record& record() const { return (source->activeSelected ? source->active : source->screen)[index]; }
+		bool IsValid() const { return index < (source->activeSelected ? source->active : source->screen).size(); }
+		const char* GetAirportName() { source->borrowed = record().airport; return source->borrowed.c_str(); }
+		const char* GetRunwayName(int end) { source->borrowed = record().ends[end]; return source->borrowed.c_str(); }
+		bool IsElementActive(bool departure, int end) {
+			source->borrowed = "reused SDK buffer";
+			return departure ? record().activity[end].departure : record().activity[end].arrival;
+		}
+	};
+	void SelectActiveSectorfile() { activeSelected = true; }
+	void SelectScreenSectorfile(int* selected) { activeSelected = false; restoredScreen = selected; }
+	Element SectorFileElementSelectFirst(int) { return { this, 0 }; }
+	Element SectorFileElementSelectNext(Element previous, int) { return { this, previous.index + 1 }; }
+};
+
 void TestRunwayVisibilityRules(const std::filesystem::path& repositoryRoot)
 {
 	using namespace VsmrAviso;
@@ -1263,6 +1288,25 @@ void TestRunwayVisibilityRules(const std::filesystem::path& repositoryRoot)
 	if (!rules) return;
 	std::string error;
 	AirportRunwayActivity activity;
+	RunwaySourceFixture source;
+	source.active = {
+		{ " lfpg \r\n", { "09R", " 27l " }, { { false, false }, { false, true } } },
+		{ "LFPG ", { "08R", "26L" }, { { false, false }, { true, false } } },
+		{ "LFPG", { "08R", "26L" }, { { false, false }, { false, false } } },
+		{ "LFPO", { "06", "24" }, { { false, true }, { false, false } } }
+	};
+	source.screen = { { "LFPG", { "08R", "26L" }, { { true, true }, { false, false } } } };
+	int screenToken = 0;
+	activity = ReadActiveRunwayActivity(source, &screenToken, 4);
+	Expect(!source.activeSelected && source.restoredScreen == &screenToken, "Operational scan restores the screen sector source");
+	std::string diagnostic;
+	ApplyRunwayVisibilityRules(rules, activity, groups, error, &diagnostic);
+	Expect(!groups[0].visible && groups[1].visible, "Active-sector West selection wins over stale screen East selection with padded airport names and borrowed SDK strings");
+	Expect(diagnostic.find("26L:ARR") != std::string::npos && diagnostic.find("27L:DEP") != std::string::npos,
+		"Visibility diagnostics expose normalized runway selections without duplicate inactive entries erasing activity");
+	Expect(activity.find("LFPO") != activity.end(), "Operational scan retains other airports for cross-airport rules");
+	Expect(NormalizeAirport(" lfpg \t") == "LFPG" && NormalizeAirport("LFPG extra").empty(), "Airport normalization trims padding but rejects invalid ICAOs");
+	activity.clear(); groups[0].visible = true; groups[1].visible = true;
 	activity["LFPG"]["26R"] = { false, true };
 	activity["LFPG"]["27L"] = { true, false };
 	Expect(ApplyRunwayVisibilityRules(rules, activity, groups, error) && !groups[0].visible && groups[1].visible && groups[2].visible,

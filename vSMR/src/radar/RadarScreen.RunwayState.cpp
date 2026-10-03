@@ -3,7 +3,6 @@
 #include "radar/RadarScreen.Registry.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "safety/RimcasLogic.hpp"
-#include <cctype>
 
 void CSMRRadar::InvalidateAirportPositionCache()
 {
@@ -245,41 +244,28 @@ void CSMRRadar::RefreshRunwayStatuses(bool force)
 	};
 
 	std::map<std::string, CRimcas::RunwayStatus> runwayStatuses;
-	VsmrAviso::AirportRunwayActivity airportActivity;
 	CSectorElement rwy;
 	for (rwy = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);
 		rwy.IsValid();
 		rwy = GetPlugIn()->SectorFileElementSelectNext(rwy, SECTOR_ELEMENT_RUNWAY))
 	{
-		const char* runwayAirportName = rwy.GetAirportName();
-		if (runwayAirportName == nullptr || runwayAirportName[0] == '\0')
+		const char* rawAirport = rwy.GetAirportName();
+		const std::string airport = VsmrAviso::NormalizeAirport(rawAirport ? rawAirport : "");
+		if (airport != activeAirport)
 			continue;
 
-		const char* runwayNameA = rwy.GetRunwayName(0);
-		const char* runwayNameB = rwy.GetRunwayName(1);
-		if (runwayNameA == nullptr || runwayNameB == nullptr || runwayNameA[0] == '\0' || runwayNameB[0] == '\0')
+		const char* rawNameA = rwy.GetRunwayName(0);
+		const std::string runwayNameA = VsmrAviso::NormalizeRunway(rawNameA ? rawNameA : "");
+		const char* rawNameB = rwy.GetRunwayName(1);
+		const std::string runwayNameB = VsmrAviso::NormalizeRunway(rawNameB ? rawNameB : "");
+		if (runwayNameA.empty() || runwayNameB.empty())
 			continue;
 
-		// Read every airport from this screen's selected sector source. Rules can
-		// reference another airport without making it vSMR's active airport.
-		const auto statusA = getRunwayStatus(rwy, 0);
-		const auto statusB = getRunwayStatus(rwy, 1);
-		auto activity = [](CRimcas::RunwayStatus status) -> VsmrAviso::RunwayActivity {
-			return { status == CRimcas::ARR || status == CRimcas::BOTH,
-				status == CRimcas::DEP || status == CRimcas::BOTH };
-		};
-		std::string airport(runwayAirportName);
-		std::transform(airport.begin(), airport.end(), airport.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-		airportActivity[airport][runwayNameA] = activity(statusA);
-		airportActivity[airport][runwayNameB] = activity(statusB);
-		if (airport == activeAirport)
-		{
-			runwayStatuses[runwayNameA] = statusA;
-			runwayStatuses[runwayNameB] = statusB;
-		}
+		runwayStatuses[runwayNameA] = getRunwayStatus(rwy, 0);
+		runwayStatuses[runwayNameB] = getRunwayStatus(rwy, 1);
 	}
 
-	AirportRunwayActivity = std::move(airportActivity);
+	AirportRunwayActivity = VsmrAviso::ReadActiveRunwayActivity(*GetPlugIn(), this, SECTOR_ELEMENT_RUNWAY);
 	RunwayStatusLastRefreshTick = nowTick;
 	RunwayStatusLastAirport = activeAirport;
 

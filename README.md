@@ -119,7 +119,7 @@ For example, show LFPG's West Arrows based on **LFPO departure runways 06 or 07*
 }
 ```
 
-The outer airport (`LFPG`) identifies the AVISO being displayed. The next key is an **existing group ID**, not its displayed name; find IDs in the map's `vsmr_groups` array. `airport` identifies the airport to monitor, which must have runway data in the loaded EuroScope sector. It does not need to be the selected vSMR airport. Rules affect the main AVISO and its insets, including CoFrance.
+The outer airport (`LFPG`) identifies the AVISO being displayed. The next key is an **existing group ID**, not its displayed name; find IDs in the map's `vsmr_groups` array. `airport` identifies the airport to monitor, which must have runway data in EuroScope's active sector. The operational selection is read independently of the sector used for the view's geometry. It does not need to be the selected vSMR airport. Rules affect the main AVISO and its insets, including CoFrance.
 
 | Field | Meaning |
 | --- | --- |
@@ -145,7 +145,7 @@ LFPG defaults show East Arrows (`ground-layout-east`) for 08/09 and West Arrows 
 }
 ```
 
-This only controls map-group visibility; it does not select vSID rules or configurations.
+This only controls map-group visibility; it does not select vSID rules or configurations. Changed rule decisions are recorded as `AVISO runway visibility` diagnostics, including the source airport and observed ARR/DEP runways. Use `.smr diagnostics` after reproducing a problem to export the recent diagnostic messages, or `.smr log normal` to enable file logging before changing runways.
 
 ## Documentation
 

@@ -11,6 +11,21 @@ namespace VsmrAviso
 	struct RunwayActivity { bool arrival = false; bool departure = false; };
 	using AirportRunwayActivity = std::map<std::string, std::map<std::string, RunwayActivity>>;
 
+	inline std::string NormalizeAirport(std::string_view value)
+	{
+		const auto first = value.find_first_not_of(" \t\r\n");
+		if (first == std::string_view::npos) return {};
+		value.remove_prefix(first);
+		value = value.substr(0, value.find_last_not_of(" \t\r\n") + 1);
+		if (value.size() != 4) return {};
+		std::string airport(value);
+		for (char& c : airport) {
+			if (c >= 'a' && c <= 'z') c -= 'a' - 'A';
+			if (!(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9')) return {};
+		}
+		return airport;
+	}
+
 	inline std::string NormalizeRunway(std::string_view value)
 	{
 		const auto first = value.find_first_not_of(" \t\r\n");
@@ -29,6 +44,39 @@ namespace VsmrAviso
 			if (suffix >= 'a' && suffix <= 'z') suffix -= 'a' - 'A';
 			if (suffix != 'L' && suffix != 'C' && suffix != 'R') return {};
 			result += suffix;
+		}
+		return result;
+	}
+
+	// Read operational selections from the active sector, not the geometry-only
+	// sector attached to an ASR. Restore the caller's screen source afterwards.
+	// Copy each SDK string before the next SDK call (returned storage is borrowed).
+	template<typename Plugin, typename Screen>
+	AirportRunwayActivity ReadActiveRunwayActivity(Plugin& plugin, Screen* screen, int runwayType)
+	{
+		struct RestoreScreen {
+			Plugin& plugin; Screen* screen;
+			~RestoreScreen() { plugin.SelectScreenSectorfile(screen); }
+		} restore{ plugin, screen };
+		plugin.SelectActiveSectorfile();
+		AirportRunwayActivity result;
+		for (auto element = plugin.SectorFileElementSelectFirst(runwayType); element.IsValid();
+			element = plugin.SectorFileElementSelectNext(element, runwayType))
+		{
+			const char* rawAirport = element.GetAirportName();
+			const std::string airport = NormalizeAirport(rawAirport ? rawAirport : "");
+			if (airport.empty()) continue;
+			for (int end = 0; end < 2; ++end) {
+				const char* rawRunway = element.GetRunwayName(end);
+				const std::string runway = NormalizeRunway(rawRunway ? rawRunway : "");
+				if (runway.empty()) continue;
+				auto& activity = result[airport][runway];
+				// Multiple sector entries must not overwrite an active observation.
+				const bool arrival = element.IsElementActive(false, end);
+				const bool departure = element.IsElementActive(true, end);
+				activity.arrival = activity.arrival || arrival;
+				activity.departure = activity.departure || departure;
+			}
 		}
 		return result;
 	}
@@ -71,13 +119,9 @@ namespace VsmrAviso
 			!boolean("visible_when_unmatched", rule.unmatched)) return false;
 		if (!rule.enabled) return true;
 		const auto* airport = RuleMember(value, "airport");
-		if (!airport || !airport->IsString() || airport->GetStringLength() != 4) return false;
-		rule.airport.assign(airport->GetString(), airport->GetStringLength());
-		for (char& c : rule.airport)
-		{
-			if (c >= 'a' && c <= 'z') c -= 'a' - 'A';
-			if (!(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9')) return false;
-		}
+		if (!airport || !airport->IsString()) return false;
+		rule.airport = NormalizeAirport({ airport->GetString(), airport->GetStringLength() });
+		if (rule.airport.empty()) return false;
 		if (const auto* operation = RuleMember(value, "operation"))
 		{
 			if (!operation->IsString()) return false;
@@ -130,9 +174,10 @@ namespace VsmrAviso
 
 	template<typename Groups>
 	bool ApplyRunwayVisibilityRules(const rapidjson::Value* rules, const AirportRunwayActivity& activity,
-		Groups& groups, std::string& error)
+		Groups& groups, std::string& error, std::string* diagnostic = nullptr)
 	{
 		error.clear();
+		if (diagnostic) diagnostic->clear();
 		if (!rules) return false;
 		if (!rules->IsObject() || rules->MemberCount() > 256) { error = "Expected at most 256 group rules."; return false; }
 		bool changed = false;
@@ -144,6 +189,21 @@ namespace VsmrAviso
 			if (!ParseRunwayVisibilityRule(*value, rule)) { error = "Invalid runway visibility rule for group " + group.id; continue; }
 			if (!rule.enabled) continue;
 			const bool visible = RunwayRuleMatches(rule, activity) ? rule.matched : rule.unmatched;
+			if (diagnostic) {
+				*diagnostic += " " + group.id + "=" + (visible ? "visible" : "hidden") + " source=" + rule.airport + " [";
+				const auto observed = activity.find(rule.airport);
+				if (observed == activity.end()) *diagnostic += "airport unavailable";
+				else {
+					bool any = false;
+					for (const auto& runway : observed->second) {
+						if (!runway.second.arrival && !runway.second.departure) continue;
+						*diagnostic += runway.first + (runway.second.arrival ? ":ARR" : "") + (runway.second.departure ? ":DEP" : "") + " ";
+						any = true;
+					}
+					if (!any) *diagnostic += "no active runways";
+				}
+				*diagnostic += "]";
+			}
 			changed = changed || group.visible != visible;
 			group.visible = visible;
 		}
