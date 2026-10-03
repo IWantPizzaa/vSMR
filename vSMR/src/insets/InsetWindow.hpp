@@ -89,13 +89,12 @@ public:
 	virtual void render(HDC Hdc, CSMRRadar * radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
 	virtual void setAirport(std::string icao);
 	virtual POINT projectPoint(CPosition pos);
-	virtual void OnClickScreenObject(const char * sItemString, POINT Pt, int Button);
+	virtual void OnClickScreenObject(const char * sItemString, POINT Pt, int Button, CSMRRadar* radarScreen);
 	virtual bool OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Area, bool released, const RECT* layoutBounds = nullptr);
 	bool IsAvisoViewport() const;
 	bool IsSecondaryRadar() const;
 	bool IsWeather() const;
 	bool IsTimer() const;
-	bool UpdateTimerCountdowns();
 	bool SupportsPanAndZoom() const;
 	bool IsSnappedLayout() const;
 	bool IsPointInside(POINT Pt) const;
@@ -144,9 +143,6 @@ private:
 	void renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
 	void renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
 	void renderTimer(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
-	void StartTimer(int durationMinutes);
-	void ResetTimer(int durationMinutes);
-	int GetTimerRemainingSeconds(int durationMinutes, unsigned long long now) const;
 	HFONT GetWeatherFont(size_t index, int height, int weight, DWORD pitchAndFamily, const char* faceName);
 	HFONT GetTimerFont();
 	void ReleaseCachedFonts();
@@ -162,8 +158,6 @@ private:
 	std::string icao;
 	CPosition m_AirportPosition;
 	bool m_AirportPositionValid = false;
-	std::array<unsigned long long, 4> m_TimerDeadlineTicks = { 0, 0, 0, 0 };
-	std::array<bool, 4> m_TimerExpired = { false, false, false, false };
 	std::array<HFONT, 9> m_WeatherFonts = {};
 	std::array<int, 9> m_WeatherFontHeights = {};
 	HFONT m_TimerFont = nullptr;

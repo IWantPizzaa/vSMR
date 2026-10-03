@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- Synchronized the four timer countdowns across AVISO and CoFrance v2 views. Starting/resetting a timer refreshes every visible timer window; countdowns survive closing or switching views, and expiration triggers one shared alarm instead of per-window alarms.
+
 - Restored AVISO inset tag clicks through the same action dispatcher as the main AVISO. Resolve the painted, clipped tag cell for either mouse button instead of relying on the inset's parent hit rectangle; right-click panning now yields to tag actions, and releasing a background pan over a tag does not open a menu.
 
 - Manual AVISO group visibility choices now remain in place while runway selections are unchanged. Automatic rules reapply when their source airport's ARR/DEP selection or the rule changes, including changes within the same runway direction; unrelated airports/profile saves do not cancel manual choices.

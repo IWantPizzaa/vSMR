@@ -18,6 +18,22 @@
 #include <atomic>
 #include <string>
 
+void CSMRPlugin::ChangeTimerCountdown(int durationMinutes, bool reset)
+{
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return;
+	const bool changed = reset ? TimerCountdowns.Reset(durationMinutes) :
+		TimerCountdowns.Start(durationMinutes, ::GetTickCount64());
+	if (!changed)
+		return;
+	for (CSMRRadar* radar : RadarScreensOpened)
+	{
+		if (radar != nullptr && !radar->IsShutdownRequested() &&
+			radar->IsAppWindowDisplayed(APPWINDOW_TIMER - APPWINDOW_BASE))
+			radar->RequestRefresh();
+	}
+}
+
 void CSMRPlugin::OnTimer(int Counter)
 {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnTimer");
@@ -164,7 +180,7 @@ void CSMRPlugin::OnTimer(int Counter)
 	// ----- Updating runtime insets -----
 	const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
 	const int timerWindowId = APPWINDOW_TIMER - APPWINDOW_BASE;
-	bool timerAlarmDue = false;
+	const bool timerAlarmDue = TimerCountdowns.Update(::GetTickCount64());
 	for (CSMRRadar* radar : RadarScreensOpened)
 	{
 		if (radar == nullptr || radar->IsShutdownRequested())
@@ -174,10 +190,6 @@ void CSMRPlugin::OnTimer(int Counter)
 		{
 			QueueWeatherFetch(radar->getActiveAirport());
 			refresh = true;
-		}
-		if (radar->UpdateTimerInsetCountdowns())
-		{
-			timerAlarmDue = true;
 		}
 		if (radar->IsAppWindowDisplayed(timerWindowId))
 			refresh = true;
