@@ -309,6 +309,7 @@ private:
 	std::string RunwayStatusLastAirport;
 	VsmrAviso::AirportRunwayActivity AirportRunwayActivity;
 	mutable std::string RunwayVisibilityRuleError;
+	mutable std::string RunwayVisibilityDiagnostic;
 
 	std::map<std::string, std::chrono::steady_clock::time_point> RecentlyAutoMovedTags;
 
