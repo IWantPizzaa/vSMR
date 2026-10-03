@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "insets/InsetWindow.hpp"
 #include "radar/RadarScreen.hpp"
+#include "plugin/Plugin.hpp"
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -23,10 +24,10 @@ HFONT CInsetWindow::GetTimerFont()
 	return m_TimerFont;
 }
 
-void CInsetWindow::OnClickScreenObject(const char* sItemString, POINT Pt, int Button)
+void CInsetWindow::OnClickScreenObject(const char* sItemString, POINT Pt, int Button, CSMRRadar* radarScreen)
 {
 	UNREFERENCED_PARAMETER(Pt);
-	if (!IsTimer() || sItemString == nullptr)
+	if (!IsTimer() || sItemString == nullptr || radarScreen == nullptr || radarScreen->IsShutdownRequested())
 		return;
 
 	int durationMinutes = 0;
@@ -41,70 +42,19 @@ void CInsetWindow::OnClickScreenObject(const char* sItemString, POINT Pt, int Bu
 	if (durationMinutes == 0)
 		return;
 
-	if (Button == BUTTON_LEFT)
-		StartTimer(durationMinutes);
-	else if (Button == BUTTON_RIGHT)
-		ResetTimer(durationMinutes);
-}
-
-void CInsetWindow::StartTimer(int durationMinutes)
-{
-	if (!IsTimer() || durationMinutes < 1 || durationMinutes > static_cast<int>(m_TimerDeadlineTicks.size()))
-		return;
-	const size_t index = static_cast<size_t>(durationMinutes - 1);
-	if (m_TimerDeadlineTicks[index] != 0)
-		return;
-	m_TimerDeadlineTicks[index] = ::GetTickCount64() +
-		(static_cast<unsigned long long>(durationMinutes) * 60ULL * 1000ULL);
-	m_TimerExpired[index] = false;
-}
-
-void CInsetWindow::ResetTimer(int durationMinutes)
-{
-	if (!IsTimer() || durationMinutes < 1 || durationMinutes > static_cast<int>(m_TimerDeadlineTicks.size()))
-		return;
-	const size_t index = static_cast<size_t>(durationMinutes - 1);
-	m_TimerDeadlineTicks[index] = 0;
-	m_TimerExpired[index] = false;
-}
-
-bool CInsetWindow::UpdateTimerCountdowns()
-{
-	if (!IsTimer())
-		return false;
-
-	const unsigned long long now = ::GetTickCount64();
-	bool alarmDue = false;
-	for (size_t index = 0; index < m_TimerDeadlineTicks.size(); ++index)
-	{
-		const unsigned long long deadline = m_TimerDeadlineTicks[index];
-		if (deadline == 0 || now < deadline)
-			continue;
-
-		m_TimerDeadlineTicks[index] = 0;
-		m_TimerExpired[index] = true;
-		alarmDue = true;
-	}
-	return alarmDue;
-}
-
-int CInsetWindow::GetTimerRemainingSeconds(int durationMinutes, unsigned long long now) const
-{
-	if (!IsTimer() || durationMinutes < 1 || durationMinutes > static_cast<int>(m_TimerDeadlineTicks.size()))
-		return 0;
-	const size_t index = static_cast<size_t>(durationMinutes - 1);
-	const unsigned long long deadline = m_TimerDeadlineTicks[index];
-	if (deadline == 0)
-		return 0;
-	if (now >= deadline)
-		return 0;
-	return static_cast<int>((deadline - now + 999ULL) / 1000ULL);
+	auto* plugin = static_cast<CSMRPlugin*>(radarScreen->GetPlugIn());
+	if (plugin != nullptr && (Button == BUTTON_LEFT || Button == BUTTON_RIGHT))
+		plugin->ChangeTimerCountdown(durationMinutes, Button == BUTTON_RIGHT);
 }
 
 void CInsetWindow::renderTimer(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation)
 {
 	if (radar_screen == nullptr || gdi == nullptr || radar_screen->IsShutdownRequested())
 		return;
+	const auto* plugin = static_cast<CSMRPlugin*>(radar_screen->GetPlugIn());
+	if (plugin == nullptr)
+		return;
+	const auto& timers = plugin->GetTimerCountdowns();
 
 	CDC dc;
 	dc.Attach(hDC);
@@ -152,7 +102,7 @@ void CInsetWindow::renderTimer(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphi
 	const int oldBkMode = ::SetBkMode(hDC, TRANSPARENT);
 	const unsigned long long now = ::GetTickCount64();
 
-	const int timerCount = static_cast<int>(m_TimerDeadlineTicks.size());
+	const int timerCount = TimerCountdownState::Count;
 	for (int durationMinutes = 1; durationMinutes <= timerCount; ++durationMinutes)
 	{
 		const int index = durationMinutes - 1;
@@ -163,9 +113,9 @@ void CInsetWindow::renderTimer(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphi
 			content.top + (content.Height() * row) / kTimerRowCount,
 			content.left + (content.Width() * (column + 1)) / kTimerColumnCount,
 			content.top + (content.Height() * (row + 1)) / kTimerRowCount);
-		const int remainingSeconds = GetTimerRemainingSeconds(durationMinutes, now);
-		const bool running = m_TimerDeadlineTicks[static_cast<size_t>(index)] != 0;
-		const bool expired = m_TimerExpired[static_cast<size_t>(index)];
+		const int remainingSeconds = timers.RemainingSeconds(durationMinutes, now);
+		const bool running = timers.Running(durationMinutes);
+		const bool expired = timers.Expired(durationMinutes);
 		COLORREF fill = running ? runningFill : (expired ? expiredFill : idleFill);
 		if (!running && !expired && cell.PtInRect(mouseLocation))
 			fill = hoverFill;

@@ -13,6 +13,7 @@
 #include "control_center/WebMessageValidation.hpp"
 #include "integrations/CdmBridgeData.hpp"
 #include "integrations/VsidBridgeData.hpp"
+#include "insets/TimerCountdownState.hpp"
 #include "radar/RecentAirports.hpp"
 #include "radar/RadarGeometry.hpp"
 #include "safety/RimcasLogic.hpp"
@@ -1407,6 +1408,43 @@ void TestRunwayVisibilityRules(const std::filesystem::path& repositoryRoot)
 		"Re-enabling a rule reapplies the automatic state");
 }
 
+void TestSharedTimerCountdowns()
+{
+	TimerCountdownState session;
+	auto& aviso = session;
+	auto& cofrance = session;
+	constexpr std::uint64_t now = 5000000000ULL;
+	Expect(!session.Start(0, now) && !session.Start(5, now) && !session.Reset(-1),
+		"Timer ignores invalid duration slots");
+	Expect(aviso.Start(1, now) && cofrance.Running(1) && cofrance.RemainingSeconds(1, now) == 60,
+		"Timer started from AVISO is visible in CoFrance");
+	Expect(!cofrance.Start(1, now + 1000) && aviso.RemainingSeconds(1, now + 1000) == 59,
+		"Starting an already running timer from another view does not extend it");
+	Expect(cofrance.RemainingSeconds(1, now + 59999) == 1 && !session.Update(now + 59999),
+		"Timer rounds up remaining seconds and does not expire early");
+	Expect(cofrance.Start(2, now) && cofrance.Reset(1) && !aviso.Running(1) && aviso.Running(2),
+		"Reset from CoFrance is shared without affecting the other countdowns");
+	Expect(!session.Update(now + 60000), "Cancelled timer does not sound an alarm");
+	Expect(session.Update(now + 120000) && aviso.Expired(2) && cofrance.Expired(2) && !session.Running(2),
+		"Timer expires once for all views");
+	Expect(!session.Update(now + 120001), "Other views cannot consume the same alarm twice");
+	Expect(cofrance.Reset(2) && !aviso.Expired(2), "Reset clears the shared expired indication");
+	Expect(aviso.Start(1, now) && session.Update(now + 60000) && cofrance.Start(1, now + 60000) && !aviso.Expired(1),
+		"Expired countdown can restart from another view");
+	Expect(cofrance.Start(2, now) && session.Update(now + 120000) && session.Expired(1) && session.Expired(2) &&
+		!session.Update(now + 120000), "Simultaneous expirations produce one alarm");
+	{
+		auto& temporaryView = session;
+		temporaryView.Start(4, now);
+	}
+	Expect(session.RemainingSeconds(4, now + 1000) == 239 && session.Update(now + 240000),
+		"Closing a view does not cancel its countdown or alarm");
+	const auto& reopenedView = session;
+	Expect(reopenedView.Expired(4), "Reopened view reads the existing session timer state");
+	TimerCountdownState nextSession;
+	Expect(!nextSession.Running(4) && !nextSession.Expired(4), "New plugin session starts with idle timers");
+}
+
 int wmain(int argc, wchar_t** argv)
 {
 	const std::filesystem::path repositoryRoot = argc > 1
@@ -1414,6 +1452,7 @@ int wmain(int argc, wchar_t** argv)
 		: std::filesystem::current_path();
 
 	TestGroundState();
+	TestSharedTimerCountdowns();
 	TestRunwayVisibilityRules(repositoryRoot);
 	TestZoomDiagnostics();
 	TestSharedGroundState();
