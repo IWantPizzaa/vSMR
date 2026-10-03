@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- Restored AVISO inset tag clicks through the same action dispatcher as the main AVISO. Resolve the painted, clipped tag cell for either mouse button instead of relying on the inset's parent hit rectangle; right-click panning now yields to tag actions, and releasing a background pan over a tag does not open a menu.
+
 - Manual AVISO group visibility choices now remain in place while runway selections are unchanged. Automatic rules reapply when their source airport's ARR/DEP selection or the rule changes, including changes within the same runway direction; unrelated airports/profile saves do not cancel manual choices.
 
 - Hardened automatic AVISO group visibility reads: use EuroScope's active sector for operational runway selections, normalize padded airport/runway identifiers, copy borrowed SDK strings immediately and combine duplicate runway observations. Restore the view's sector source after reading; log observed runways and group decisions only when they change.

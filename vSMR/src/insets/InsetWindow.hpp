@@ -70,6 +70,7 @@ public:
 	double m_AvisoDragStartLongitude = 0.0;
 	bool m_AvisoViewInitialized = false;
 	bool m_AvisoRightPanning = false;
+	bool m_AvisoPanClickPending = false;
 	bool m_AvisoScrollSelected = false;
 	RECT m_AvisoScreenArea = { 0, 0, 0, 0 };
 	bool m_AvisoScreenAreaValid = false;
@@ -81,6 +82,7 @@ public:
 	std::map<std::string, POINT> m_TagDragOffsetFromCenter;
 	std::map<std::string, POINT> m_TargetPoints;
 	std::map<std::string, CRect> m_TagAreas;
+	VsmrTagRendering::ScreenHitMap m_AvisoTagHits;
 	std::string m_TagBeingDragged;
 	std::set<std::string> m_DetailedTagCallsigns;
 

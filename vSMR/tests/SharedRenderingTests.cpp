@@ -29,6 +29,39 @@ namespace
 			failures.emplace_back(message);
 	}
 
+	void TestInsetTagHitMap(std::vector<std::string>& failures)
+	{
+		using VsmrTagRendering::ScreenHitMap;
+		ScreenHitMap hits;
+		const CRect viewport(100, 100, 300, 300);
+		constexpr int tagBackground = 1;
+		// Preserve the shared renderer's opaque action IDs for every cell.
+		hits.Add("TEST1", tagBackground, CRect(110, 110, 280, 210), viewport);
+		for (int action = 10; action < 18; ++action) {
+			const int x = 110 + (action - 10) * 20;
+			hits.Add("TEST1", action, CRect(x, 120, x + 20, 140), viewport);
+			const auto* hit = hits.At({ x + 5, 130 });
+			Check(hit && hit->callsign == "TEST1" && hit->action == action && hit->area == CRect(x, 120, x + 20, 140),
+				"Inset cells preserve the shared tag action, callsign and popup anchor for either mouse button", failures);
+		}
+		Check(hits.At({ 115, 115 }) && hits.At({ 115, 115 })->action == tagBackground,
+			"Tag padding remains selectable without becoming map background", failures);
+		hits.Add("TOP", tagBackground, CRect(115, 125, 150, 160), viewport);
+		Check(hits.At({ 120, 130 }) && hits.At({ 120, 130 })->callsign == "TOP",
+			"The last painted tag blocks cells of a tag underneath it", failures);
+		hits.Add("CLIPPED", 30, CRect(250, 250, 350, 350), viewport);
+		const auto* clipped = hits.At({ 290, 290 });
+		Check(clipped && clipped->area == CRect(250, 250, 300, 300) && !hits.At({ 310, 290 }),
+			"Inset cell hit areas and popup anchors are clipped to the visible viewport", failures);
+		hits.Add("OUTSIDE", 40, CRect(0, 0, 90, 90), viewport);
+		hits.Add("", 50, CRect(200, 220, 230, 240), viewport);
+		Check(!hits.At({ 50, 50 }) && !hits.At({ 290, 110 }) && !hits.At({ 210, 230 }),
+			"Invisible cells and empty map background have no tag action", failures);
+		hits.Clear();
+		Check(!hits.At({ 120, 130 }) && !hits.At({ 290, 290 }),
+			"Frame reset removes stale cells when tags disappear or the inset closes", failures);
+	}
+
 	void TestNorthIndicator(std::vector<std::string>& failures)
 	{
 		using namespace VsmrRendering;
@@ -755,6 +788,15 @@ namespace
 			failures);
 		if (painted.hitRegions.size() == 2)
 		{
+			VsmrTagRendering::ScreenHitMap insetHits;
+			insetHits.Add("TEST123", 1, painted.bounds, painted.bounds);
+			for (const auto& region : painted.hitRegions)
+				insetHits.Add("TEST123", region.action, region.area, painted.bounds);
+			for (const auto& region : painted.hitRegions) {
+				const auto* insetHit = insetHits.At(region.area.CenterPoint());
+				Check(insetHit && insetHit->action == region.action && insetHit->callsign == "TEST123" && insetHit->area == region.area,
+					"Actual painted tag cells resolve identically for main-view registration and inset click routing", failures);
+			}
 			Check(
 				painted.hitRegions[1].area.right == painted.bounds.right - 1,
 				"scratchpad hit region extends to the rounded tag edge",
@@ -804,6 +846,7 @@ std::vector<std::string> RunSharedRenderingBehaviorTests()
 		ResolveScreenRole("Other radar display", true) == ScreenRole::Unsupported,
 		"inset adapter does not attach to unknown or non-geographic views", failures);
 	TestRadarHoverPointer(failures);
+	TestInsetTagHitMap(failures);
 	TestRdfInsetOcclusion(failures);
 	TestAvisoRasterBlitPlanning(failures);
 	Gdiplus::GdiplusStartupInput input;

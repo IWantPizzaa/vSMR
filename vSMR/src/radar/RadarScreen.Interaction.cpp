@@ -463,6 +463,11 @@ void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId,
 	CInsetWindow* appWindow = VisibleAvisoViewportAtPoint(this, Pt);
 	if (appWindow == nullptr)
 		return;
+	// A right click on a painted tag belongs to the same action dispatcher as
+	// the main AVISO; only empty inset background starts map panning.
+	appWindow->m_AvisoPanClickPending = false;
+	if (appWindow->IsAvisoViewport() && appWindow->m_AvisoTagHits.At(Pt) != nullptr)
+		return;
 
 	SelectAvisoViewport(this, appWindow);
 	appWindow->BeginAvisoPan(Pt);
@@ -1166,6 +1171,35 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		return;
 	if (ActiveRuntimeMenuPopup != RuntimeMenuPopup::None)
 		CloseRuntimeMenuPopup();
+	// EuroScope can report the inset/tag parent rectangle instead of a cell.
+	// Resolve the topmost visible AVISO's painted cell before any left/right
+	// action. Keep owned text since opening a popup may trigger a repaint.
+	std::string insetTagCallsign;
+	bool clickedAvisoTag = false;
+	if (CInsetWindow* viewport = VisibleAvisoViewportAtPoint(this, Pt);
+		viewport != nullptr && viewport->IsAvisoViewport())
+	{
+		if (Button == BUTTON_RIGHT && viewport->m_AvisoPanClickPending)
+		{
+			viewport->m_AvisoPanClickPending = false;
+			RequestRefresh();
+			return; // Releasing a background pan over a tag must not open its menu.
+		}
+		if (const auto* hit = viewport->m_AvisoTagHits.At(Pt))
+		{
+			insetTagCallsign = hit->callsign;
+			ObjectType = hit->action;
+			sObjectId = insetTagCallsign.c_str();
+			Area = hit->area;
+			clickedAvisoTag = true;
+		}
+		else if (!IsAppWindowObjectType(ObjectType) &&
+			ObjectType != DRAWING_AC_SYMBOL_APPWINDOW_BASE + (viewport->m_Id - APPWINDOW_BASE))
+		{
+			// Do not invoke a main-view tag hidden underneath the inset.
+			return;
+		}
+	}
 	const bool hasObjectId = (sObjectId != nullptr && sObjectId[0] != '\0');
 	const char* objectId = hasObjectId ? sObjectId : "";
 	auto isObjectId = [&](const char* expected) -> bool
@@ -1343,6 +1377,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
 		SelectAvisoScrollTargetAtPoint(this, Pt);
 	if (Button == BUTTON_RIGHT &&
+		!clickedAvisoTag &&
 		!IsPointInRuntimeMenuOverlay(this, Pt) &&
 		VisibleAvisoViewportAtPoint(this, Pt) != nullptr)
 	{

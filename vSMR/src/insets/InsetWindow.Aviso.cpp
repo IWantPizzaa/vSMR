@@ -756,6 +756,8 @@ void CInsetWindow::renderAvisoTags(std::vector<AvisoTagTarget>& visibleTagTarget
 		options.leaderColor = Gdiplus::Color(255, 255, 255, 255);
 		options.roundedCorners = roundedTagCornersEnabled;
 		options.fitBackgroundToText = radar_screen->GetTagFitBackgroundToText();
+		options.extendScratchpadHit = true;
+		options.scratchpadAction = TAG_CITEM_SCRATCHPAD;
 		options.centerLines = true;
 		options.symmetricBounds = true;
 
@@ -852,6 +854,7 @@ void CInsetWindow::renderAvisoTags(std::vector<AvisoTagTarget>& visibleTagTarget
 			continue;
 
 		m_TagAreas[sceneTarget.callsign] = painted.bounds;
+		m_AvisoTagHits.Add(sceneTarget.callsign, DRAWING_TAG, painted.bounds, viewportRect);
 		const CRect clippedTag = clipToViewport(painted.bounds);
 		if (!clippedTag.IsRectEmpty())
 		{
@@ -864,6 +867,7 @@ void CInsetWindow::renderAvisoTags(std::vector<AvisoTagTarget>& visibleTagTarget
 		}
 		for (const VsmrTagRendering::HitRegion& hit : painted.hitRegions)
 		{
+			m_AvisoTagHits.Add(sceneTarget.callsign, hit.action, hit.area, viewportRect);
 			const CRect clippedHit = clipToViewport(hit.area);
 			if (!clippedHit.IsRectEmpty())
 			{
@@ -1092,6 +1096,7 @@ void CInsetWindow::renderAvisoAircraft(HDC hDC, CDC& dc, CSMRRadar* radar_screen
 
 void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation)
 {
+	m_AvisoTagHits.Clear();
 	if (radar_screen == nullptr || gdi == nullptr || m_AvisoState == nullptr)
 		return;
 	if (radar_screen->IsShutdownRequested())

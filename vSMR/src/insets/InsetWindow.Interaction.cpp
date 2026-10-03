@@ -44,7 +44,9 @@ using VsmrInsetWindowInternal::kTimerContentWidth;
 
 void CInsetWindow::ResetAvisoInteractionState()
 {
+	m_AvisoTagHits.Clear();
 	m_AvisoRightPanning = false;
+	m_AvisoPanClickPending = false;
 	m_AvisoScrollSelected = false;
 	m_AvisoScreenArea = { 0, 0, 0, 0 };
 	m_AvisoScreenAreaValid = false;
@@ -802,6 +804,7 @@ void CInsetWindow::BeginAvisoPan(POINT Pt)
 		m_OffsetInit = m_Offset;
 	}
 	m_AvisoRightPanning = true;
+	m_AvisoPanClickPending = true;
 	m_AvisoScrollSelected = true;
 	m_Grip = false;
 }
