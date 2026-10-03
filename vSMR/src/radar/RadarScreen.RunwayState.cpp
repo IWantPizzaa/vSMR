@@ -17,7 +17,8 @@ void CSMRRadar::InvalidateRunwayGeometryCache()
 	CachedRunwayGeometries.clear();
 	RunwayStatusLastRefreshTick = 0;
 	RunwayStatusLastAirport.clear();
-	AirportRunwayActivity.clear();
+	// Geometry/profile invalidation is not a runway selection change. Keep the
+	// last operational snapshot until the next forced runway refresh replaces it.
 	LastMapRunwayStatuses.clear();
 	LastMapActiveAirport.clear();
 
