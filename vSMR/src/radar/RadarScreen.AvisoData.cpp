@@ -1183,8 +1183,22 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		}
 	}
 
-	// Apply live runway direction before publishing the first render snapshot,
-	// including map reloads whose stored defaults have both arrow groups enabled.
+	// Keep manual choices for automatically managed groups across same-map
+	// reloads (e.g. saving unrelated profile settings). Changed runway/rule
+	// inputs below still take precedence. A different map starts afresh.
+	if (AvisoGeoJsonLoadedPath == path)
+	{
+		const auto previousGroups = GetAvisoGroups();
+		for (auto& group : parsedGroups)
+		{
+			if (RunwayVisibilityMemory.inputs.find(group.id) == RunwayVisibilityMemory.inputs.end()) continue;
+			const auto previous = std::find_if(previousGroups.begin(), previousGroups.end(),
+				[&](const AvisoGroup& candidate) { return candidate.id == group.id; });
+			if (previous != previousGroups.end()) group.visible = previous->visible;
+		}
+	}
+	else RunwayVisibilityMemory.inputs.clear();
+	// Apply live runway rules before publishing the first render snapshot.
 	ApplyRunwayGroupVisibility(parsedGroups);
 	auto featureSnapshot =
 		std::make_shared<const std::vector<AvisoFeature>>(parsedFeatures);

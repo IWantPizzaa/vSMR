@@ -1354,6 +1354,57 @@ void TestRunwayVisibilityRules(const std::filesystem::path& repositoryRoot)
 	}
 	Expect(NormalizeRunway(" 9r ") == "09R" && NormalizeRunway("37").empty() && NormalizeRunway("09X").empty(),
 		"Runway names are normalized and validated");
+
+	RunwayVisibilityMemory memory;
+	activity.clear(); activity["LFPG"]["26L"] = { true, false };
+	ApplyRunwayVisibilityRules(rules, activity, groups, error, nullptr, &memory);
+	Expect(!groups[0].visible && groups[1].visible, "Initial automatic application selects West");
+	groups[0].visible = true; groups[1].visible = false;
+	for (int poll = 0; poll < 3; ++poll)
+		Expect(!ApplyRunwayVisibilityRules(rules, activity, groups, error, &diagnostic, &memory) &&
+			groups[0].visible && !groups[1].visible, "Repeated polls preserve both manual show and manual hide");
+	Expect(diagnostic.find("manual override") != std::string::npos, "Diagnostics distinguish manual choices from automatic decisions");
+	activity["LFPO"]["06"] = { true, true };
+	activity["LFPG"]["09R"] = { false, false };
+	Expect(!ApplyRunwayVisibilityRules(rules, activity, groups, error, nullptr, &memory) && groups[0].visible && !groups[1].visible,
+		"Unrelated airports and inactive runway entries do not cancel manual overrides");
+	activity["LFPG"].clear(); activity["LFPG"]["27R"] = { true, false };
+	Expect(ApplyRunwayVisibilityRules(rules, activity, groups, error, nullptr, &memory) && !groups[0].visible && groups[1].visible,
+		"A changed runway within the same West direction reapplies both rules");
+	groups[1].visible = false; activity["LFPG"]["27R"].departure = true;
+	Expect(ApplyRunwayVisibilityRules(rules, activity, groups, error, nullptr, &memory) && groups[1].visible,
+		"ARR/DEP changes also restore automatic visibility");
+	groups[0].visible = true; groups[1].visible = false;
+	activity["LFPG"].clear(); activity["LFPG"]["08R"] = { false, true };
+	ApplyRunwayVisibilityRules(rules, activity, groups, error, nullptr, &memory);
+	groups[0].visible = false;
+	Expect(!ApplyRunwayVisibilityRules(rules, activity, groups, error, nullptr, &memory) && !groups[0].visible,
+		"New runway state is remembered even when automatic visibility already matched the manual choice");
+	activity["LFPG"].clear();
+	ApplyRunwayVisibilityRules(rules, activity, groups, error, nullptr, &memory);
+	groups[0].visible = true;
+	Expect(!ApplyRunwayVisibilityRules(rules, activity, groups, error, nullptr, &memory) && groups[0].visible,
+		"Manual visibility is allowed with no active runways too");
+	custom.Parse(R"({"custom":{"airport":"LFPO","runways":["06"]}})");
+	memory.inputs.clear();
+	ApplyRunwayVisibilityRules(&custom, activity, groups, error, nullptr, &memory);
+	groups[2].visible = false;
+	activity["LFPG"]["26R"] = { false, true };
+	Expect(!ApplyRunwayVisibilityRules(&custom, activity, groups, error, nullptr, &memory) && !groups[2].visible,
+		"Cross-airport group ignores changes at the displayed airport");
+	activity["LFPO"]["07"] = { false, true };
+	Expect(ApplyRunwayVisibilityRules(&custom, activity, groups, error, nullptr, &memory) && groups[2].visible,
+		"Cross-airport group reapplies when its source selection changes");
+	custom["custom"].AddMember("visible_when_matched", false, custom.GetAllocator());
+	Expect(ApplyRunwayVisibilityRules(&custom, activity, groups, error, nullptr, &memory) && !groups[2].visible,
+		"Editing a rule reapplies it without needing a runway change");
+	custom["custom"].AddMember("enabled", false, custom.GetAllocator());
+	groups[2].visible = true;
+	ApplyRunwayVisibilityRules(&custom, activity, groups, error, nullptr, &memory);
+	Expect(groups[2].visible && memory.inputs.empty(), "Disabling a rule releases manual control and clears its remembered inputs");
+	custom["custom"]["enabled"].SetBool(true);
+	Expect(ApplyRunwayVisibilityRules(&custom, activity, groups, error, nullptr, &memory) && !groups[2].visible,
+		"Re-enabling a rule reapplies the automatic state");
 }
 
 int wmain(int argc, wchar_t** argv)

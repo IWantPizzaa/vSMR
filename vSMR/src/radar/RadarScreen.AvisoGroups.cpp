@@ -337,7 +337,7 @@ bool CSMRRadar::ApplyRunwayGroupVisibility(std::vector<AvisoGroup>& groups) cons
 	{
 		const auto* airports = VsmrAviso::RuleMember(*config.document, "runway_group_visibility");
 		const auto* rules = airports ? VsmrAviso::RuleMember(*airports, getActiveAirport().c_str()) : nullptr;
-		changed = VsmrAviso::ApplyRunwayVisibilityRules(rules, AirportRunwayActivity, groups, error, &diagnostic);
+		changed = VsmrAviso::ApplyRunwayVisibilityRules(rules, AirportRunwayActivity, groups, error, &diagnostic, &RunwayVisibilityMemory);
 	}
 	if (!diagnostic.empty()) diagnostic = getActiveAirport() + diagnostic;
 	if (!diagnostic.empty() && diagnostic != RunwayVisibilityDiagnostic)

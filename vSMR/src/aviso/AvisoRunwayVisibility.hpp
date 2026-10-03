@@ -172,15 +172,38 @@ namespace VsmrAviso
 		return matched;
 	}
 
+	struct RunwayVisibilityMemory
+	{
+		std::map<std::string, std::string> inputs;
+	};
+
+	inline std::string RunwayVisibilityInputs(const RunwayVisibilityRule& rule, const AirportRunwayActivity& activity)
+	{
+		// Compare actual inputs, not just the match result: changing 26L to 27R
+		// must restore the automatic choice even though both mean West.
+		std::string result = rule.airport + ":" + rule.operation + (rule.all ? ":all" : ":any") +
+			(rule.matched ? ":1" : ":0") + (rule.unmatched ? ":1" : ":0");
+		for (const auto& runway : rule.runways) result += ":include=" + runway;
+		for (const auto& runway : rule.excluded) result += ":exclude=" + runway;
+		const auto observed = activity.find(rule.airport);
+		if (observed == activity.end()) return result + ":unavailable";
+		result += ":available";
+		for (const auto& runway : observed->second)
+			if (runway.second.arrival || runway.second.departure)
+				result += ":" + runway.first + (runway.second.arrival ? "/A" : "") + (runway.second.departure ? "/D" : "");
+		return result;
+	}
+
 	template<typename Groups>
 	bool ApplyRunwayVisibilityRules(const rapidjson::Value* rules, const AirportRunwayActivity& activity,
-		Groups& groups, std::string& error, std::string* diagnostic = nullptr)
+		Groups& groups, std::string& error, std::string* diagnostic = nullptr, RunwayVisibilityMemory* memory = nullptr)
 	{
 		error.clear();
 		if (diagnostic) diagnostic->clear();
-		if (!rules) return false;
+		if (!rules) { if (memory) memory->inputs.clear(); return false; }
 		if (!rules->IsObject() || rules->MemberCount() > 256) { error = "Expected at most 256 group rules."; return false; }
 		bool changed = false;
+		std::map<std::string, std::string> nextInputs;
 		for (auto& group : groups)
 		{
 			const auto* value = RuleMember(*rules, group.id.c_str());
@@ -188,7 +211,15 @@ namespace VsmrAviso
 			RunwayVisibilityRule rule;
 			if (!ParseRunwayVisibilityRule(*value, rule)) { error = "Invalid runway visibility rule for group " + group.id; continue; }
 			if (!rule.enabled) continue;
-			const bool visible = RunwayRuleMatches(rule, activity) ? rule.matched : rule.unmatched;
+			bool apply = true;
+			if (memory) {
+				const auto signature = RunwayVisibilityInputs(rule, activity);
+				const auto previous = memory->inputs.find(group.id);
+				apply = previous == memory->inputs.end() || previous->second != signature;
+				nextInputs.emplace(group.id, signature);
+			}
+			const bool automatic = RunwayRuleMatches(rule, activity) ? rule.matched : rule.unmatched;
+			const bool visible = apply ? automatic : group.visible;
 			if (diagnostic) {
 				*diagnostic += " " + group.id + "=" + (visible ? "visible" : "hidden") + " source=" + rule.airport + " [";
 				const auto observed = activity.find(rule.airport);
@@ -203,10 +234,12 @@ namespace VsmrAviso
 					if (!any) *diagnostic += "no active runways";
 				}
 				*diagnostic += "]";
+				if (!apply && visible != automatic) *diagnostic += " manual override";
 			}
 			changed = changed || group.visible != visible;
 			group.visible = visible;
 		}
+		if (memory) memory->inputs = std::move(nextInputs);
 		return changed;
 	}
 }
