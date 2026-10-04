@@ -321,6 +321,7 @@
     <ClInclude Include="src\integrations\RampAgentBridgeData.hpp" />
     <ClInclude Include="src\integrations\VsidBridgeClient.hpp" />
     <ClInclude Include="src\integrations\VsidBridgeData.hpp" />
+    <ClInclude Include="src\integrations\VsidConfigurationData.hpp" />
     <ClInclude Include="src\integrations\ParisRunwayRules.hpp" />
     <ClInclude Include="src\insets\InsetWindow.hpp" />
     <ClInclude Include="src\insets\TimerCountdownState.hpp" />

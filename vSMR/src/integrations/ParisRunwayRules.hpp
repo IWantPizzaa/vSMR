@@ -8,8 +8,8 @@
 
 namespace VsmrParis
 {
-	inline constexpr std::array<std::string_view, 6> Airports = {
-		"LFPG", "LFPO", "LFPN", "LFPV", "LFPT", "LFOB"
+	inline constexpr std::array<std::string_view, 7> Airports = {
+		"LFPG", "LFPO", "LFPN", "LFPV", "LFPT", "LFOB", "LFPB"
 	};
 
 	inline bool Supports(std::string_view airport)
