@@ -1403,8 +1403,8 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 				return;
 			}
 		}
-		if (appWindow != nullptr && appWindow->IsTimer() &&
-			strncmp(objectId, "timer.", 6) == 0)
+		if (appWindow != nullptr && ((appWindow->IsTimer() && strncmp(objectId, "timer.", 6) == 0) ||
+			(appWindow->IsWeather() && strncmp(objectId, "weather.", 8) == 0)))
 		{
 			if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
 			{

@@ -71,6 +71,29 @@ namespace VsmrGroundStateSync
 			return 0;
 		}
 	}
+
+	// The HP editor uses the same EuroScope status mechanism as the ground-status
+	// menu. Only our reserved lineup marker may be cleared, never a real speed.
+	template<class AssignedData>
+	bool SetTaxiForHoldingPoint(AssignedData& data)
+	{
+		const int previousSpeed = data.GetAssignedSpeed();
+		const bool clearShared = IsReservedAssignedSpeed(previousSpeed);
+		if (clearShared && (!data.SetAssignedSpeed(0) || data.GetAssignedSpeed() != 0))
+			return false;
+		const char* rawScratchpad = data.GetScratchPadString();
+		const std::string scratchpad = rawScratchpad != nullptr ? rawScratchpad : "";
+		if (!data.SetScratchPadString("TAXI"))
+		{
+			if (clearShared) (void)data.SetAssignedSpeed(previousSpeed);
+			return false;
+		}
+		rawScratchpad = data.GetScratchPadString();
+		if (scratchpad != (rawScratchpad != nullptr ? rawScratchpad : "") &&
+			!data.SetScratchPadString(scratchpad.c_str()))
+			return false;
+		return true;
+	}
 }
 
 inline static GroundStateCategory classifyGroundState(const std::string& rawState, int reportedGs, bool onRunway)

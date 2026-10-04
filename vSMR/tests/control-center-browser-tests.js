@@ -711,6 +711,27 @@
       "UI theme changes shared design colors without changing the AVISO palette");
 
     const rdfToggle = document.querySelector("#settingsRdfEnabled");
+	const weatherMode = document.querySelector("#settingsWeatherDisplayMode");
+	const weatherAirports = document.querySelector("#settingsWeatherAirports");
+	expect(weatherMode?.options.length === 3 && weatherAirports?.options.length === 2,
+	  "METAR settings expose three detail modes and both airport list modes");
+	for (const mode of ["compact", "mini", "full"]) {
+	  const saveStart = outbound.length;
+	  weatherMode.value = mode;
+	  weatherMode.dispatchEvent(new Event("change", { bubbles: true }));
+	  expect(api.getState().settings.weatherDisplayMode === mode, "METAR detail stages immediately");
+	  await waitFor(() => outbound.slice(saveStart).some(message => message.type === "state.save" &&
+	    message.payload?.settings?.weatherDisplayMode === mode), "METAR detail is included in saved settings");
+	}
+	for (const selection of ["single", "all"]) {
+	  const saveStart = outbound.length;
+	  weatherAirports.value = selection;
+	  weatherAirports.dispatchEvent(new Event("change", { bubbles: true }));
+	  const all = selection === "all";
+	  expect(api.getState().settings.weatherAllAirports === all, "METAR grouping stages immediately");
+	  await waitFor(() => outbound.slice(saveStart).some(message => message.type === "state.save" &&
+	    message.payload?.settings?.weatherAllAirports === all), "METAR grouping is included in saved settings");
+	}
     const northToggle = document.querySelector("#settingsShowNorthIndicator");
     expect(northToggle?.checked, "Settings exposes the automatic north indicator, enabled by default");
     for (const enabled of [false, true]) {

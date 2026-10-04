@@ -188,7 +188,7 @@ void CSMRPlugin::OnTimer(int Counter)
 		bool refresh = false;
 		if (radar->IsAppWindowDisplayed(weatherWindowId))
 		{
-			QueueWeatherFetch(radar->getActiveAirport());
+			for (const auto& station : radar->GetOpenWeatherAirports()) QueueWeatherFetch(station);
 			refresh = true;
 		}
 		if (radar->IsAppWindowDisplayed(timerWindowId))

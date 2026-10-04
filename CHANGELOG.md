@@ -2,6 +2,9 @@
 
 ## [2.0.0] - Unreleased
 
+- Opening the HP tag editor now sets a ground aircraft to Taxi immediately, preserving scratchpad text and real speed assignments while clearing the shared lineup marker. Applies through the common tag action on main AVISO and insets; rejected EuroScope writes are reported.
+- Added Full, Compact (wind/knots and vertical details without rose), and Mini METAR settings, plus all-open-airports or single-airport selection. Open AVISO/CoFrance airports are deduplicated and fetched together; responsive detail and title-bar paging keep every airport accessible without growing a snapped window. Preferences are saved with the ASR.
+
 - Added a single-line minimum-size METAR view showing only ICAO, wind (including VRB/gusts) and QNH. Weather windows now snap to edges/corners without enlarging; floating chrome, resize hitboxes and saved anchors keep the same content dimensions in AVISO and CoFrance views.
 
 - Show `CONFIG - NOT LOADED` when vSID is online but reports an unloaded automatic configuration, and `CONFIG - MANUAL ONLY` for unmanaged airports, instead of leaving an unexplained configuration heading.

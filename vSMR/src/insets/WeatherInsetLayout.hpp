@@ -4,13 +4,53 @@
 #include <Windows.h>
 #include <algorithm>
 #include <cstdio>
+#include <vector>
 
 namespace VsmrWeatherInset
 {
 	inline constexpr int MinimumWidth = 240;
 	inline constexpr int MinimumContentHeight = 24;
-
-	inline std::string CompactText(const std::string& station, const VsmrWeather::Snapshot& weather)
+	enum class Detail { Full, Compact, Mini };
+	inline bool ValidDetail(const std::string& mode) { return mode == "full" || mode == "compact" || mode == "mini"; }
+	inline const char* DetailName(Detail mode) { return mode == Detail::Full ? "Full" : mode == Detail::Compact ? "Compact" : "Mini"; }
+	inline std::vector<std::string> NormalizeStations(const std::vector<std::string>& candidates)
+	{
+		std::vector<std::string> result;
+		for (const auto& candidate : candidates)
+		{
+			const auto station = VsmrWeather::NormalizeIcao(candidate);
+			if (!station.empty()) result.push_back(station);
+		}
+		std::sort(result.begin(), result.end());
+		result.erase(std::unique(result.begin(), result.end()), result.end());
+		return result;
+	}
+	struct Layout
+	{
+		Detail detail = Detail::Mini;
+		int columns = 1, rows = 1, capacity = 1, pageCount = 1;
+	};
+	inline Layout ResolveLayout(int width, int height, int count, const std::string& preferred)
+	{
+		count = (std::max)(1, count);
+		Layout result;
+		const auto fit = [&](Detail detail, int cellWidth, int cellHeight) {
+			result.detail = detail;
+			result.columns = (std::max)(1, width / cellWidth);
+			result.rows = (std::max)(1, height / cellHeight);
+			result.capacity = result.columns * result.rows;
+			return width >= cellWidth && height >= cellHeight && result.capacity >= count;
+		};
+		if (preferred == "full" && fit(Detail::Full, 306, 175)) {}
+		else if (preferred != "mini" && fit(Detail::Compact, 150, 175)) {}
+		else fit(Detail::Mini, MinimumWidth, MinimumContentHeight);
+		result.columns = (std::min)(count, result.columns);
+		result.capacity = result.columns * result.rows;
+		result.pageCount = (count + result.capacity - 1) / result.capacity;
+		result.rows = (std::min)(result.rows, (count + result.columns - 1) / result.columns);
+		return result;
+	}
+	inline std::string WindText(const VsmrWeather::Snapshot& weather)
 	{
 		std::string wind = "--- --KT";
 		if (weather.hasWind)
@@ -28,7 +68,11 @@ namespace VsmrWeatherInset
 			}
 			wind += "KT";
 		}
-		return (station.empty() ? "----" : station) + " " + wind + " Q" +
+		return wind;
+	}
+	inline std::string CompactText(const std::string& station, const VsmrWeather::Snapshot& weather)
+	{
+		return (station.empty() ? "----" : station) + " " + WindText(weather) + " Q" +
 			(weather.hasQnh ? std::to_string(weather.qnhHpa) : "----");
 	}
 

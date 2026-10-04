@@ -334,6 +334,8 @@ private:
 
 
 	std::string ActiveAirport = "EGKK";
+	std::string WeatherDisplayMode = "full";
+	bool WeatherAllAirports = true;
 	char CrashActiveProfile[96] = "unavailable";
 	mutable char CrashLastAirport[16]{};
 	mutable char CrashLastProfile[96]{};
@@ -385,6 +387,7 @@ public:
 	inline std::string getActiveAirport() const {
 		return ActiveAirport;
 	}
+	std::vector<std::string> GetOpenWeatherAirports() const;
 	const std::string& GetDllPath() const noexcept { return DllPath; }
 	const std::string& GetDataPath() const noexcept { return DataPath; }
 	const CConfig* GetConfiguration() const noexcept { return CurrentConfig.get(); }

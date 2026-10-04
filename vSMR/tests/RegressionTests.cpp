@@ -260,6 +260,33 @@ namespace
 
 	void TestGroundState()
 	{
+		struct AssignedData
+		{
+			int speed = 0;
+			std::string scratchpad = "KEEP", status = "PUSH";
+			bool reject = false;
+			int GetAssignedSpeed() const { return speed; }
+			bool SetAssignedSpeed(int value) { if (reject) return false; speed = value; return true; }
+			const char* GetScratchPadString() const { return scratchpad.c_str(); }
+			bool SetScratchPadString(const char* value)
+			{
+				if (reject) return false;
+				if (std::string(value) == "TAXI") status = value;
+				scratchpad = value;
+				return true;
+			}
+		};
+		for (const int speed : {0, 10, 19, 250})
+		{
+			AssignedData data;
+			data.speed = speed;
+			Expect(VsmrGroundStateSync::SetTaxiForHoldingPoint(data), "HP click applies Taxi");
+			Expect(data.status == "TAXI" && data.scratchpad == "KEEP", "HP click preserves scratchpad");
+			Expect(data.speed == (VsmrGroundStateSync::IsReservedAssignedSpeed(speed) ? 0 : speed), "HP clears only shared lineup marker, not real speed");
+		}
+		AssignedData rejected;
+		rejected.reject = true;
+		Expect(!VsmrGroundStateSync::SetTaxiForHoldingPoint(rejected) && rejected.status == "PUSH" && rejected.scratchpad == "KEEP", "rejected HP Taxi is not reported as successful");
 		Expect(classifyGroundState("ST-UP", 0, false) == GroundStateCategory::Stup, "ground state startup alias");
 		Expect(classifyGroundState("P/B", 3, false) == GroundStateCategory::Push, "ground state push alias");
 		Expect(classifyGroundState("LINE UP", 0, true) == GroundStateCategory::Lnup, "ground state lineup alias");
@@ -1412,6 +1439,23 @@ void TestRunwayVisibilityRules(const std::filesystem::path& repositoryRoot)
 void TestWeatherInsetLayout()
 {
 	using namespace VsmrWeatherInset;
+	Expect(NormalizeStations({"lfpg", "LFPO", "LFPG", "", "LFPN"}) == std::vector<std::string>({"LFPG", "LFPN", "LFPO"}), "open AVISO weather stations are normalized, sorted and deduplicated");
+	Expect(ResolveLayout(306, 175, 1, "full").detail == Detail::Full, "single station full mode retains wind rose");
+	Expect(ResolveLayout(306, 175, 1, "compact").detail == Detail::Compact, "compact preference removes only rose");
+	Expect(ResolveLayout(306, 175, 2, "full").detail == Detail::Compact, "multiple airports reduce detail before overcrowding");
+	Expect(ResolveLayout(306, 175, 3, "full").detail == Detail::Mini, "three airports use readable mini list in small window");
+	Expect(ResolveLayout(918, 175, 3, "full").detail == Detail::Full, "full returns when all airports fit");
+	Expect(ResolveLayout(918, 175, 3, "mini").detail == Detail::Mini, "mini preference does not expand when space available");
+	const auto paged = ResolveLayout(240, 24, 7, "full");
+	Expect(paged.capacity == 1 && paged.pageCount == 7 && paged.detail == Detail::Mini, "minimum window pages all airports without shrinking text");
+	for (int count = 1; count <= 40; ++count)
+		for (const int width : {240, 306, 900})
+			for (const int height : {24, 175, 450})
+			{
+				const auto plan = ResolveLayout(width, height, count, "full");
+				Expect(plan.capacity > 0 && plan.rows > 0 && plan.columns > 0 && plan.capacity * plan.pageCount >= count,
+					"responsive METAR pagination leaves every station accessible");
+			}
 	VsmrWeather::Snapshot weather;
 	Expect(VsmrWeather::ParseReport("LFPG", "LFPG 041200Z 03009KT CAVOK 18/09 Q1027", weather), "parse compact METAR fixture");
 	Expect(CompactText("LFPG", weather) == "LFPG 03009KT Q1027", "compact METAR contains only ICAO, wind and QNH");
