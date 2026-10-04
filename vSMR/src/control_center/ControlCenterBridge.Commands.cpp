@@ -2,6 +2,7 @@
 #include "control_center/ControlCenterBridge.Internal.hpp"
 
 #include "insets/InsetWindow.hpp"
+#include "insets/WeatherInsetLayout.hpp"
 #include "plugin/Plugin.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
@@ -318,6 +319,27 @@ bool VsmrControlCenterBridgeImpl::HandleSettings(
 	}
 
 	const std::string resolution = ReadString(*payload, "resolutionPreset");
+	if (payload->HasMember("weatherDisplayMode") &&
+		(!(*payload)["weatherDisplayMode"].IsString() || !VsmrWeatherInset::ValidDetail((*payload)["weatherDisplayMode"].GetString())))
+	{
+		error = "METAR display must be full, compact or mini.";
+		return false;
+	}
+	if (payload->HasMember("weatherAllAirports") && !(*payload)["weatherAllAirports"].IsBool())
+	{
+		error = "METAR airport grouping must be a boolean setting.";
+		return false;
+	}
+	if (payload->HasMember("weatherDisplayMode"))
+	{
+		Owner->WeatherDisplayMode = (*payload)["weatherDisplayMode"].GetString();
+		Owner->SaveDataToAsr("WeatherDisplayMode", "METAR detail", Owner->WeatherDisplayMode.c_str());
+	}
+	if (payload->HasMember("weatherAllAirports"))
+	{
+		Owner->WeatherAllAirports = (*payload)["weatherAllAirports"].GetBool();
+		Owner->SaveDataToAsr("WeatherAllAirports", "Group open AVISO airports in METAR", Owner->WeatherAllAirports ? "1" : "0");
+	}
 	if (!resolution.empty() &&
 		!Owner->SetSmallTargetIconBoostResolutionPreset(resolution, false))
 	{
