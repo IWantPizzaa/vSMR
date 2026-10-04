@@ -27,6 +27,19 @@ namespace VsmrVsid
 		return status && status->manual && status->status == "MANUAL";
 	}
 
+	inline std::string ConfigurationSectionLabel(const std::optional<ConfigurationStatus>& configuration)
+	{
+		if (!configuration) return "CONFIG";
+		const auto& status = configuration->status;
+		if (status == "MATCHED") return "CONFIG - AUTO";
+		if (status == "MANUAL" || status == "OFF") return "CONFIG - " + status;
+		if (status == "UNDETERMINED" || status == "AMBIGUOUS") return "CONFIG - CHECK RUNWAYS";
+		if (status == "MISSING_RULE") return "CONFIG - MISSING RULE";
+		if (status == "NOT_LOADED") return "CONFIG - NOT LOADED";
+		if (status == "UNMANAGED") return "CONFIG - MANUAL ONLY";
+		return "CONFIG";
+	}
+
 	inline AirportRuleValues ParseRuleValues(std::string_view input)
 	{
 		if (input.size() > MaximumConfigurationBytes) return {};

@@ -468,6 +468,26 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgLinked, "LFPO", error) &&
 		SubmittedCommand == ".vsid rules LFPO OPPOSING=off", "Orly uses explicit generic assignment instead of removed Paris command");
 	completeCommand();
+	Published[rulesIndex].text = R"({"LFPG":{}})";
+	Published[areasIndex].text = R"({"LFPG":{}})";
+	Published[statusIndex].text = R"({"LFPG":{"status":"NOT_LOADED","profile":"","detail":"","manual":false}})";
+	++Revision;
+	poll();
+	state = VsmrVsid::GetInterfaceState("LFPG");
+	check(state.providerReady && !state.parisCommandsAvailable && !state.lfpgTaxiCommandsAvailable &&
+		VsmrVsid::ConfigurationSectionLabel(state.configuration) == "CONFIG - NOT LOADED",
+		"online provider with missing airport config reports NOT LOADED instead of unexplained disabled buttons");
+	Published[rulesIndex].text = R"({"LFPG":{"OPPOSING":false}})";
+	Published[areasIndex].text = R"({"LFPG":{"NORTH":false,"SOUTH":false}})";
+	Published[statusIndex].text = R"({"LFPG":{"status":"MATCHED","profile":"West Linked","detail":"","manual":false}})";
+	++Revision;
+	poll();
+	state = VsmrVsid::GetInterfaceState("LFPG");
+	check(state.parisCommandsAvailable && state.lfpgTaxiCommandsAvailable &&
+		VsmrVsid::ConfigurationSectionLabel(state.configuration) == "CONFIG - AUTO",
+		"loading airport config re-enables both independent control rows without restarting the provider");
+	check(VsmrVsid::ConfigurationSectionLabel(VsmrVsid::ConfigurationStatus{"UNMANAGED", "", "", false}) == "CONFIG - MANUAL ONLY" &&
+		VsmrVsid::ConfigurationSectionLabel(std::nullopt) == "CONFIG", "unmanaged and legacy configuration labels remain distinct");
 	Published[rulesIndex].text = R"({"LFOB":{"PGEAST":"invalid"}})";
 	++Revision;
 	poll();
