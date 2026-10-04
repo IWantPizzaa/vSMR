@@ -95,6 +95,8 @@ public:
 	bool IsSecondaryRadar() const;
 	bool IsWeather() const;
 	bool IsTimer() const;
+	bool UsesSizePreservingSnap() const { return IsTimer() || IsWeather(); }
+	AvisoLayoutMode GetChromeLayoutMode() const { return UsesSizePreservingSnap() ? AvisoLayoutMode::Floating : m_AvisoLayoutMode; }
 	bool SupportsPanAndZoom() const;
 	bool IsSnappedLayout() const;
 	bool IsPointInside(POINT Pt) const;

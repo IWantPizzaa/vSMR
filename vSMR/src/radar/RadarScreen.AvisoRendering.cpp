@@ -754,7 +754,7 @@ CRect CSMRRadar::ResolveMainAvisoRenderArea()
 			continue;
 
 		const CInsetWindow* inset = windowIt->second.get();
-		if (inset->IsTimer())
+		if (inset->UsesSizePreservingSnap())
 			continue;
 		CRect insetArea(inset->m_Area);
 		insetArea.NormalizeRect();
