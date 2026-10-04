@@ -412,11 +412,18 @@ namespace VsmrInsetWindowInternal
 			titleBar.bottom - 1);
 	}
 
+	CRect WeatherNavigationButtonRect(const RECT& areaValue, bool previous)
+	{
+		CRect rect = InsetFilterButtonRect(AvisoLayoutMode::Floating, areaValue);
+		if (previous) rect.OffsetRect(-(kInsetToolbarButtonSize + kInsetToolbarButtonGap), 0);
+		return rect;
+	}
+
 	CRect InsetTitleBarMoveRect(
 		AvisoLayoutMode mode,
 		const RECT& areaValue,
 		bool showFilter,
-		bool allowResize)
+		bool allowResize, bool weatherNavigation)
 	{
 		CRect moveRect = InsetTitleBarRect(mode, areaValue);
 		moveRect.NormalizeRect();
@@ -436,6 +443,8 @@ namespace VsmrInsetWindowInternal
 			filterButton.NormalizeRect();
 			moveRect.right = (std::min)(moveRect.right, filterButton.left);
 		}
+		if (weatherNavigation)
+			moveRect.right = (std::min)(moveRect.right, WeatherNavigationButtonRect(areaValue, true).left);
 		if (moveRect.right <= moveRect.left || moveRect.bottom <= moveRect.top)
 			return CRect(0, 0, 0, 0);
 		return moveRect;
@@ -708,10 +717,13 @@ namespace VsmrInsetWindowInternal
 		CRect titleBar = InsetTitleBarRect(mode, areaValue);
 		titleBar.NormalizeRect();
 		DrawStripedInsetTitleBar(dc, titleBar, dayTheme);
-		CRect titleBarMoveRect = InsetTitleBarMoveRect(mode, areaValue, showFilter, allowResize);
+		const bool weatherNavigation = objectType == APPWINDOW_WEATHER;
+		CRect titleBarMoveRect = InsetTitleBarMoveRect(mode, areaValue, showFilter, allowResize, weatherNavigation);
 		if (!titleBarMoveRect.IsRectEmpty())
 			radarScreen->AddScreenObject(objectType, "topbar", titleBarMoveRect, true, "");
-		DrawInsetTitle(dc, titleBar, title, dayTheme);
+		CRect titleArea(titleBar);
+		if (weatherNavigation) titleArea.right = WeatherNavigationButtonRect(areaValue, true).left;
+		DrawInsetTitle(dc, titleArea, title, dayTheme);
 		if (allowResize)
 			RegisterInsetResizeObjects(radarScreen, objectType, mode, areaValue);
 
@@ -719,6 +731,14 @@ namespace VsmrInsetWindowInternal
 		{
 			const CRect filterRect = DrawInsetToolbarButton(dc, "F", titleBar, InsetToolbarRightOffset(1), mouseLocation, dayTheme);
 			radarScreen->AddScreenObject(objectType, "filter", filterRect, false, "");
+		}
+		if (weatherNavigation)
+		{
+			for (const bool previous : {true, false})
+			{
+				const auto rect = DrawInsetButton(dc, previous ? "<" : ">", WeatherNavigationButtonRect(areaValue, previous), mouseLocation, dayTheme);
+				radarScreen->AddScreenObject(objectType, previous ? "weather.previous" : "weather.next", rect, false, "Previous / next airport or page");
+			}
 		}
 		const CRect closeRect = DrawInsetToolbarButton(
 			dc,

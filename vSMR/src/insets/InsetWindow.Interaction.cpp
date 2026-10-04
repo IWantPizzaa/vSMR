@@ -91,6 +91,9 @@ CInsetWindow::ResizeRegion CInsetWindow::HitTestResize(POINT Pt) const
 	closeButton.NormalizeRect();
 	if (closeButton.PtInRect(Pt))
 		return ResizeRegion::None;
+	if (IsWeather() && (VsmrInsetWindowInternal::WeatherNavigationButtonRect(m_Area, true).PtInRect(Pt) ||
+		VsmrInsetWindowInternal::WeatherNavigationButtonRect(m_Area, false).PtInRect(Pt)))
+		return ResizeRegion::None;
 	if (IsSecondaryRadar() && m_AvisoLayoutMode == AvisoLayoutMode::Floating)
 	{
 		CRect filterButton = InsetFilterButtonRect(m_AvisoLayoutMode, m_Area);
@@ -122,7 +125,7 @@ CInsetWindow::ResizeRegion CInsetWindow::HitTestResize(POINT Pt) const
 bool CInsetWindow::HitTestTitleBar(POINT Pt) const
 {
 	const AvisoLayoutMode chromeMode = GetChromeLayoutMode();
-	CRect moveRect = InsetTitleBarMoveRect(chromeMode, m_Area, IsSecondaryRadar(), !IsTimer());
+	CRect moveRect = InsetTitleBarMoveRect(chromeMode, m_Area, IsSecondaryRadar(), !IsTimer(), IsWeather());
 	moveRect.NormalizeRect();
 	return moveRect.PtInRect(Pt) != FALSE;
 }
@@ -996,7 +999,7 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 				chromeMode,
 				m_Area,
 				IsSecondaryRadar(),
-				!IsTimer());
+				!IsTimer(), IsWeather());
 			originalTitleBar.NormalizeRect();
 			const POINT startPoint = originalPointerFromMovedObject(originalTitleBar);
 			if (!BeginWindowMove(startPoint, layoutBounds, false))
