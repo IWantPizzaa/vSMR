@@ -1440,19 +1440,18 @@ void TestWeatherInsetLayout()
 {
 	using namespace VsmrWeatherInset;
 	Expect(NormalizeStations({"lfpg", "LFPO", "LFPG", "", "LFPN"}) == std::vector<std::string>({"LFPG", "LFPN", "LFPO"}), "open AVISO weather stations are normalized, sorted and deduplicated");
-	Expect(ResolveLayout(306, 175, 1, "full").detail == Detail::Full, "single station full mode retains wind rose");
-	Expect(ResolveLayout(306, 175, 1, "compact").detail == Detail::Compact, "compact preference removes only rose");
-	Expect(ResolveLayout(306, 175, 2, "full").detail == Detail::Compact, "multiple airports reduce detail before overcrowding");
-	Expect(ResolveLayout(306, 175, 3, "full").detail == Detail::Mini, "three airports use readable mini list in small window");
-	Expect(ResolveLayout(918, 175, 3, "full").detail == Detail::Full, "full returns when all airports fit");
-	Expect(ResolveLayout(918, 175, 3, "mini").detail == Detail::Mini, "mini preference does not expand when space available");
-	const auto paged = ResolveLayout(240, 24, 7, "full");
+	Expect(ResolveLayout(306, 175, 1).detail == Detail::Full, "single station automatically retains wind rose when it fits");
+	Expect(ResolveLayout(240, 175, 1).detail == Detail::Compact, "narrow weather window automatically removes only rose");
+	Expect(ResolveLayout(306, 175, 2).detail == Detail::Compact, "multiple airports reduce detail before overcrowding");
+	Expect(ResolveLayout(306, 175, 3).detail == Detail::Mini, "three airports use readable mini list in small window");
+	Expect(ResolveLayout(918, 175, 3).detail == Detail::Full, "full returns automatically when all airports fit");
+	const auto paged = ResolveLayout(240, 24, 7);
 	Expect(paged.capacity == 1 && paged.pageCount == 7 && paged.detail == Detail::Mini, "minimum window pages all airports without shrinking text");
 	for (int count = 1; count <= 40; ++count)
 		for (const int width : {240, 306, 900})
 			for (const int height : {24, 175, 450})
 			{
-				const auto plan = ResolveLayout(width, height, count, "full");
+				const auto plan = ResolveLayout(width, height, count);
 				Expect(plan.capacity > 0 && plan.rows > 0 && plan.columns > 0 && plan.capacity * plan.pageCount >= count,
 					"responsive METAR pagination leaves every station accessible");
 			}

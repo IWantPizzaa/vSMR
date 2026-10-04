@@ -5,7 +5,7 @@
 - Fixed past-position markers keeping a fixed pixel size while aircraft icons changed with zoom. Dots, rings and ring strokes now follow the rendered icon dimensions (including minimum/maximum sizes, resolution scaling and missing-icon fallback) on main AVISO, CoFrance/AVISO insets and SRW. Trail sample counts, spacing and fading are unchanged; culling uses the scaled marker extent.
 
 - Opening the HP tag editor now sets a ground aircraft to Taxi immediately, preserving scratchpad text and real speed assignments while clearing the shared lineup marker. Applies through the common tag action on main AVISO and insets; rejected EuroScope writes are reported.
-- Added Full, Compact (wind/knots and vertical details without rose), and Mini METAR settings, plus all-open-airports or single-airport selection. Open AVISO/CoFrance airports are deduplicated and fetched together; responsive detail and title-bar paging keep every airport accessible without growing a snapped window. Preferences are saved with the ASR.
+- METAR detail now adapts automatically to available space and airport count; removed the manual Full/Compact/Mini selector and its saved override. All-open-airports or single-airport selection remains available in Settings and is saved with the ASR. Open AVISO/CoFrance airports are deduplicated and fetched together; responsive detail and title-bar paging keep every airport accessible without growing a snapped window.
 
 - Added a single-line minimum-size METAR view showing only ICAO, wind (including VRB/gusts) and QNH. Weather windows now snap to edges/corners without enlarging; floating chrome, resize hitboxes and saved anchors keep the same content dimensions in AVISO and CoFrance views.
 

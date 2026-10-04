@@ -5,7 +5,6 @@
 #include "aviso/AvisoOverrides.hpp"
 #include "config/LayeredConfig.hpp"
 #include "radar/RadarScreen.hpp"
-#include "insets/WeatherInsetLayout.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "rdf/RdfOverlay.hpp"
 #include "control_center/ControlCenterDialog.hpp"
@@ -50,7 +49,6 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 	std::string stagedAvisoColorPalette = Owner->GetAvisoColorPalette();
 	bool hasStagedUiColorTheme = false;
 	std::string stagedUiColorTheme = Owner->GetUiColorTheme();
-	std::string stagedWeatherDisplayMode = Owner->WeatherDisplayMode;
 	bool stagedWeatherAllAirports = Owner->WeatherAllAirports;
 	if (payload->HasMember("settings"))
 	{
@@ -59,15 +57,6 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 		{
 			error = "Save settings must be an object.";
 			return false;
-		}
-		if (settings.HasMember("weatherDisplayMode"))
-		{
-			if (!settings["weatherDisplayMode"].IsString() || !VsmrWeatherInset::ValidDetail(settings["weatherDisplayMode"].GetString()))
-			{
-				error = "METAR display must be full, compact or mini.";
-				return false;
-			}
-			stagedWeatherDisplayMode = settings["weatherDisplayMode"].GetString();
 		}
 		if (settings.HasMember("weatherAllAirports"))
 		{
@@ -521,9 +510,7 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 		Owner->SetUiColorTheme(stagedUiColorTheme, true);
 
 	bool reloadFailed = false;
-	Owner->WeatherDisplayMode = stagedWeatherDisplayMode;
 	Owner->WeatherAllAirports = stagedWeatherAllAirports;
-	Owner->SaveDataToAsr("WeatherDisplayMode", "METAR detail", stagedWeatherDisplayMode.c_str());
 	Owner->SaveDataToAsr("WeatherAllAirports", "Group open AVISO airports in METAR", stagedWeatherAllAirports ? "1" : "0");
 	bool avisoReloadFailed = false;
 	for (CSMRRadar* radar : RadarScreensOpened)

@@ -358,7 +358,6 @@
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
     $("#settingsShowNorthIndicator").checked = settings.showNorthIndicator !== false;
-    $("#settingsWeatherDisplayMode").value = ["full", "compact", "mini"].includes(settings.weatherDisplayMode) ? settings.weatherDisplayMode : "full";
     $("#settingsWeatherAirports").value = settings.weatherAllAirports !== false ? "all" : "single";
     $("#settingsRdfEnabled").checked = settings.rdfEnabled !== false;
     const uiColorTheme = settings.uiColorTheme === "day" ? "day" : "night";
@@ -381,7 +380,6 @@
       resolutionPreset: $("#settingsResolutionPreset").value || "1080p",
       showFps: $("#settingsShowFps").checked,
       showNorthIndicator: $("#settingsShowNorthIndicator").checked,
-      weatherDisplayMode: $("#settingsWeatherDisplayMode").value,
       weatherAllAirports: $("#settingsWeatherAirports").value === "all",
       rdfEnabled: $("#settingsRdfEnabled").checked
     });

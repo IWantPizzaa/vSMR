@@ -334,7 +334,6 @@ private:
 
 
 	std::string ActiveAirport = "EGKK";
-	std::string WeatherDisplayMode = "full";
 	bool WeatherAllAirports = true;
 	char CrashActiveProfile[96] = "unavailable";
 	mutable char CrashLastAirport[16]{};
