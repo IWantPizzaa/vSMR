@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "insets/InsetWindow.hpp"
 #include "insets/InsetWindow.Internal.hpp"
+#include "insets/WeatherInsetLayout.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -67,14 +68,14 @@ bool CInsetWindow::IsPointInside(POINT Pt) const
 
 CRect CInsetWindow::GetWindowFrameRect() const
 {
-	if (IsTimer())
+	if (UsesSizePreservingSnap())
 		return InsetFrameRect(AvisoLayoutMode::Floating, m_Area);
 	return InsetFrameRect(m_AvisoLayoutMode, m_Area);
 }
 
 CRect CInsetWindow::GetWindowContentRect() const
 {
-	if (IsTimer())
+	if (UsesSizePreservingSnap())
 		return CRect(m_Area);
 	return InsetContentRect(m_AvisoLayoutMode, m_Area);
 }
@@ -86,7 +87,7 @@ CInsetWindow::ResizeRegion CInsetWindow::HitTestResize(POINT Pt) const
 	if (GetWindowFrameRect().IsRectEmpty())
 		return ResizeRegion::None;
 
-	CRect closeButton = InsetCloseButtonRect(m_AvisoLayoutMode, m_Area);
+	CRect closeButton = InsetCloseButtonRect(GetChromeLayoutMode(), m_Area);
 	closeButton.NormalizeRect();
 	if (closeButton.PtInRect(Pt))
 		return ResizeRegion::None;
@@ -110,7 +111,7 @@ CInsetWindow::ResizeRegion CInsetWindow::HitTestResize(POINT Pt) const
 		ResizeRegion::Top,
 		ResizeRegion::Bottom })
 	{
-		CRect hitRect = InsetResizeObjectRect(m_AvisoLayoutMode, m_Area, region);
+		CRect hitRect = InsetResizeObjectRect(GetChromeLayoutMode(), m_Area, region);
 		hitRect.NormalizeRect();
 		if (hitRect.PtInRect(Pt))
 			return region;
@@ -120,7 +121,7 @@ CInsetWindow::ResizeRegion CInsetWindow::HitTestResize(POINT Pt) const
 
 bool CInsetWindow::HitTestTitleBar(POINT Pt) const
 {
-	const AvisoLayoutMode chromeMode = IsTimer() ? AvisoLayoutMode::Floating : m_AvisoLayoutMode;
+	const AvisoLayoutMode chromeMode = GetChromeLayoutMode();
 	CRect moveRect = InsetTitleBarMoveRect(chromeMode, m_Area, IsSecondaryRadar(), !IsTimer());
 	moveRect.NormalizeRect();
 	return moveRect.PtInRect(Pt) != FALSE;
@@ -133,7 +134,7 @@ bool CInsetWindow::BeginWindowMove(POINT Pt, const RECT* layoutBounds, bool requ
 
 	ApplyAvisoLayoutBounds(layoutBounds);
 	m_WindowMoveActive = true;
-	m_WindowMoveStartedSnapped = IsSnappedLayout() && !IsTimer();
+	m_WindowMoveStartedSnapped = IsSnappedLayout() && !UsesSizePreservingSnap();
 	m_WindowMoveDetached = !m_WindowMoveStartedSnapped;
 	m_WindowInteractionMoved = false;
 	m_WindowInteractionStartPoint = Pt;
@@ -216,7 +217,7 @@ bool CInsetWindow::UpdateWindowMove(POINT Pt, const RECT* layoutBounds)
 		startArea.top + deltaY + height
 	};
 	ApplyAvisoLayoutBounds(layoutBounds);
-	if (IsTimer())
+	if (UsesSizePreservingSnap())
 	{
 		CRect frame = GetWindowFrameRect();
 		frame.NormalizeRect();
@@ -226,7 +227,7 @@ bool CInsetWindow::UpdateWindowMove(POINT Pt, const RECT* layoutBounds)
 		bool snapTop = false;
 		int snappedLeft = frame.left;
 		int snappedTop = frame.top;
-		// The compact Timer may be grabbed far from the edge of its frame.
+		// Compact utility windows may be grabbed far from the edge of their frame.
 		// Snap from frame proximity so a visually flush window always receives
 		// an anchor and the matching preview, regardless of the grab point.
 		const bool nearLeft = frame.left <= bounds.left + kAvisoSnapThresholdPx;
@@ -387,6 +388,10 @@ bool CInsetWindow::UpdateWindowResize(POINT Pt, const RECT* layoutBounds)
 		m_WindowInteractionMoved = true;
 	}
 
+	// Weather keeps floating chrome even when anchored. Resize freely from any
+	// edge without invoking AVISO split/divider sizing or changing its height.
+	if (IsWeather())
+		m_AvisoLayoutMode = AvisoLayoutMode::Floating;
 	if (IsSnappedLayout() &&
 		!IsSnappedResizeRegionSupported(m_AvisoLayoutMode, m_WindowResizeRegion) &&
 		!m_WindowResizeDetached)
@@ -472,8 +477,8 @@ bool CInsetWindow::UpdateWindowResize(POINT Pt, const RECT* layoutBounds)
 	if (resizeBottom)
 		frame.bottom += deltaY;
 
-	const int minFrameWidth = (std::min)(kAvisoMinLayoutWidth, bounds.Width());
-	const int minFrameHeight = (std::min)(kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight, bounds.Height());
+	const int minFrameWidth = (std::min)(IsWeather() ? VsmrWeatherInset::MinimumWidth : kAvisoMinLayoutWidth, bounds.Width());
+	const int minFrameHeight = (std::min)((IsWeather() ? VsmrWeatherInset::MinimumContentHeight : kAvisoMinLayoutHeight) + kAvisoViewportTopBarHeight, bounds.Height());
 	if (frame.Width() < minFrameWidth)
 	{
 		if (resizeLeft)
@@ -557,7 +562,7 @@ bool CInsetWindow::GetSnapPreviewRect(CRect& preview) const
 	if (!m_SnapPreviewValid)
 		return false;
 	preview = CRect(m_SnapPreviewArea);
-	if (IsTimer())
+	if (UsesSizePreservingSnap())
 		preview = InsetFrameRect(AvisoLayoutMode::Floating, m_SnapPreviewArea);
 	preview.NormalizeRect();
 	return !preview.IsRectEmpty();
@@ -594,6 +599,13 @@ void CInsetWindow::ApplyAvisoLayoutBounds(const RECT* layoutBounds)
 	const int contentTop = bounds.top + kAvisoViewportTopBarHeight;
 	if (contentTop >= bounds.bottom)
 		return;
+	if (IsWeather())
+	{
+		CRect area(m_Area);
+		area.NormalizeRect();
+		m_Area = VsmrWeatherInset::AnchorContent(m_AvisoLayoutMode, area, bounds, kAvisoViewportTopBarHeight);
+		return;
+	}
 	if (IsTimer())
 	{
 		CRect area(m_Area);
@@ -727,7 +739,8 @@ void CInsetWindow::SnapAvisoLayoutToPoint(POINT Pt, const RECT* layoutBounds)
 	if (ResolveAvisoSnapTarget(Pt, bounds, GetWindowFrameRect().Size(), snappedMode, snappedArea))
 	{
 		m_AvisoLayoutMode = snappedMode;
-		m_Area = snappedArea;
+		if (!UsesSizePreservingSnap())
+			m_Area = snappedArea;
 	}
 	else
 	{
@@ -850,7 +863,7 @@ void CInsetWindow::FloatAvisoViewport(POINT Pt, const RECT* layoutBounds)
 	if (currentArea.Width() <= 0 || currentArea.Height() <= 0)
 		return;
 
-	const bool preserveCornerSize = IsAvisoCornerLayout(m_AvisoLayoutMode);
+	const bool preserveCornerSize = UsesSizePreservingSnap() || IsAvisoCornerLayout(m_AvisoLayoutMode);
 	const int detachedWidth = preserveCornerSize
 		? currentArea.Width()
 		: (std::min)(
@@ -978,7 +991,7 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 	{
 		if (!m_WindowMoveActive)
 		{
-			const AvisoLayoutMode chromeMode = IsTimer() ? AvisoLayoutMode::Floating : m_AvisoLayoutMode;
+			const AvisoLayoutMode chromeMode = GetChromeLayoutMode();
 			CRect originalTitleBar = InsetTitleBarMoveRect(
 				chromeMode,
 				m_Area,
@@ -1002,7 +1015,7 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 	{
 		if (!m_WindowResizeActive)
 		{
-			CRect originalResizeObject = InsetResizeObjectRect(m_AvisoLayoutMode, m_Area, resizeRegion);
+			CRect originalResizeObject = InsetResizeObjectRect(GetChromeLayoutMode(), m_Area, resizeRegion);
 			originalResizeObject.NormalizeRect();
 			const POINT startPoint = originalPointerFromMovedObject(originalResizeObject);
 			if (!BeginWindowResize(resizeRegion, startPoint, layoutBounds))
