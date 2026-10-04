@@ -14,6 +14,7 @@
 #include "integrations/CdmBridgeData.hpp"
 #include "integrations/VsidBridgeData.hpp"
 #include "insets/TimerCountdownState.hpp"
+#include "insets/WeatherInsetLayout.hpp"
 #include "radar/RecentAirports.hpp"
 #include "radar/RadarGeometry.hpp"
 #include "safety/RimcasLogic.hpp"
@@ -1408,6 +1409,51 @@ void TestRunwayVisibilityRules(const std::filesystem::path& repositoryRoot)
 		"Re-enabling a rule reapplies the automatic state");
 }
 
+void TestWeatherInsetLayout()
+{
+	using namespace VsmrWeatherInset;
+	VsmrWeather::Snapshot weather;
+	Expect(VsmrWeather::ParseReport("LFPG", "LFPG 041200Z 03009KT CAVOK 18/09 Q1027", weather), "parse compact METAR fixture");
+	Expect(CompactText("LFPG", weather) == "LFPG 03009KT Q1027", "compact METAR contains only ICAO, wind and QNH");
+	weather.windVariable = true;
+	weather.hasWindGust = true;
+	weather.windGustKnots = 22;
+	Expect(CompactText("LFPG", weather) == "LFPG VRB09G22KT Q1027", "compact METAR preserves variable winds and gusts");
+	weather.windCalm = true;
+	weather.hasWindGust = false;
+	Expect(CompactText("LFPG", weather) == "LFPG 00000KT Q1027", "compact METAR formats calm wind");
+	Expect(CompactText("", {}) == "---- --- --KT Q----", "compact METAR never invents missing weather values");
+	enum class Layout { Floating, SplitLeft, SplitRight, SplitTop, SplitBottom,
+		CornerTopLeft, CornerTopRight, CornerBottomLeft, CornerBottomRight };
+	const RECT bounds{10, 20, 1210, 820};
+	for (const auto layout : {Layout::Floating, Layout::SplitLeft, Layout::SplitRight, Layout::SplitTop, Layout::SplitBottom,
+		Layout::CornerTopLeft, Layout::CornerTopRight, Layout::CornerBottomLeft, Layout::CornerBottomRight})
+	{
+		for (const LONG height : {24L, 175L, 300L})
+		{
+			const RECT content{200, 200, 500, 200 + height};
+			const auto snapped = AnchorContent(layout, content, bounds, 15);
+			Expect(snapped.right - snapped.left == 300 && snapped.bottom - snapped.top == height,
+				"weather keeps its chosen size at every snap edge/corner");
+			const auto reapplied = AnchorContent(layout, snapped, bounds, 15);
+			Expect(::EqualRect(&snapped, &reapplied) != FALSE, "weather anchor is stable across redraw and saved-layout restore");
+			const auto floated = AnchorContent(Layout::Floating, snapped, bounds, 15);
+			Expect(::EqualRect(&snapped, &floated) != FALSE, "detaching weather preserves content and title geometry");
+		}
+	}
+	const auto minimum = AnchorContent(Layout::Floating, RECT{200, 200, 201, 201}, bounds, 15);
+	Expect(minimum.right - minimum.left == MinimumWidth && minimum.bottom - minimum.top == MinimumContentHeight,
+		"weather minimum is a single-line strip instead of AVISO's square minimum");
+	const auto corner = AnchorContent(Layout::CornerBottomRight, minimum, bounds, 15);
+	Expect(corner.right == bounds.right && corner.bottom == bounds.bottom, "weather bottom-right snap anchors both edges");
+	const auto top = AnchorContent(Layout::SplitTop, minimum, bounds, 15);
+	Expect(top.top == bounds.top + 15 && top.left == minimum.left, "weather top snap includes title bar and preserves horizontal placement");
+	const RECT tinyBounds{0, 0, 100, 30};
+	const auto clipped = AnchorContent(Layout::CornerBottomRight, minimum, tinyBounds, 15);
+	Expect(clipped.left == 0 && clipped.top == 15 && clipped.right == 100 && clipped.bottom == 30,
+		"weather stays inside a host smaller than its preferred minimum");
+}
+
 void TestSharedTimerCountdowns()
 {
 	TimerCountdownState session;
@@ -1453,6 +1499,7 @@ int wmain(int argc, wchar_t** argv)
 
 	TestGroundState();
 	TestSharedTimerCountdowns();
+	TestWeatherInsetLayout();
 	TestRunwayVisibilityRules(repositoryRoot);
 	TestZoomDiagnostics();
 	TestSharedGroundState();
