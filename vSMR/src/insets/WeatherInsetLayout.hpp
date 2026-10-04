@@ -11,8 +11,6 @@ namespace VsmrWeatherInset
 	inline constexpr int MinimumWidth = 240;
 	inline constexpr int MinimumContentHeight = 24;
 	enum class Detail { Full, Compact, Mini };
-	inline bool ValidDetail(const std::string& mode) { return mode == "full" || mode == "compact" || mode == "mini"; }
-	inline const char* DetailName(Detail mode) { return mode == Detail::Full ? "Full" : mode == Detail::Compact ? "Compact" : "Mini"; }
 	inline std::vector<std::string> NormalizeStations(const std::vector<std::string>& candidates)
 	{
 		std::vector<std::string> result;
@@ -30,7 +28,7 @@ namespace VsmrWeatherInset
 		Detail detail = Detail::Mini;
 		int columns = 1, rows = 1, capacity = 1, pageCount = 1;
 	};
-	inline Layout ResolveLayout(int width, int height, int count, const std::string& preferred)
+	inline Layout ResolveLayout(int width, int height, int count)
 	{
 		count = (std::max)(1, count);
 		Layout result;
@@ -41,9 +39,10 @@ namespace VsmrWeatherInset
 			result.capacity = result.columns * result.rows;
 			return width >= cellWidth && height >= cellHeight && result.capacity >= count;
 		};
-		if (preferred == "full" && fit(Detail::Full, 306, 175)) {}
-		else if (preferred != "mini" && fit(Detail::Compact, 150, 175)) {}
-		else fit(Detail::Mini, MinimumWidth, MinimumContentHeight);
+		// Detail is entirely automatic; old saved mode preferences cannot lock
+		// a resized window into a layout that no longer fits.
+		if (!fit(Detail::Full, 306, 175) && !fit(Detail::Compact, 150, 175))
+			fit(Detail::Mini, MinimumWidth, MinimumContentHeight);
 		result.columns = (std::min)(count, result.columns);
 		result.capacity = result.columns * result.rows;
 		result.pageCount = (count + result.capacity - 1) / result.capacity;

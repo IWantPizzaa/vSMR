@@ -172,7 +172,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 	}
 	const bool allAirports = radarScreen->WeatherAllAirports;
 	const int count = allAirports ? static_cast<int>(stations.size()) : 1;
-	const auto layout = VsmrWeatherInset::ResolveLayout(content.Width(), content.Height(), count, radarScreen->WeatherDisplayMode);
+	const auto layout = VsmrWeatherInset::ResolveLayout(content.Width(), content.Height(), count);
 	m_WeatherPageCount = layout.pageCount;
 	m_WeatherPage = std::clamp(m_WeatherPage, 0, layout.pageCount - 1);
 
@@ -546,7 +546,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 			content.left + content.Width() * (col + 1) / layout.columns, content.top + (row + 1) * cellHeight);
 		renderStation(allAirports ? stations[first + index] : m_WeatherSelectedStation, tile);
 	}
-	std::string title = std::string("METAR ") + VsmrWeatherInset::DetailName(layout.detail);
+	std::string title = "METAR";
 	if (allAirports && layout.pageCount > 1)
 		title += " " + std::to_string(m_WeatherPage + 1) + "/" + std::to_string(layout.pageCount);
 	else if (!allAirports && stations.size() > 1)
