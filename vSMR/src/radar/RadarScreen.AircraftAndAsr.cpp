@@ -5,6 +5,7 @@
 #include "radar/RadarScreen.Registry.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
 #include "insets/InsetWindow.hpp"
+#include "insets/WeatherInsetLayout.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "shared/WindowsPathEncoding.hpp"
@@ -13,6 +14,21 @@
 #include <array>
 #include <cerrno>
 #include <cstdlib>
+
+std::vector<std::string> CSMRRadar::GetOpenWeatherAirports() const
+{
+	std::vector<std::string> candidates;
+	for (const auto* radar : RadarScreensOpened)
+	{
+		if (radar == nullptr || radar->IsShutdownRequested()) continue;
+		if (!radar->IsInsetsOnly()) candidates.push_back(radar->getActiveAirport());
+		for (const auto& entry : radar->appWindows)
+			if (entry.second && entry.second->IsAvisoViewport() && radar->IsAppWindowDisplayed(entry.first))
+				candidates.push_back(entry.second->GetAirport().empty() ? radar->getActiveAirport() : entry.second->GetAirport());
+	}
+	if (candidates.empty()) candidates.push_back(getActiveAirport());
+	return VsmrWeatherInset::NormalizeStations(candidates);
+}
 
 namespace
 {
@@ -1232,6 +1248,12 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	UiUseDayColorTheme = false;
 	if ((p_value = GetDataFromAsr("UiColorTheme")) != NULL)
 		SetUiColorTheme(p_value, false);
+	WeatherDisplayMode = "full";
+	if ((p_value = GetDataFromAsr("WeatherDisplayMode")) != NULL && VsmrWeatherInset::ValidDetail(p_value))
+		WeatherDisplayMode = p_value;
+	int allWeather = 1;
+	ParseAsrInt(GetDataFromAsr("WeatherAllAirports"), 0, 1, allWeather);
+	WeatherAllAirports = allWeather != 0;
 
 	LoadRuntimeMenuPositionFromAsr();
 	LoadNorthIndicatorStateFromAsr();
@@ -1292,6 +1314,8 @@ void CSMRRadar::OnAsrContentToBeSaved()
 		"UiColorTheme",
 		"Control Center and inset UI theme",
 		GetUiColorTheme().c_str());
+	SaveDataToAsr("WeatherDisplayMode", "METAR detail: full, compact or mini", WeatherDisplayMode.c_str());
+	SaveDataToAsr("WeatherAllAirports", "Show all open AVISO airports in METAR", WeatherAllAirports ? "1" : "0");
 
 	SaveRuntimeMenuPositionToAsr();
 	SaveNorthIndicatorStateToAsr();
