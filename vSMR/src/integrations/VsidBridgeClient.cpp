@@ -32,7 +32,8 @@ namespace
 	// vSID's provider declaration (vSIDPlugin.h): schema 1.0 publishes sid, rwy and
 	// cfl as aircraft STR fields of at most 32 bytes. automode is the optional
 	// schema 1.1 global described in the Wiki Integrations page. The
-	// companion schema 1.2/1.3 publishes live Paris rules; 1.4 adds LFPG areas.
+	// Legacy companion schemas 1.2-1.4 publish Paris-specific data. Upstream's
+	// generic schema 1.1 instead declares rules/areas/autoconfig; resolve by field.
 	constexpr char ProviderId[] = "vsid";
 	constexpr std::uint32_t SupportedSchemaMajor = 1U;
 
@@ -44,6 +45,9 @@ namespace
 		AutomaticModeField,
 		ParisStateField,
 		LfpgTaxiField,
+		RulesField,
+		AreasField,
+		AutoConfigurationField,
 		FieldCount
 	};
 
@@ -53,7 +57,10 @@ namespace
 		{ "cfl", ESB_T_STR, static_cast<std::uint32_t>(VsmrVsid::MaximumFieldBytes) },
 		{ "automode", ESB_T_STR, static_cast<std::uint32_t>(VsmrVsid::MaximumAutomaticModeBytes) },
 		{ "paris", ESB_T_STR, static_cast<std::uint32_t>(VsmrParis::Airports.size() * 9U) },
-		{ "lfpg_taxi", ESB_T_STR, 1U }
+		{ "lfpg_taxi", ESB_T_STR, 1U },
+		{ "rules", ESB_T_STR, 65536U },
+		{ "areas", ESB_T_STR, 65536U },
+		{ "autoconfig", ESB_T_STR, 65536U }
 	} };
 
 	constexpr std::uint64_t NoRevision = (std::numeric_limits<std::uint64_t>::max)();
@@ -69,8 +76,12 @@ namespace
 	std::mutex StateMutex;
 	std::map<std::string, bool> AutomaticModes;
 	std::map<std::string, VsmrParis::State> ParisStates;
+	VsmrVsid::AirportRuleValues AirportRules;
+	VsmrVsid::ConfigurationStatuses ConfigurationStates;
+	bool GenericConfigurationAvailable = false;
 	std::optional<VsmrVsid::LfpgTaxiMode> LastSubmittedLfpgTaxiMode;
 	bool LiveLfpgTaxiAvailable = false;
+	bool HasPublishedLfpgTaxiAreas = false;
 	std::optional<VsmrVsid::LfpgTaxiMode> LiveLfpgTaxiMode;
 	std::unordered_map<std::string, VsmrVsid::AircraftData> AircraftByCallsign;
 	std::atomic<bool> ParisCommandsAvailable{ false };
@@ -113,13 +124,17 @@ namespace
 		LastProviderRevision = NoRevision;
 		LastScannedCallsigns.clear();
 		std::lock_guard<std::mutex> guard(StateMutex);
-		if (AircraftByCallsign.empty() && AutomaticModes.empty() && ParisStates.empty() && !LastSubmittedLfpgTaxiMode && !LiveLfpgTaxiAvailable)
+		if (AircraftByCallsign.empty() && AutomaticModes.empty() && ParisStates.empty() && !LastSubmittedLfpgTaxiMode && !LiveLfpgTaxiAvailable && !GenericConfigurationAvailable && ConfigurationStates.empty())
 			return false;
 		AircraftByCallsign.clear();
 		AutomaticModes.clear();
 		ParisStates.clear();
+		AirportRules.clear();
+		ConfigurationStates.clear();
+		GenericConfigurationAvailable = false;
 		LastSubmittedLfpgTaxiMode.reset();
 		LiveLfpgTaxiAvailable = false;
+		HasPublishedLfpgTaxiAreas = false;
 		LiveLfpgTaxiMode.reset();
 		return true;
 	}
@@ -141,17 +156,23 @@ namespace
 		std::unordered_map<std::string, VsmrVsid::AircraftData> aircraft,
 		std::map<std::string, bool> automaticModes,
 		std::map<std::string, VsmrParis::State> parisStates,
-		bool liveTaxiAvailable, std::optional<VsmrVsid::LfpgTaxiMode> taxiMode)
+		bool liveTaxiAvailable, std::optional<VsmrVsid::LfpgTaxiMode> taxiMode, bool hasTaxiAreas,
+		bool genericAvailable, VsmrVsid::AirportRuleValues rules, VsmrVsid::ConfigurationStatuses states)
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
 		if (AircraftByCallsign == aircraft && AutomaticModes == automaticModes && ParisStates == parisStates &&
-			LiveLfpgTaxiAvailable == liveTaxiAvailable && LiveLfpgTaxiMode == taxiMode)
+			LiveLfpgTaxiAvailable == liveTaxiAvailable && LiveLfpgTaxiMode == taxiMode && HasPublishedLfpgTaxiAreas == hasTaxiAreas &&
+			GenericConfigurationAvailable == genericAvailable && AirportRules == rules && ConfigurationStates == states)
 			return false;
 		AircraftByCallsign = std::move(aircraft);
 		AutomaticModes = std::move(automaticModes);
 		ParisStates = std::move(parisStates);
 		LiveLfpgTaxiAvailable = liveTaxiAvailable;
 		LiveLfpgTaxiMode = taxiMode;
+		HasPublishedLfpgTaxiAreas = hasTaxiAreas;
+		GenericConfigurationAvailable = genericAvailable;
+		AirportRules = std::move(rules);
+		ConfigurationStates = std::move(states);
 		return true;
 	}
 }
@@ -241,8 +262,9 @@ bool PollState(const VsmrPluginBridge::Tick& tick, bool configurationOnly)
 				commandStateChanged = true;
 			}
 		}
-		const bool parisCommands = SupportsParisCommands(Provider.SchemaMajor(), Provider.SchemaMinor());
-		const bool regionalCommands = SupportsRegionalCommands(Provider.SchemaMajor(), Provider.SchemaMinor());
+		const bool genericAvailable = Provider.Field(RulesField) != ESB_FIELD_NONE;
+		const bool parisCommands = genericAvailable || SupportsParisCommands(Provider.SchemaMajor(), Provider.SchemaMinor());
+		const bool regionalCommands = genericAvailable || SupportsRegionalCommands(Provider.SchemaMajor(), Provider.SchemaMinor());
 		commandStateChanged = (ParisCommandsAvailable.exchange(parisCommands, std::memory_order_relaxed) != parisCommands) || commandStateChanged;
 		commandStateChanged = (RegionalCommandsAvailable.exchange(regionalCommands, std::memory_order_relaxed) != regionalCommands) || commandStateChanged;
 
@@ -289,9 +311,9 @@ bool PollState(const VsmrPluginBridge::Tick& tick, bool configurationOnly)
 				parisStates = VsmrParis::Parse(snapshot);
 		}
 
-		const bool liveTaxiAvailable = Provider.Field(LfpgTaxiField) != ESB_FIELD_NONE;
+		const bool liveTaxiAvailable = Provider.Field(AreasField) != ESB_FIELD_NONE || Provider.Field(LfpgTaxiField) != ESB_FIELD_NONE;
 		std::optional<VsmrVsid::LfpgTaxiMode> taxiMode;
-		if (liveTaxiAvailable)
+		if (Provider.Field(LfpgTaxiField) != ESB_FIELD_NONE)
 		{
 			std::string snapshot;
 			const ReadStatus taxiStatus = VsmrPluginBridge::ReadGlobalString(
@@ -299,6 +321,37 @@ bool PollState(const VsmrPluginBridge::Tick& tick, bool configurationOnly)
 			if (taxiStatus == ReadStatus::ProviderLost) return finish(DisconnectProvider());
 			if (taxiStatus == ReadStatus::Failed) snapshotComplete = false;
 			if (taxiStatus == ReadStatus::Value) taxiMode = ParseLfpgTaxiMode(snapshot);
+		}
+
+		AirportRuleValues ruleValues;
+		ConfigurationStatuses configurationStates;
+		bool hasTaxiAreas = false;
+		for (const Field field : {RulesField, AreasField, AutoConfigurationField})
+		{
+			if (Provider.Field(field) == ESB_FIELD_NONE) continue;
+			std::string snapshot;
+			const auto result = VsmrPluginBridge::ReadGlobalString(api, Provider.Field(field), Fields[field].expectedBytes, snapshot);
+			if (result == ReadStatus::ProviderLost) return finish(DisconnectProvider());
+			if (result == ReadStatus::Failed) snapshotComplete = false;
+			if (field == RulesField)
+			{
+				// Generic values are authoritative, even when unset/malformed.
+				parisStates.clear();
+				if (result == ReadStatus::Value)
+				{
+					ruleValues = ParseRuleValues(snapshot);
+					for (const auto& [icao, rules] : ruleValues)
+						if (VsmrParis::Supports(icao)) parisStates[icao] = ResolveConfiguration(icao, rules);
+				}
+			}
+			else if (field == AreasField)
+			{
+				const auto areas = result == ReadStatus::Value ? ParseRuleValues(snapshot) : AirportRuleValues{};
+				taxiMode = ResolveLfpgTaxi(areas);
+				hasTaxiAreas = HasLfpgTaxiAreas(areas);
+			}
+			else if (result == ReadStatus::Value)
+				configurationStates = ParseConfigurationStatuses(snapshot);
 		}
 
 		if (configurationOnly)
@@ -309,11 +362,16 @@ bool PollState(const VsmrPluginBridge::Tick& tick, bool configurationOnly)
 			{
 				std::lock_guard<std::mutex> guard(StateMutex);
 				changed = AutomaticModes != automaticModes || ParisStates != parisStates ||
-					LiveLfpgTaxiAvailable != liveTaxiAvailable || LiveLfpgTaxiMode != taxiMode;
+					LiveLfpgTaxiAvailable != liveTaxiAvailable || LiveLfpgTaxiMode != taxiMode || HasPublishedLfpgTaxiAreas != hasTaxiAreas ||
+					GenericConfigurationAvailable != genericAvailable || AirportRules != ruleValues || ConfigurationStates != configurationStates;
 				AutomaticModes = std::move(automaticModes);
 				ParisStates = std::move(parisStates);
 				LiveLfpgTaxiAvailable = liveTaxiAvailable;
 				LiveLfpgTaxiMode = taxiMode;
+				HasPublishedLfpgTaxiAreas = hasTaxiAreas;
+				GenericConfigurationAvailable = genericAvailable;
+				AirportRules = std::move(ruleValues);
+				ConfigurationStates = std::move(configurationStates);
 			}
 			return finish(changed);
 		}
@@ -370,7 +428,7 @@ bool PollState(const VsmrPluginBridge::Tick& tick, bool configurationOnly)
 		// Retry incomplete reads even when the provider revision did not advance.
 		LastProviderRevision = snapshotComplete ? providerRevision : NoRevision;
 		LastScannedCallsigns = tick.callsigns;
-		return finish(ReplaceSnapshot(std::move(next), std::move(automaticModes), std::move(parisStates), liveTaxiAvailable, taxiMode));
+		return finish(ReplaceSnapshot(std::move(next), std::move(automaticModes), std::move(parisStates), liveTaxiAvailable, taxiMode, hasTaxiAreas, genericAvailable, std::move(ruleValues), std::move(configurationStates)));
 	}
 	catch (const std::exception& exception)
 	{
@@ -414,10 +472,23 @@ VsmrVsid::InterfaceState VsmrVsid::GetInterfaceState(const std::string& airport)
 		const auto automatic = AutomaticModes.find(NormalizeAirport(airport));
 		if (state.providerReady && automatic != AutomaticModes.end())
 			state.automaticMode = automatic->second;
+		state.genericConfigurationAvailable = state.providerReady && GenericConfigurationAvailable;
+		const auto rules = AirportRules.find(NormalizeAirport(airport));
+		if (state.genericConfigurationAvailable && rules != AirportRules.end()) state.rules = rules->second;
+		const auto configuration = ConfigurationStates.find(NormalizeAirport(airport));
+		if (state.providerReady && configuration != ConfigurationStates.end()) state.configuration = configuration->second;
+		if (state.genericConfigurationAvailable)
+		{
+			const auto icao = NormalizeAirport(airport);
+			state.parisCommandsAvailable = !BuildGenericRuleCommand(icao == "LFOB" ? CommandAction::BeauvaisEast :
+				VsmrParis::IsRegional(icao) ? CommandAction::ParisWLPG : CommandAction::LfpgLinked, icao, state.rules).empty();
+			state.regionalCommandsAvailable = state.parisCommandsAvailable;
+		}
 		const auto paris = ParisStates.find(NormalizeAirport(airport));
 		if (state.providerReady && paris != ParisStates.end()) state.paris = paris->second;
 		if (state.providerReady && NormalizeAirport(airport) == "LFPG")
 		{
+			state.lfpgTaxiCommandsAvailable = !state.genericConfigurationAvailable || HasPublishedLfpgTaxiAreas;
 			state.lastSubmittedLfpgTaxiMode = LastSubmittedLfpgTaxiMode;
 			state.liveLfpgTaxiAvailable = LiveLfpgTaxiAvailable;
 			state.lfpgTaxiMode = LiveLfpgTaxiMode;
@@ -445,7 +516,7 @@ bool VsmrVsid::SubmitCommand(
 	}
 	if (!state.providerReady)
 	{
-		error = "vSID 0.15.0.2 or later is not available through the bridge.";
+		error = "A compatible vSID provider is not available through the bridge.";
 		return false;
 	}
 
@@ -454,7 +525,28 @@ bool VsmrVsid::SubmitCommand(
 		error = "EuroScope is still processing another vSMR command.";
 		return false;
 	}
-	const auto commands = BuildCommandSequence(action, activeAirport);
+	if (IsLfpgTaxiAction(action) && !state.lfpgTaxiCommandsAvailable)
+	{
+		error = "LFPG has not published the NORTH and SOUTH areas required for taxi controls.";
+		return false;
+	}
+	if (action == CommandAction::ResumeAutoConfiguration &&
+		(!state.genericConfigurationAvailable || !CanResumeConfiguration(state.configuration)))
+	{
+		error = "This airport has no active automatic-configuration override to resume.";
+		return false;
+	}
+	auto commands = BuildCommandSequence(action, activeAirport);
+	if (state.genericConfigurationAvailable && IsParisAction(action) && !IsLfpgTaxiAction(action))
+	{
+		const auto command = BuildGenericRuleCommand(action, activeAirport, state.rules);
+		if (command.empty())
+		{
+			error = "The airport has not published the rules required for this configuration.";
+			return false;
+		}
+		commands = {command};
+	}
 	if (commands.empty())
 	{
 		error = "Select a valid four-character airport before using this vSID action.";
@@ -473,7 +565,7 @@ bool VsmrVsid::SubmitCommand(
 		return false;
 	}
 	// opposing is a toggle: clicking an already published selection is a no-op.
-	if (nativeLfpgAction && state.paris &&
+	if (!state.genericConfigurationAvailable && nativeLfpgAction && state.paris &&
 		((action == CommandAction::LfpgLinked && state.paris->linked == true) ||
 		 (action == CommandAction::LfpgUnlinked && state.paris->linked == false))) return true;
 	if (!VsmrEuroScopeCommandLine::Begin(
@@ -525,8 +617,12 @@ void VsmrVsid::Shutdown() noexcept
 		AircraftByCallsign.clear();
 		AutomaticModes.clear();
 		ParisStates.clear();
+		AirportRules.clear();
+		ConfigurationStates.clear();
+		GenericConfigurationAvailable = false;
 		LastSubmittedLfpgTaxiMode.reset();
 		LiveLfpgTaxiAvailable = false;
+		HasPublishedLfpgTaxiAreas = false;
 		LiveLfpgTaxiMode.reset();
 	}
 	Provider.Reset();
