@@ -405,8 +405,10 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			popupHeight = VsmrParis::Supports(vsidAirport)
 				? kVsidLfpgPopupHeight
 				: kVsidPopupHeight;
-			if (VsmrParis::IsRegional(vsidAirport)) popupHeight += kPopupActionHeight + 3;
+			if (VsmrParis::IsRegional(vsidAirport) && !(vsidAirport == "LFOB" && vsidState.genericConfigurationAvailable)) popupHeight += kPopupActionHeight + 3;
 			if (vsidAirport == "LFPG") popupHeight += kPopupActionHeight + 3;
+			if (vsidState.genericConfigurationAvailable && VsmrVsid::CanResumeConfiguration(vsidState.configuration))
+				popupHeight += kPopupActionHeight + 3;
 		}
 		else if (!insetPopup)
 		{
@@ -604,17 +606,44 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		drawRuntimeButton(reload.objectId, reloadArea, reload.label, canSubmit, false, false, reload.tooltip);
 		drawRuntimeButton(sync.objectId, syncArea, sync.label, canSubmit, false, false, sync.tooltip);
 		contentTop += kPopupActionHeight + 3;
+		if (vsidState.genericConfigurationAvailable && VsmrVsid::CanResumeConfiguration(vsidState.configuration))
+		{
+			const auto& resume = VsmrVsid::ConfigurationRuntimeActions[0];
+			CRect resumeArea(reloadArea.left, contentTop, syncArea.right, contentTop + kPopupActionHeight);
+			drawRuntimeButton(resume.objectId, resumeArea, resume.label, canSubmit, false, false, resume.tooltip);
+			contentTop += kPopupActionHeight + 3;
+		}
 		if (VsmrParis::Supports(normalizedAirport))
 		{
 			contentTop += 6;
-			drawSectionLabel("CONFIG");
-			const bool available = normalizedAirport == "LFPG" ? canSubmit :
+			std::string configLabel = "CONFIG";
+			if (vsidState.configuration)
+			{
+				const auto& status = vsidState.configuration->status;
+				if (status == "MATCHED") configLabel += " - AUTO";
+				else if (status == "MANUAL" || status == "OFF") configLabel += " - " + status;
+				else if (status == "UNDETERMINED" || status == "AMBIGUOUS") configLabel += " - CHECK RUNWAYS";
+				else if (status == "MISSING_RULE") configLabel += " - MISSING RULE";
+			}
+			drawSectionLabel(configLabel);
+			const bool available = normalizedAirport == "LFPG" && !vsidState.genericConfigurationAvailable ? canSubmit :
 				VsmrVsid::CanSubmitParisCommand(vsidState.providerReady,
 					vsidState.commandLineBusy, vsidState.parisCommandsAvailable, normalizedAirport);
 			const auto state = vsidState.paris.value_or(VsmrParis::State{});
 			const auto selectedRule = VsmrParis::RegionalRule(state);
 			CRect leftArea, rightArea;
-			if (VsmrParis::IsRegional(normalizedAirport))
+			if (normalizedAirport == "LFOB" && vsidState.genericConfigurationAvailable)
+			{
+				twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
+				for (std::size_t column = 0; column < VsmrVsid::BeauvaisActions.size(); ++column)
+				{
+					const auto& choice = VsmrVsid::BeauvaisActions[column];
+					drawRuntimeButton(choice.objectId, column == 0 ? leftArea : rightArea, choice.label, available,
+						state.pg == (column == 0 ? VsmrParis::Flow::West : VsmrParis::Flow::East), false, choice.tooltip);
+				}
+				contentTop += kPopupActionHeight + 3;
+			}
+			else if (VsmrParis::IsRegional(normalizedAirport))
 			{
 				for (std::size_t row = 0; row < 2; ++row)
 				{
@@ -635,7 +664,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 				twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
 				const auto& linked = VsmrVsid::LfpgLinkActions[0];
 				const auto& unlinked = VsmrVsid::LfpgLinkActions[1];
-				const char* linkTooltip = normalizedAirport == "LFPG"
+				const char* linkTooltip = normalizedAirport == "LFPG" && !vsidState.genericConfigurationAvailable
 					? "Toggle LFPG opposing. Clicking the published selection does nothing; if status is unknown, either button toggles the rule."
 					: nullptr;
 				drawRuntimeButton(linked.objectId, leftArea, linked.label, available,
@@ -652,7 +681,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 						const auto taxiMode = vsidState.liveLfpgTaxiAvailable
 							? vsidState.lfpgTaxiMode : vsidState.lastSubmittedLfpgTaxiMode;
 						const bool selected = VsmrVsid::IsLfpgTaxiActionSelected(mode.action, taxiMode);
-						drawRuntimeButton(mode.objectId, minimumTaxiing ? leftArea : rightArea, mode.label, available,
+						drawRuntimeButton(mode.objectId, minimumTaxiing ? leftArea : rightArea, mode.label, canSubmit && vsidState.lfpgTaxiCommandsAvailable,
 							selected, false, vsidState.liveLfpgTaxiAvailable ? mode.tooltip :
 							"Live area status unavailable in this vSID build. Highlight shows only the last command sent by vSMR.");
 					}

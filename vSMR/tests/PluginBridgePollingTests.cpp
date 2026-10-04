@@ -392,6 +392,99 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 	++Revision;
 	poll();
 	check(!VsmrVsid::GetInterfaceState("LFPG").paris, "deactivation clears the Paris selection");
+	// Generic upstream schema: all regional interpretation stays in vSMR.
+	VsmrVsid::Shutdown();
+	Providers["vsid"] = 1U;
+	Published[4].declared = false;
+	Published.back().declared = false;
+	const auto rulesIndex = Published.size();
+	Published.push_back({"vsid/rules", ESB_T_STR, R"({"LFPG":{"OPPOSING":true},"LFPB":{"OPPOSING":true},"LFOB":{"PGEAST":true},"LFPN":{"WLPG":false,"ELPG":false,"WIPG":true,"EIPG":false}})"});
+	const auto areasIndex = Published.size();
+	Published.push_back({"vsid/areas", ESB_T_STR, R"({"LFPG":{"NORTH":true,"SOUTH":true}})"});
+	const auto statusIndex = Published.size();
+	Published.push_back({"vsid/autoconfig", ESB_T_STR, R"({"LFOB":{"status":"MATCHED","profile":"CDG East","detail":"","manual":false}})"});
+	++Revision;
+	poll();
+	state = VsmrVsid::GetInterfaceState("LFOB");
+	check(state.genericConfigurationAvailable && state.parisCommandsAvailable && state.paris &&
+		state.paris->pg == VsmrParis::Flow::East && !state.paris->linked && state.configuration && state.configuration->profile == "CDG East",
+		"generic LFOB uses actual PGEAST without requiring nonexistent regional rules");
+	check(VsmrVsid::GetInterfaceState("LFPB").paris->linked == false && VsmrVsid::GetInterfaceState("LFPB").parisCommandsAvailable,
+		"generic LFPB has linked/unlinked publication and controls");
+	check(VsmrVsid::GetInterfaceState("LFPG").lfpgTaxiMode == VsmrVsid::LfpgTaxiMode::MinimumTaxiing,
+		"generic LFPG areas determine taxi selection");
+	check(!VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::ResumeAutoConfiguration, "LFOB", error),
+		"auto resume is unavailable without a manual override");
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::BeauvaisWest, "LFOB", error) && SubmittedCommand == ".vsid rules LFOB PGEAST=off",
+		"LFOB manual action targets only PGEAST through generic assignment");
+	completeCommand();
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgLinked, "LFPB", error) && SubmittedCommand == ".vsid rules LFPB OPPOSING=off",
+		"LFPB manual action supported generically");
+	completeCommand();
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::ParisELPG, "LFPN", error) &&
+		SubmittedCommand == ".vsid rules LFPN wlpg=off elpg=on wipg=off eipg=off", "regional selection is one atomic generic command");
+	completeCommand();
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgUnlinked, "LFPG", error) && SubmittedCommand == ".vsid rules LFPG OPPOSING=on",
+		"clicking selected generic mode explicitly pins manual selection without toggling");
+	completeCommand();
+	Published[rulesIndex].text = R"({"LFOB":{"PGEAST":false}})";
+	Published[areasIndex].text = "{}";
+	Published[statusIndex].text = R"({"LFOB":{"status":"MANUAL","profile":"","detail":"","manual":true}})";
+	++Revision;
+	poll();
+	state = VsmrVsid::GetInterfaceState("LFOB");
+	check(state.paris && state.paris->pg == VsmrParis::Flow::West && state.configuration && state.configuration->manual,
+		"generic external rule changes and manual status reach the UI");
+	check(VsmrVsid::CanResumeConfiguration(state.configuration) &&
+		VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::ResumeAutoConfiguration, "lfob", error) &&
+		SubmittedCommand == ".vsid autoconfig LFOB auto", "resume releases only the selected airport override");
+	completeCommand();
+	check(!VsmrVsid::GetInterfaceState("LFPG").lfpgTaxiMode && !VsmrVsid::GetInterfaceState("LFPG").paris,
+		"generic airport deactivation clears selections");
+	check(!VsmrVsid::GetInterfaceState("LFPG").lfpgTaxiCommandsAvailable &&
+		!VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgMinimumTaxiing, "LFPG", error),
+		"deactivated LFPG cannot receive taxi commands");
+	Published[rulesIndex].text = R"({"LFPG":{}})";
+	Published[areasIndex].text = R"({"LFPG":{"NORTH":true,"SOUTH":false}})";
+	++Revision;
+	poll();
+	state = VsmrVsid::GetInterfaceState("LFPG");
+	check(!state.parisCommandsAvailable && state.lfpgTaxiCommandsAvailable && !state.lfpgTaxiMode,
+		"mixed LFPG areas allow taxi controls independently of missing OPPOSING");
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgMinimumTaxiing, "LFPG", error) &&
+		SubmittedCommand == ".vsid area LFPG OFF", "generic taxi controls keep the existing geographic-area sequence");
+	completeCommand();
+	check(SubmittedCommand == ".vsid area LFPG NORTH", "generic minimum taxiing enables NORTH after reset");
+	completeCommand();
+	check(SubmittedCommand == ".vsid area LFPG SOUTH", "generic minimum taxiing enables SOUTH after NORTH");
+	completeCommand();
+	Published[rulesIndex].text = R"({"LFPG":{"OPPOSING":false},"LFPO":{"OPPOSING":true}})";
+	Published[areasIndex].text = "{}";
+	++Revision;
+	poll();
+	state = VsmrVsid::GetInterfaceState("LFPG");
+	check(state.parisCommandsAvailable && !state.lfpgTaxiCommandsAvailable,
+		"missing areas do not disable independent linked configuration controls");
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::LfpgLinked, "LFPO", error) &&
+		SubmittedCommand == ".vsid rules LFPO OPPOSING=off", "Orly uses explicit generic assignment instead of removed Paris command");
+	completeCommand();
+	Published[rulesIndex].text = R"({"LFOB":{"PGEAST":"invalid"}})";
+	++Revision;
+	poll();
+	check(!VsmrVsid::GetInterfaceState("LFOB").paris && !VsmrVsid::GetInterfaceState("LFOB").parisCommandsAvailable,
+		"malformed generic rules disable controls instead of inferring a mode");
+	check(VsmrVsid::ParseRuleValues(R"({"LFOB":{"PGEAST":true,"pgeast":false}})").empty(), "duplicate generic rule keys rejected");
+	check(VsmrVsid::ParseRuleValues(R"({"LFOB":{},"lfob":{}})").empty(), "duplicate generic airports rejected");
+	check(VsmrVsid::ParseRuleValues(std::string(65537, ' ')).empty(), "oversized generic snapshot rejected");
+	check(VsmrVsid::ParseRuleValues(std::string(1000, '[') + std::string(1000, ']')).empty(), "deeply nested bridge JSON rejected safely");
+	check(VsmrVsid::ParseRuleValues(R"({"LFPG":{"NORTH\u0000":true}})").empty(), "embedded NUL in rule name rejected");
+	check(VsmrVsid::ParseConfigurationStatuses(R"({"LFPG":{"status":"MANUAL\u0000","profile":"","detail":"","manual":true}})").empty(),
+		"embedded NUL cannot truncate a status into a valid enum");
+	const auto offStatus = VsmrVsid::ParseConfigurationStatuses(R"({"LFPG":{"status":"OFF","profile":"","detail":"","manual":true}})");
+	check(!VsmrVsid::CanResumeConfiguration(offStatus.at("LFPG")), "resume does not implicitly enable disabled global automation");
+	VsmrVsid::CommandAction resumeAction{};
+	check(VsmrVsid::TryParseRuntimeActionId("runtime.vsid.resume-autoconfig", resumeAction) &&
+		resumeAction == VsmrVsid::CommandAction::ResumeAutoConfiguration, "resume button routes to the new configuration command");
 	tick.api = nullptr;
 	HostAttachState = VsmrPluginBridge::AttachState::NotLoaded;
 	poll();

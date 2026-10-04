@@ -50,6 +50,9 @@ namespace VsmrVsid
 		ParisELPG,
 		ParisWIPG,
 		ParisEIPG,
+		BeauvaisWest,
+		BeauvaisEast,
+		ResumeAutoConfiguration,
 		Synchronize,
 		ReloadConfiguration
 	};
@@ -140,7 +143,7 @@ namespace VsmrVsid
 
 	inline bool CommandRequiresAirport(CommandAction action) noexcept
 	{
-		return IsRegionalAction(action) || action == CommandAction::AutomaticModeToggle ||
+		return IsRegionalAction(action) || action == CommandAction::BeauvaisWest || action == CommandAction::BeauvaisEast || action == CommandAction::ResumeAutoConfiguration || action == CommandAction::AutomaticModeToggle ||
 			action == CommandAction::LfpgMinimumTaxiing ||
 			action == CommandAction::LfpgGroundCrossing ||
 			action == CommandAction::LfpgLinked ||
@@ -149,7 +152,7 @@ namespace VsmrVsid
 
 	inline bool IsParisAction(CommandAction action) noexcept
 	{
-		return IsRegionalAction(action) || action == CommandAction::LfpgLinked || action == CommandAction::LfpgUnlinked ||
+		return IsRegionalAction(action) || action == CommandAction::BeauvaisWest || action == CommandAction::BeauvaisEast || action == CommandAction::LfpgLinked || action == CommandAction::LfpgUnlinked ||
 			action == CommandAction::LfpgMinimumTaxiing ||
 			action == CommandAction::LfpgGroundCrossing;
 	}
@@ -210,6 +213,8 @@ namespace VsmrVsid
 			return ".vsid auto status";
 		case CommandAction::AutomaticModeToggle:
 			return ".vsid auto " + normalizedAirport;
+		case CommandAction::ResumeAutoConfiguration:
+			return ".vsid autoconfig " + normalizedAirport + " auto";
 		case CommandAction::LfpgMinimumTaxiing:
 		case CommandAction::LfpgGroundCrossing:
 			return normalizedAirport == "LFPG"
@@ -295,6 +300,11 @@ namespace VsmrVsid
 		{ CommandAction::ParisEIPG, "runtime.vsid.eipg", "IPOW", "East Inverse (LFPG perspective); manual configuration" }
 	} };
 
+	inline constexpr std::array<RuntimeActionDefinition, 2> BeauvaisActions = { {
+		{ CommandAction::BeauvaisWest, "runtime.vsid.beauvais-west", "CDG West", "Select LFOB rules for CDG west (PGEAST off)" },
+		{ CommandAction::BeauvaisEast, "runtime.vsid.beauvais-east", "CDG East", "Select LFOB rules for CDG east (PGEAST on)" }
+	} };
+
 	inline constexpr std::array<RuntimeActionDefinition, 3> GeneralRuntimeActions = { {
 		{ CommandAction::AutomaticModeStatus,
 			"runtime.vsid.auto-status", "Auto status",
@@ -305,6 +315,11 @@ namespace VsmrVsid
 		{ CommandAction::ReloadConfiguration,
 			"runtime.vsid.reload", "Reload config",
 			"Reload vSID configuration files" }
+	} };
+
+	inline constexpr std::array<RuntimeActionDefinition, 1> ConfigurationRuntimeActions = { {
+		{ CommandAction::ResumeAutoConfiguration, "runtime.vsid.resume-autoconfig", "Resume auto config",
+			"Release this airport's manual configuration override; let vSID select rules from active runways. Does not change SID assignment Auto or EuroScope runways." }
 	} };
 
 	inline bool TryParseRuntimeActionId(
@@ -327,6 +342,8 @@ namespace VsmrVsid
 			findAction(LfpgModeActions) ||
 			findAction(LfpgLinkActions) ||
 			findAction(RegionalActions) ||
+			findAction(BeauvaisActions) ||
+			findAction(ConfigurationRuntimeActions) ||
 			findAction(GeneralRuntimeActions);
 	}
 

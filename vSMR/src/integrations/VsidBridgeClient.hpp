@@ -1,6 +1,7 @@
 #pragma once
 
 #include "integrations/VsidBridgeData.hpp"
+#include "integrations/VsidConfigurationData.hpp"
 
 #include <cstddef>
 #include <optional>
@@ -24,7 +25,11 @@ namespace VsmrVsid
 		std::size_t aircraftCount = 0U;
 		std::optional<bool> automaticMode;
 		std::optional<VsmrParis::State> paris;
+		bool genericConfigurationAvailable = false;
+		RuleValues rules;
+		std::optional<ConfigurationStatus> configuration;
 		bool liveLfpgTaxiAvailable = false;
+		bool lfpgTaxiCommandsAvailable = false;
 		std::optional<LfpgTaxiMode> lfpgTaxiMode;
 		// Last completed command sequence, not an authoritative area-state snapshot.
 		std::optional<LfpgTaxiMode> lastSubmittedLfpgTaxiMode;

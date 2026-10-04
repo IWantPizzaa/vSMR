@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- Updated the vSID interface for generic `rules`, `areas` and `autoconfig` bridge snapshots. Configuration buttons follow live rules, send explicit airport-scoped assignments, support LFPB and LFOB's PGEAST rule, and keep LFPG taxi areas independent of Linked/Unlinked. Display Auto/manual status and offer Resume auto config for a manual override; retain compatibility with older companion builds and never change EuroScope's active airports/runways.
+
 - Synchronized the four timer countdowns across AVISO and CoFrance v2 views. Starting/resetting a timer refreshes every visible timer window; countdowns survive closing or switching views, and expiration triggers one shared alarm instead of per-window alarms.
 
 - Restored AVISO inset tag clicks through the same action dispatcher as the main AVISO. Resolve the painted, clipped tag cell for either mouse button instead of relying on the inset's parent hit rectangle; right-click panning now yields to tag actions, and releasing a background pan over a tag does not open a menu.
