@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- Show `CONFIG - NOT LOADED` when vSID is online but reports an unloaded automatic configuration, and `CONFIG - MANUAL ONLY` for unmanaged airports, instead of leaving an unexplained configuration heading.
+
 - Updated the vSID interface for generic `rules`, `areas` and `autoconfig` bridge snapshots. Configuration buttons follow live rules, send explicit airport-scoped assignments, support LFPB and LFOB's PGEAST rule, and keep LFPG taxi areas independent of Linked/Unlinked. Display Auto/manual status and offer Resume auto config for a manual override; retain compatibility with older companion builds and never change EuroScope's active airports/runways.
 
 - Synchronized the four timer countdowns across AVISO and CoFrance v2 views. Starting/resetting a timer refreshes every visible timer window; countdowns survive closing or switching views, and expiration triggers one shared alarm instead of per-window alarms.

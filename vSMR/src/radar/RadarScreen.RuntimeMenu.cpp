@@ -616,16 +616,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		if (VsmrParis::Supports(normalizedAirport))
 		{
 			contentTop += 6;
-			std::string configLabel = "CONFIG";
-			if (vsidState.configuration)
-			{
-				const auto& status = vsidState.configuration->status;
-				if (status == "MATCHED") configLabel += " - AUTO";
-				else if (status == "MANUAL" || status == "OFF") configLabel += " - " + status;
-				else if (status == "UNDETERMINED" || status == "AMBIGUOUS") configLabel += " - CHECK RUNWAYS";
-				else if (status == "MISSING_RULE") configLabel += " - MISSING RULE";
-			}
-			drawSectionLabel(configLabel);
+			drawSectionLabel(VsmrVsid::ConfigurationSectionLabel(vsidState.configuration));
 			const bool available = normalizedAirport == "LFPG" && !vsidState.genericConfigurationAvailable ? canSubmit :
 				VsmrVsid::CanSubmitParisCommand(vsidState.providerReady,
 					vsidState.commandLineBusy, vsidState.parisCommandsAvailable, normalizedAirport);
