@@ -2,6 +2,7 @@
 #include "insets/InsetWindow.hpp"
 #include "radar/RadarScreen.hpp"
 #include "weather/WeatherStore.hpp"
+#include "insets/WeatherInsetLayout.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -281,26 +282,31 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 
 	CRect inner(content);
 	inner.DeflateRect(4, 4);
-	dc.FillSolidRect(inner, palette.surface);
-	dc.Draw3dRect(inner, palette.divider, palette.border);
-
-	const bool compact = inner.Width() < 190 || inner.Height() < 100;
+	const bool compact = inner.Width() < VsmrWeatherInset::MinimumWidth || inner.Height() < 100;
 	if (compact)
 	{
-		CRect lines(inner);
-		lines.DeflateRect(6, 3);
-		const int half = lines.top + lines.Height() / 2;
-		drawText(CRect(lines.left, lines.top, lines.right, half),
-			directionValue + "  " + speedValue, directionFont,
-			weather.hasWind ? windColor : palette.mutedText, DT_CENTER);
-		// At minimum size, prioritize pressure instead of squeezing runway
-		// components into the same line and truncating the pressure readout.
-		const std::string details = "QNH " + (weather.hasQnh ? std::to_string(weather.qnhHpa) : "----") + " HPA";
-		drawText(CRect(lines.left, half, lines.right, lines.bottom), details,
-			speedFont, weather.hasQnh ? pressureColor : palette.mutedText, DT_CENTER);
+		dc.FillSolidRect(content, palette.surface);
+		CRect line(content);
+		line.DeflateRect(6, 2);
+		const std::string text = VsmrWeatherInset::CompactText(station, weather);
+		int pixels = std::clamp(line.Height(), 10, 20);
+		HFONT compactFont = nullptr;
+		SIZE extent{};
+		do
+		{
+			compactFont = GetWeatherFont(8, -pixels, FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
+			HGDIOBJ previous = compactFont ? ::SelectObject(hDC, compactFont) : nullptr;
+			::GetTextExtentPoint32A(hDC, text.c_str(), static_cast<int>(text.size()), &extent);
+			if (previous) ::SelectObject(hDC, previous);
+			if (extent.cx <= line.Width() || pixels <= 10) break;
+			--pixels;
+		} while (true);
+		drawText(line, text, compactFont, stale ? palette.stale : palette.text, DT_CENTER);
 	}
 	else
 	{
+		dc.FillSolidRect(inner, palette.surface);
+		dc.Draw3dRect(inner, palette.divider, palette.border);
 		const int leftWidth = std::clamp(
 			static_cast<int>(std::lround(static_cast<double>(inner.Width()) * 0.58)),
 			112,
@@ -504,7 +510,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 	DrawWindowChrome(
 		dc,
 		radarScreen,
-		m_AvisoLayoutMode,
+		GetChromeLayoutMode(),
 		"METAR",
 		false,
 		mouseLocation,

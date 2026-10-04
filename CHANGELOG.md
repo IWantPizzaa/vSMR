@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- Added a single-line minimum-size METAR view showing only ICAO, wind (including VRB/gusts) and QNH. Weather windows now snap to edges/corners without enlarging; floating chrome, resize hitboxes and saved anchors keep the same content dimensions in AVISO and CoFrance views.
+
 - Show `CONFIG - NOT LOADED` when vSID is online but reports an unloaded automatic configuration, and `CONFIG - MANUAL ONLY` for unmanaged airports, instead of leaving an unexplained configuration heading.
 
 - Updated the vSID interface for generic `rules`, `areas` and `autoconfig` bridge snapshots. Configuration buttons follow live rules, send explicit airport-scoped assignments, support LFPB and LFOB's PGEAST rule, and keep LFPG taxi areas independent of Linked/Unlinked. Display Auto/manual status and offer Resume auto config for a manual override; retain compatibility with older companion builds and never change EuroScope's active airports/runways.
