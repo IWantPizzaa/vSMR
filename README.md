@@ -16,7 +16,7 @@ Current source version: **2.0.0** (release preparation). This README describes t
 - Resolution presets for AVISO rendering and aircraft icons/tags, without resizing menus or other UI
 - Automatic RIMCAS runway assignment from EuroScope's active-airport runway selection
 - AVISO, SRW 1, METAR, and Timer inset windows
-- METAR Settings offer Full (wind rose), Compact (vertical details including wind/gusts), and Mini (ICAO, wind, QNH). Choose all open AVISO airports, including CoFrance insets, or one airport at a time. Detail adapts to available space; title-bar arrows switch airport/page without resizing the window. These choices are saved with the ASR.
+- METAR detail adapts automatically to the window size and number of airports, down to ICAO, wind and QNH at minimum size. Settings let you choose all open AVISO airports, including CoFrance insets, or one airport at a time. Title-bar arrows switch airport/page without resizing the window; the airport grouping choice is saved with the ASR.
 - Opening the HP tag editor immediately sets a ground aircraft to Taxi, even if the point selection is cancelled. Existing scratchpad text and real assigned speeds are preserved; EuroScope ownership restrictions still apply.
 - Timer and CPDLC sounds use the files in `vSMR_Data/Audio`, with built-in fallbacks if those files are missing or cannot be played. If alerts remain silent, check the Windows output device and EuroScope's volume/mute setting in the Volume Mixer; vSMR does not override them.
 - CDM bridge integration and Hoppie CPDLC/PDC support

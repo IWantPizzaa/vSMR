@@ -711,18 +711,10 @@
       "UI theme changes shared design colors without changing the AVISO palette");
 
     const rdfToggle = document.querySelector("#settingsRdfEnabled");
-	const weatherMode = document.querySelector("#settingsWeatherDisplayMode");
 	const weatherAirports = document.querySelector("#settingsWeatherAirports");
-	expect(weatherMode?.options.length === 3 && weatherAirports?.options.length === 2,
-	  "METAR settings expose three detail modes and both airport list modes");
-	for (const mode of ["compact", "mini", "full"]) {
-	  const saveStart = outbound.length;
-	  weatherMode.value = mode;
-	  weatherMode.dispatchEvent(new Event("change", { bubbles: true }));
-	  expect(api.getState().settings.weatherDisplayMode === mode, "METAR detail stages immediately");
-	  await waitFor(() => outbound.slice(saveStart).some(message => message.type === "state.save" &&
-	    message.payload?.settings?.weatherDisplayMode === mode), "METAR detail is included in saved settings");
-	}
+	expect(!document.querySelector("#settingsWeatherDisplayMode") && !("weatherDisplayMode" in api.getState().settings),
+	  "METAR detail is automatic with no manual mode setting");
+	expect(weatherAirports?.options.length === 2, "METAR settings retain both airport list choices");
 	for (const selection of ["single", "all"]) {
 	  const saveStart = outbound.length;
 	  weatherAirports.value = selection;
