@@ -22,7 +22,7 @@
     "LFBL.geojson": "9d47a2c37b7e9b1f6ef7f2ad7085994acbb0f6a8d72e4db3a2aac8eb5092c1f3",
     "LFBM.geojson": "ec49574e91adf794768396b8c58c7962f37291914b2d1fddcee4b82f21cba4c2",
     "LFBN.geojson": "d63422e61440b2a1554fed62925447d06a9a4ace17e75f517e008ffd40a08179",
-    "LFBO.geojson": "40d3dfde4f2db307b5e1fd0ee66c91e846969642f2c8597f9577bd8aa378adbb",
+    "LFBO.geojson": "9306d1dbebcd67213dc527f0038b326b39cfa77c273edaf4b1358a101a149946",
     "LFBP.geojson": "a50ed287fc2cae70335b1248c3d2ed4d16b6fa305dcd183df19618617f307680",
     "LFBR.geojson": "99ab47bc51dac70aac4c49dc9c5448b42e416bfff478e2b535ccfc1c06bedcdb",
     "LFBS.geojson": "ac4de642ee934ace82f0efe170ab8ae34243730e16cf9d4b1364669d40539e0b",
@@ -209,7 +209,7 @@
     {
       "airport": "LFBO",
       "description": "Added a screenshot-reference Real palette with opt-in polygon outlines and three gate-label style variants for 39 legible stands. All 471 geometries and effective Dark/Light styling preserved; unclassified stands retain neutral grey in Real.",
-      "subsequent_update": "Synced with reproducible GNG conversion in commit 1068e8d; hash reflects that committed map."
+      "subsequent_update": "Synced with reproducible GNG conversion in commit 1068e8d. Real grass fill subsequently changed from background #434C51 to darker slate #354146 so the 13 existing grass polygons remain visible; all geometry, other styles and Dark/Light colours are unchanged."
     },
     {
       "airport": "LFLL",

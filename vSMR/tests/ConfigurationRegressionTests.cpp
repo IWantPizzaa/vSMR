@@ -349,6 +349,14 @@ namespace
 				Expect(std::string(metadata["background_colors"]["real"].GetString()) == "#434C51",
 					"LFBO Real uses the reference slate background");
 				const auto& styles = document["styles"];
+				const auto& grass = styles["polygon.grassurface.00512f"]["paint"];
+				const std::string realGrass = grass["palette-overrides"]["real"]["fill"].GetString();
+				Expect(realGrass == "#354146" && realGrass != metadata["background_colors"]["real"].GetString() &&
+					realGrass != styles["polygon.hardsurface3.8a807f"]["paint"]["palette-overrides"]["real"]["fill"].GetString(),
+					"LFBO Real grass remains distinguishable from background and paved surfaces");
+				Expect(std::string(grass["fill"].GetString()) == "#010D19" &&
+					std::string(grass["palette-overrides"]["light"]["fill"].GetString()) == "#00512F",
+					"LFBO grass visibility fix leaves Dark and Light styling unchanged");
 				for (auto style = styles.MemberBegin(); style != styles.MemberEnd(); ++style)
 				{
 					const auto& paint = style->value["paint"];
