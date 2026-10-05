@@ -148,7 +148,7 @@
     "LFRU.geojson": "de5ec2adc277561877ef4c7c89ed15ba3e1b630b8d1a99ad28a31c5728d07eab",
     "LFRV.geojson": "88f89e38c395fb3cedc71e3141cf30c1185ae1ebc58fa6cda97c5ea70e92f611",
     "LFRZ.geojson": "2ed492ce788fa0fb95b098b605db05a7bdd32d1ded602ecaf97b357ae0fa552e",
-    "LFSB.geojson": "dcb6d16f0b95cd580f4eed069fcc5e7fa8fa3ad0e4cda3c40ebab88ecf4ac2c5",
+    "LFSB.geojson": "b4a59e57efb5d946284b4a618f5764a704175874211c1a2aa0da2e2942d1e2cd",
     "LFSC.geojson": "8b5df8def17a74ec754f8ff8e3f64594d043f093f9d48a90ae9f1e9a9e8e4421",
     "LFSD.geojson": "9f4db78fb6019c7cd94a437f5a6540df8c386f19c26667b7a4efb7316cb72b9a",
     "LFSF.geojson": "9381d7ec14ed96d2d0dd09565cd418de6b8e69b650ac01350a428292210549d0",
@@ -206,6 +206,10 @@
   ],
   "corrections": [],
   "post_import_changes": [
+    {
+      "airport": "LFSB",
+      "description": "Added a screenshot-reference Real palette with a dark blue-grey background, grey-violet runways/buildings, thin surface outlines, green taxiway labels, muted yellow stands and orange/blue guidance. Both runways deliberately use the same neutral fill, not the reference's red runway. All 235 features, 13 shared styles and effective Dark/Light styling are preserved."
+    },
     {
       "airport": "LFBO",
       "description": "Added a screenshot-reference Real palette with opt-in polygon outlines and three gate-label style variants for 39 legible stands. All 471 geometries and effective Dark/Light styling preserved; unclassified stands retain neutral grey in Real.",
