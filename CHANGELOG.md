@@ -2,7 +2,7 @@
 
 ## [2.0.0] - Unreleased
 
-- Added an LFSB Real AVISO palette based on the supplied reference: dark blue-grey background, grey-violet runways/buildings, fine surface outlines, green taxiway labels, muted yellow stands and orange/blue guidance. Both runways retain the same neutral colour rather than the reference's red runway. All 235 existing geometries and Dark/Light styling are preserved.
+- Added an LFSB Real AVISO palette based on the supplied reference: dark blue-grey background, grey-violet runways/buildings, fine grass boundaries, green taxiway labels, muted yellow stands and orange/blue guidance. Runway/paved-surface outlines are disabled to avoid artificial polygon seams at the runway intersection and on the apron. Both runways retain the same neutral colour rather than the reference's red runway. All 235 existing geometries and Dark/Light styling are preserved.
 
 - Restored LFBO's screenshot-reference Real palette: grass uses the uniform slate-grey background fill, with fine outlines to keep its 13 existing polygons identifiable instead of adding dark patches. Existing surface outlines, geometry, other Real colours and Dark/Light rendering are unchanged.
 
