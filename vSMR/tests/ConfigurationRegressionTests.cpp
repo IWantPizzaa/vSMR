@@ -300,6 +300,13 @@ namespace
 					Expect(!VsmrAviso::ResolvePolygonOutline(&paint, nullptr, nullptr, nullptr),
 						"LFSB Dark remains fill-only instead of inheriting Real outlines");
 				}
+				for (const char* styleId : { "polygon.runwayconcrete.555555", "polygon.hardsurface2.595e5b",
+					"polygon.hardsurface3.8a807f", "polygon.hardsurface4.969393" })
+				{
+					const auto& paint = styles[styleId]["paint"];
+					Expect(!VsmrAviso::ResolvePolygonOutline(&paint, nullptr, &paint["palette-overrides"]["real"], nullptr),
+						"LFSB Real runway/apron polygon joins must not become artificial contour lines");
+				}
 				const auto& runway = styles["polygon.runwayconcrete.555555"]["paint"];
 				Expect(std::string(runway["palette-overrides"]["real"]["fill"].GetString()) == "#62687C" &&
 					std::string(runway["fill"].GetString()) == "#111318" &&
