@@ -351,9 +351,15 @@ namespace
 				const auto& styles = document["styles"];
 				const auto& grass = styles["polygon.grassurface.00512f"]["paint"];
 				const std::string realGrass = grass["palette-overrides"]["real"]["fill"].GetString();
-				Expect(realGrass == "#354146" && realGrass != metadata["background_colors"]["real"].GetString() &&
-					realGrass != styles["polygon.hardsurface3.8a807f"]["paint"]["palette-overrides"]["real"]["fill"].GetString(),
-					"LFBO Real grass remains distinguishable from background and paved surfaces");
+				const auto& realGrassPaint = grass["palette-overrides"]["real"];
+				Expect(realGrass == "#434C51" && realGrass == metadata["background_colors"]["real"].GetString(),
+					"LFBO Real restores the screenshot-reference uniform slate fill instead of dark grass patches");
+				Expect(VsmrAviso::ResolvePolygonOutline(&grass, nullptr, &realGrassPaint, nullptr) &&
+					std::string(realGrassPaint["stroke"].GetString()) == "#5B656B" && grass["stroke-width"].GetDouble() == 0.75,
+					"LFBO Real grass stays identifiable through fine outlines matching the paved surfaces");
+				Expect(!VsmrAviso::ResolvePolygonOutline(&grass, nullptr, nullptr, nullptr) &&
+					!VsmrAviso::ResolvePolygonOutline(&grass, nullptr, &grass["palette-overrides"]["light"], nullptr),
+					"LFBO grass outlines are enabled only in Real");
 				Expect(std::string(grass["fill"].GetString()) == "#010D19" &&
 					std::string(grass["palette-overrides"]["light"]["fill"].GetString()) == "#00512F",
 					"LFBO grass visibility fix leaves Dark and Light styling unchanged");
