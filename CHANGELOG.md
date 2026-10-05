@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- Added an LFSB Real AVISO palette based on the supplied reference: dark blue-grey background, grey-violet runways/buildings, fine surface outlines, green taxiway labels, muted yellow stands and orange/blue guidance. Both runways retain the same neutral colour rather than the reference's red runway. All 235 existing geometries and Dark/Light styling are preserved.
+
 - Restored LFBO's screenshot-reference Real palette: grass uses the uniform slate-grey background fill, with fine outlines to keep its 13 existing polygons identifiable instead of adding dark patches. Existing surface outlines, geometry, other Real colours and Dark/Light rendering are unchanged.
 
 - Added an optional EuroScope list/tag item `RDF` (width 2) with a yellow/grey blinking `TX` for ground aircraft heard through native TrackAudio RDF. Calls remain pending after reception ends, including overlapping speakers, until the local `RDF reset` action acknowledges them. Reset never changes live RDF rings or flight-plan data; a later new transmission reactivates the item. Airborne/disconnected aircraft are cleaned up automatically. Requires Native RDF enabled; list columns and mouse bindings remain user-configured.
