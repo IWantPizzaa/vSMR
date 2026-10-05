@@ -50,6 +50,8 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 	RegisterTagItemFunction("Datalink menu", TAG_FUNC_DATALINK_MENU);
 	RegisterTagItemType("Holding Point", TAG_ITEM_HOLDING_POINT);
 	RegisterTagItemFunction("Holding Point", TAG_FUNC_HOLDING_POINT_EDIT);
+	RegisterTagItemType("RDF", TAG_ITEM_RDF);
+	RegisterTagItemFunction("RDF reset", TAG_FUNC_RDF_RESET);
 
 	LoadDatalinkSettings();
 

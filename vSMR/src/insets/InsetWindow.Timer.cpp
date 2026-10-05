@@ -27,8 +27,28 @@ HFONT CInsetWindow::GetTimerFont()
 void CInsetWindow::OnClickScreenObject(const char* sItemString, POINT Pt, int Button, CSMRRadar* radarScreen)
 {
 	UNREFERENCED_PARAMETER(Pt);
-	if (!IsTimer() || sItemString == nullptr || radarScreen == nullptr || radarScreen->IsShutdownRequested())
+	if (sItemString == nullptr || radarScreen == nullptr || radarScreen->IsShutdownRequested())
 		return;
+	if (IsWeather())
+	{
+		if (Button != BUTTON_LEFT) return;
+		const int step = strcmp(sItemString, "weather.previous") == 0 ? -1 :
+			strcmp(sItemString, "weather.next") == 0 ? 1 : 0;
+		if (step == 0) return;
+		if (radarScreen->WeatherAllAirports)
+			m_WeatherPage = (m_WeatherPage + step + m_WeatherPageCount) % m_WeatherPageCount;
+		else
+		{
+			const auto stations = radarScreen->GetOpenWeatherAirports();
+			if (stations.empty()) return;
+			const auto selected = std::find(stations.begin(), stations.end(), m_WeatherSelectedStation);
+			const int index = selected != stations.end() ? static_cast<int>(selected - stations.begin()) : 0;
+			m_WeatherSelectedStation = stations[(index + step + stations.size()) % stations.size()];
+		}
+		radarScreen->RequestRefresh();
+		return;
+	}
+	if (!IsTimer()) return;
 
 	int durationMinutes = 0;
 	if (strcmp(sItemString, "timer.1m") == 0)

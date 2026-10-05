@@ -318,6 +318,16 @@ bool VsmrControlCenterBridgeImpl::HandleSettings(
 	}
 
 	const std::string resolution = ReadString(*payload, "resolutionPreset");
+	if (payload->HasMember("weatherAllAirports") && !(*payload)["weatherAllAirports"].IsBool())
+	{
+		error = "METAR airport grouping must be a boolean setting.";
+		return false;
+	}
+	if (payload->HasMember("weatherAllAirports"))
+	{
+		Owner->WeatherAllAirports = (*payload)["weatherAllAirports"].GetBool();
+		Owner->SaveDataToAsr("WeatherAllAirports", "Group open AVISO airports in METAR", Owner->WeatherAllAirports ? "1" : "0");
+	}
 	if (!resolution.empty() &&
 		!Owner->SetSmallTargetIconBoostResolutionPreset(resolution, false))
 	{
