@@ -10,6 +10,7 @@
 #include "plugin/PluginCommandHandler.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "radar/InsetHostPolicy.hpp"
+#include "rdf/RdfOverlay.hpp"
 #include "shared/TextUtils.hpp"
 
 #include <atomic>
@@ -41,6 +42,16 @@ void CSMRPlugin::OnFunctionCall(
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
 
+	if (FunctionId == TAG_FUNC_RDF_RESET)
+	{
+		const CFlightPlan flightPlan = FlightPlanSelectASEL();
+		if (flightPlan.IsValid())
+		{
+			VsmrRdf::ResetCall(flightPlan.GetCallsign());
+			FlightDataRefreshPending.store(true, std::memory_order_release);
+		}
+		return;
+	}
 	if (HandleHoldingPointFunctionCall(FunctionId, sItemString, Area))
 		return;
 	HandleDatalinkFunctionCall(FunctionId, sItemString, Area);
@@ -63,6 +74,7 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	if (normalizedCallsign.empty())
 		return;
 	VsmrGroundState::ForgetAircraft(normalizedCallsign.c_str());
+	VsmrRdf::ForgetAircraft(normalizedCallsign.c_str());
 	VsmrHoldingPoint::ForgetPending(normalizedCallsign);
 	VsmrPluginBridge::ForgetAircraft(normalizedCallsign);
 

@@ -29,6 +29,11 @@ namespace VsmrRdf
 	// Display only: never wait for network shutdown from a command callback.
 	void SetEnabled(bool enabled);
 	Status GetStatus();
+	// Local, latched list indications; reset does not alter live RDF reception.
+	bool IsCallPending(const char* callsign);
+	void ResetCall(const char* callsign);
+	void ForgetAircraft(const char* callsign);
+	bool IsGroundTarget(EuroScopePlugIn::CRadarTarget target);
 
 	// Resolves transmitting callsigns from the radar's immutable frame scene and
 	// draws into the supplied viewport using that viewport's projector.
