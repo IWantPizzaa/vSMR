@@ -86,11 +86,12 @@ namespace VsmrInsetWindowInternal
 	CRect InsetTitleBarRect(AvisoLayoutMode mode, const RECT& areaValue);
 	CRect InsetCloseButtonRect(AvisoLayoutMode mode, const RECT& areaValue);
 	CRect InsetFilterButtonRect(AvisoLayoutMode mode, const RECT& areaValue);
+	CRect WeatherNavigationButtonRect(const RECT& areaValue, bool previous);
 	CRect InsetTitleBarMoveRect(
 		AvisoLayoutMode mode,
 		const RECT& areaValue,
 		bool showFilter,
-		bool allowResize);
+		bool allowResize, bool weatherNavigation = false);
 	bool TryParseInsetResizeObjectId(const char* objectId, ResizeRegion& region);
 	CRect InsetResizeObjectRect(
 		AvisoLayoutMode mode,

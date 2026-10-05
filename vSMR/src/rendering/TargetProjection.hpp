@@ -38,7 +38,7 @@ namespace VsmrTargetRendering
 
 		template<class Project, class Visible>
 		void Update(const VsmrScene::Target& target, const VsmrScene::TargetPresentation& presentation,
-			const DrawOptions& options, const Project& project, const Visible& visible)
+			const DrawOptions& options, const Project& project, const Visible& visible, int trailMargin = 7)
 		{
 			center = project(target.position);
 			heading = center;
@@ -89,12 +89,12 @@ namespace VsmrTargetRendering
 					const POINT point = {
 						static_cast<LONG>(std::lround(start.x + (static_cast<double>(end.x) - start.x) * fraction)),
 						static_cast<LONG>(std::lround(start.y + (static_cast<double>(end.y) - start.y) * fraction)) };
-					if (visible(point, 7)) trail.push_back({ point, i });
+					if (visible(point, trailMargin)) trail.push_back({ point, i });
 					continue;
 				}
 				if (!target.trailPositions[i].valid) continue;
 				const auto point = project(target.trailPositions[i]);
-				if (visible(point, 7)) trail.push_back({ point, i });
+				if (visible(point, trailMargin)) trail.push_back({ point, i });
 			}
 		}
 	};
