@@ -16,6 +16,8 @@ Current source version: **2.0.0** (release preparation). This README describes t
 - Resolution presets for AVISO rendering and aircraft icons/tags, without resizing menus or other UI
 - Automatic RIMCAS runway assignment from EuroScope's active-airport runway selection
 - AVISO, SRW 1, METAR, and Timer inset windows
+- METAR detail adapts automatically to the window size and number of airports, down to ICAO, wind and QNH at minimum size. Settings let you choose all open AVISO airports, including CoFrance insets, or one airport at a time. Title-bar arrows switch airport/page without resizing the window; the airport grouping choice is saved with the ASR.
+- Opening the HP tag editor immediately sets a ground aircraft to Taxi, even if the point selection is cancelled. Existing scratchpad text and real assigned speeds are preserved; EuroScope ownership restrictions still apply.
 - Timer and CPDLC sounds use the files in `vSMR_Data/Audio`, with built-in fallbacks if those files are missing or cannot be played. If alerts remain silent, check the Windows output device and EuroScope's volume/mute setting in the Volume Mixer; vSMR does not override them.
 - CDM bridge integration and Hoppie CPDLC/PDC support
 - Optional vSID bridge data, tag tokens, rules, and Runtime Menu controls
@@ -26,7 +28,7 @@ Current source version: **2.0.0** (release preparation). This README describes t
 ## 2.0.0 behavior and compatibility
 
 - **Resolution:** Settings offers 1080p (100%), 2K (133%), and 4K (200%). These scale AVISO labels/lines and aircraft icons, trails, tags, and their hit areas in the main view and radar insets. They do not resize the Control Center, Runtime Menu, inset controls, weather/timer panels, or FPS display, and do not change geographic positions or radar zoom.
-- **Interface theme:** Night/Day UI colors are independent of the AVISO palette and also affect Timer and METAR insets. Dark/Light palettes are available in the current bundled maps; Real is available for LFBO, LFLL, LFML, LFMN, LFPG, and LFPO. Other maps may offer different palettes.
+- **Interface theme:** Night/Day UI colors are independent of the AVISO palette and also affect Timer and METAR insets. Dark/Light palettes are available in the current bundled maps; Real is available for LFBO, LFLL, LFML, LFMN, LFPG, LFPO, and LFSB. Other maps may offer different palettes.
 - **Target presentation:** Tag label font size is edited in pixels (6-72) instead of preset numbers 1-5. Diamond trails use more closely spaced samples while preserving the selected point count. METAR shows a prominent QNH strip and an inward-fading wind-from indicator. PDC/CPDLC composers distinguish editable light-grey fields from dark read-only fields; X uses the Cancel action.
 - **ASR profiles:** Each radar screen keeps its own active profile. Profile definitions and the profiles-file source remain shared; save the ASR to retain its selection.
 - **CDM:** The bridge-enabled CDM plug-in replaces the retired vACDM HTTP integration. The old CDM Auto/reminder workflow, timer, and message queue are no longer present. Manual Hoppie CPDLC/PDC workflows remain available.
@@ -163,6 +165,12 @@ This only controls map-group visibility; it does not select vSID rules or config
 | Manual Paris vSID configuration | [Paris configuration](https://github.com/IWantPizzaa/vSMR/wiki/Paris-vSID-Configuration) |
 | Commands, logs, and problem reports | [Troubleshooting](https://github.com/IWantPizzaa/vSMR/wiki/Commands-and-Troubleshooting) |
 | Source builds and release packaging | [Development](https://github.com/IWantPizzaa/vSMR/wiki/Development-and-Releases) |
+
+### RDF departure-list indication
+
+With TrackAudio running and **Native RDF** enabled in Settings (or `.smr rdf on`), vSMR provides an optional EuroScope list item **RDF**. In the departure-list column setup, select the vSMR **RDF** item, set the width to **2**, and bind its left-click action to vSMR **RDF reset**. vSMR does not rewrite your EuroScope list layout or mouse bindings.
+
+`TX` blinks yellow/grey for each ground aircraft heard transmitting, including simultaneous speakers. It stays pending after the call ends until clicked, so brief calls are not lost between refreshes. Reset acknowledges only the selected aircraft locally, without changing its flight plan or the live RDF ring. A new transmission activates it again; duplicate events or reception on another frequency during the same call do not undo a reset. Ground filtering follows vSMR's departure-tag speed threshold (reported ground speed at most 50 kt); an uncorrelated aircraft has no indication. Aircraft disconnect/takeoff and disabling Native RDF clear pending indications. A TrackAudio reconnect clears live rings but preserves known ground calls awaiting acknowledgement.
 
 ## Useful commands
 

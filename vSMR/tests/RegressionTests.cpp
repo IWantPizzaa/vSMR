@@ -14,8 +14,10 @@
 #include "integrations/CdmBridgeData.hpp"
 #include "integrations/VsidBridgeData.hpp"
 #include "insets/TimerCountdownState.hpp"
+#include "insets/WeatherInsetLayout.hpp"
 #include "radar/RecentAirports.hpp"
 #include "radar/RadarGeometry.hpp"
+#include "rdf/RdfTransmissionState.hpp"
 #include "safety/RimcasLogic.hpp"
 #include "scene/TargetRoleLogic.hpp"
 #include "shared/JsonInputLimits.hpp"
@@ -259,6 +261,33 @@ namespace
 
 	void TestGroundState()
 	{
+		struct AssignedData
+		{
+			int speed = 0;
+			std::string scratchpad = "KEEP", status = "PUSH";
+			bool reject = false;
+			int GetAssignedSpeed() const { return speed; }
+			bool SetAssignedSpeed(int value) { if (reject) return false; speed = value; return true; }
+			const char* GetScratchPadString() const { return scratchpad.c_str(); }
+			bool SetScratchPadString(const char* value)
+			{
+				if (reject) return false;
+				if (std::string(value) == "TAXI") status = value;
+				scratchpad = value;
+				return true;
+			}
+		};
+		for (const int speed : {0, 10, 19, 250})
+		{
+			AssignedData data;
+			data.speed = speed;
+			Expect(VsmrGroundStateSync::SetTaxiForHoldingPoint(data), "HP click applies Taxi");
+			Expect(data.status == "TAXI" && data.scratchpad == "KEEP", "HP click preserves scratchpad");
+			Expect(data.speed == (VsmrGroundStateSync::IsReservedAssignedSpeed(speed) ? 0 : speed), "HP clears only shared lineup marker, not real speed");
+		}
+		AssignedData rejected;
+		rejected.reject = true;
+		Expect(!VsmrGroundStateSync::SetTaxiForHoldingPoint(rejected) && rejected.status == "PUSH" && rejected.scratchpad == "KEEP", "rejected HP Taxi is not reported as successful");
 		Expect(classifyGroundState("ST-UP", 0, false) == GroundStateCategory::Stup, "ground state startup alias");
 		Expect(classifyGroundState("P/B", 3, false) == GroundStateCategory::Push, "ground state push alias");
 		Expect(classifyGroundState("LINE UP", 0, true) == GroundStateCategory::Lnup, "ground state lineup alias");
@@ -1408,6 +1437,67 @@ void TestRunwayVisibilityRules(const std::filesystem::path& repositoryRoot)
 		"Re-enabling a rule reapplies the automatic state");
 }
 
+void TestWeatherInsetLayout()
+{
+	using namespace VsmrWeatherInset;
+	Expect(NormalizeStations({"lfpg", "LFPO", "LFPG", "", "LFPN"}) == std::vector<std::string>({"LFPG", "LFPN", "LFPO"}), "open AVISO weather stations are normalized, sorted and deduplicated");
+	Expect(ResolveLayout(306, 175, 1).detail == Detail::Full, "single station automatically retains wind rose when it fits");
+	Expect(ResolveLayout(240, 175, 1).detail == Detail::Compact, "narrow weather window automatically removes only rose");
+	Expect(ResolveLayout(306, 175, 2).detail == Detail::Compact, "multiple airports reduce detail before overcrowding");
+	Expect(ResolveLayout(306, 175, 3).detail == Detail::Mini, "three airports use readable mini list in small window");
+	Expect(ResolveLayout(918, 175, 3).detail == Detail::Full, "full returns automatically when all airports fit");
+	const auto paged = ResolveLayout(240, 24, 7);
+	Expect(paged.capacity == 1 && paged.pageCount == 7 && paged.detail == Detail::Mini, "minimum window pages all airports without shrinking text");
+	for (int count = 1; count <= 40; ++count)
+		for (const int width : {240, 306, 900})
+			for (const int height : {24, 175, 450})
+			{
+				const auto plan = ResolveLayout(width, height, count);
+				Expect(plan.capacity > 0 && plan.rows > 0 && plan.columns > 0 && plan.capacity * plan.pageCount >= count,
+					"responsive METAR pagination leaves every station accessible");
+			}
+	VsmrWeather::Snapshot weather;
+	Expect(VsmrWeather::ParseReport("LFPG", "LFPG 041200Z 03009KT CAVOK 18/09 Q1027", weather), "parse compact METAR fixture");
+	Expect(CompactText("LFPG", weather) == "LFPG 03009KT Q1027", "compact METAR contains only ICAO, wind and QNH");
+	weather.windVariable = true;
+	weather.hasWindGust = true;
+	weather.windGustKnots = 22;
+	Expect(CompactText("LFPG", weather) == "LFPG VRB09G22KT Q1027", "compact METAR preserves variable winds and gusts");
+	weather.windCalm = true;
+	weather.hasWindGust = false;
+	Expect(CompactText("LFPG", weather) == "LFPG 00000KT Q1027", "compact METAR formats calm wind");
+	Expect(CompactText("", {}) == "---- --- --KT Q----", "compact METAR never invents missing weather values");
+	enum class Layout { Floating, SplitLeft, SplitRight, SplitTop, SplitBottom,
+		CornerTopLeft, CornerTopRight, CornerBottomLeft, CornerBottomRight };
+	const RECT bounds{10, 20, 1210, 820};
+	for (const auto layout : {Layout::Floating, Layout::SplitLeft, Layout::SplitRight, Layout::SplitTop, Layout::SplitBottom,
+		Layout::CornerTopLeft, Layout::CornerTopRight, Layout::CornerBottomLeft, Layout::CornerBottomRight})
+	{
+		for (const LONG height : {24L, 175L, 300L})
+		{
+			const RECT content{200, 200, 500, 200 + height};
+			const auto snapped = AnchorContent(layout, content, bounds, 15);
+			Expect(snapped.right - snapped.left == 300 && snapped.bottom - snapped.top == height,
+				"weather keeps its chosen size at every snap edge/corner");
+			const auto reapplied = AnchorContent(layout, snapped, bounds, 15);
+			Expect(::EqualRect(&snapped, &reapplied) != FALSE, "weather anchor is stable across redraw and saved-layout restore");
+			const auto floated = AnchorContent(Layout::Floating, snapped, bounds, 15);
+			Expect(::EqualRect(&snapped, &floated) != FALSE, "detaching weather preserves content and title geometry");
+		}
+	}
+	const auto minimum = AnchorContent(Layout::Floating, RECT{200, 200, 201, 201}, bounds, 15);
+	Expect(minimum.right - minimum.left == MinimumWidth && minimum.bottom - minimum.top == MinimumContentHeight,
+		"weather minimum is a single-line strip instead of AVISO's square minimum");
+	const auto corner = AnchorContent(Layout::CornerBottomRight, minimum, bounds, 15);
+	Expect(corner.right == bounds.right && corner.bottom == bounds.bottom, "weather bottom-right snap anchors both edges");
+	const auto top = AnchorContent(Layout::SplitTop, minimum, bounds, 15);
+	Expect(top.top == bounds.top + 15 && top.left == minimum.left, "weather top snap includes title bar and preserves horizontal placement");
+	const RECT tinyBounds{0, 0, 100, 30};
+	const auto clipped = AnchorContent(Layout::CornerBottomRight, minimum, tinyBounds, 15);
+	Expect(clipped.left == 0 && clipped.top == 15 && clipped.right == 100 && clipped.bottom == 30,
+		"weather stays inside a host smaller than its preferred minimum");
+}
+
 void TestSharedTimerCountdowns()
 {
 	TimerCountdownState session;
@@ -1445,6 +1535,40 @@ void TestSharedTimerCountdowns()
 	Expect(!nextSession.Running(4) && !nextSession.Expired(4), "New plugin session starts with idle timers");
 }
 
+void TestRdfCallAcknowledgements()
+{
+	VsmrRdf::TransmissionState calls;
+	constexpr std::int64_t ground = 121800000;
+	constexpr std::int64_t tower = 119250000;
+	Expect(!calls.End("AFR101", ground), "RDF ignores an unmatched transmission end");
+	Expect(calls.Begin("AFR101", ground) && calls.Begin("EZY202", ground) &&
+		calls.Begin("BAW303", tower) && calls.PendingCalls().size() == 3 && calls.ActiveCalls().size() == 3,
+		"RDF remembers three simultaneous speakers independently across frequencies");
+	Expect(calls.End("AFR101", ground) && calls.IsPending("AFR101"),
+		"RDF retains even a short call after reception ends before the next UI tick");
+	Expect(calls.Acknowledge("EZY202") && !calls.IsPending("EZY202") && calls.ActiveCalls().count("EZY202") == 1,
+		"RDF reset acknowledges only selected speaker and never hides its live ring");
+	Expect(!calls.Begin("EZY202", ground) && calls.Begin("EZY202", tower) && !calls.IsPending("EZY202"),
+		"RDF duplicate or second receiver does not relatch an acknowledged ongoing call");
+	Expect(calls.End("EZY202", ground) && calls.ActiveCalls().count("EZY202") == 1 &&
+		!calls.End("EZY202", ground) && !calls.End("EZY202", 123000000),
+		"RDF receiver end and unknown ends do not stop another active receiver");
+	Expect(calls.End("EZY202", tower) && calls.Begin("EZY202", ground) && calls.IsPending("EZY202"),
+		"RDF a genuine new transmission relatches after reset");
+	calls.Forget("BAW303");
+	Expect(!calls.IsPending("BAW303") && calls.ActiveCalls().count("BAW303") == 0 && calls.IsPending("AFR101"),
+		"RDF flight-plan disconnect forgets only that aircraft");
+	calls.ClearActive();
+	Expect(calls.ActiveCalls().empty() && calls.IsPending("AFR101") && calls.IsPending("EZY202"),
+		"TrackAudio disconnect clears live rings but preserves calls still awaiting acknowledgement");
+	calls.ClearPending();
+	Expect(calls.Begin("AFR101", ground, false) && !calls.IsPending("AFR101"),
+		"Disabled RDF receives live events without accumulating hidden list requests");
+	calls.Clear();
+	Expect(calls.ActiveCalls().empty() && calls.PendingCalls().empty() && !calls.Acknowledge("AFR101"),
+		"RDF shutdown clears session state and resetting an empty item is harmless");
+}
+
 int wmain(int argc, wchar_t** argv)
 {
 	const std::filesystem::path repositoryRoot = argc > 1
@@ -1452,7 +1576,9 @@ int wmain(int argc, wchar_t** argv)
 		: std::filesystem::current_path();
 
 	TestGroundState();
+	TestRdfCallAcknowledgements();
 	TestSharedTimerCountdowns();
+	TestWeatherInsetLayout();
 	TestRunwayVisibilityRules(repositoryRoot);
 	TestZoomDiagnostics();
 	TestSharedGroundState();

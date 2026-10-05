@@ -727,6 +727,7 @@
         showFps: true,
         rdfEnabled: true,
         uiColorTheme: "night",
+        weatherAllAirports: true,
         showNorthIndicator: true,
         avisoColorPalette: "dark",
         avisoColorPalettes: ["dark", "light", "real"],

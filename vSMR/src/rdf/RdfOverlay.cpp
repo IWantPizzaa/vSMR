@@ -3,6 +3,9 @@
 
 #include "rdf/RdfOverlay.hpp"
 #include "rdf/RdfGeometry.hpp"
+#include "rdf/RdfTransmissionState.hpp"
+#include "plugin/Plugin.hpp"
+#include "scene/TargetRoleLogic.hpp"
 
 #include "shared/logging/Logger.hpp"
 #include "radar/RadarScreen.hpp"
@@ -20,11 +23,10 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
+#include <cstring>
 #include <exception>
-#include <map>
 #include <memory>
 #include <mutex>
-#include <set>
 #include <string>
 #include <thread>
 #include <utility>
@@ -97,7 +99,7 @@ namespace
 		void Start(CSMRPlugin* plugin, bool enabled)
 		{
 			std::lock_guard<std::mutex> lifecycleGuard(LifecycleMutex);
-			(void)plugin;
+			Plugin = plugin;
 			const bool enabledChanged =
 				Enabled.exchange(enabled, std::memory_order_acq_rel) != enabled;
 			if (enabledChanged)
@@ -113,6 +115,7 @@ namespace
 			std::lock_guard<std::mutex> lifecycleGuard(LifecycleMutex);
 			Enabled.store(false, std::memory_order_release);
 			StopWorkerLocked();
+			Plugin = nullptr;
 		}
 
 		void OnTimer()
@@ -123,9 +126,31 @@ namespace
 					EnsureWorkerLocked();
 			}
 
+			// Only the UI thread may resolve flight plans. Keep short calls even
+			// when begin/end both arrived between ticks, but discard non-ground
+			// aircraft and controller/unknown callsigns instead of accumulating them.
+			std::vector<std::string> pending;
+			{
+				std::lock_guard<std::mutex> guard(TransmissionMutex);
+				pending.assign(Transmissions.PendingCalls().begin(), Transmissions.PendingCalls().end());
+			}
+			if (Plugin != nullptr)
+			{
+				for (const auto& callsign : pending)
+				{
+					const auto flightPlan = Plugin->FlightPlanSelect(callsign.c_str());
+					if (!flightPlan.IsValid() || !VsmrRdf::IsGroundTarget(flightPlan.GetCorrelatedRadarTarget()))
+						ResetCall(callsign.c_str());
+				}
+			}
+			bool blinking = false;
+			{
+				std::lock_guard<std::mutex> guard(TransmissionMutex);
+				blinking = Enabled.load(std::memory_order_acquire) && !Transmissions.PendingCalls().empty();
+			}
 			const std::uint64_t generation =
 				Generation.load(std::memory_order_acquire);
-			if (generation == LastUiGeneration)
+			if (generation == LastUiGeneration && !blinking)
 				return;
 			LastUiGeneration = generation;
 			for (CSMRRadar* radar : RadarScreensOpened)
@@ -141,7 +166,14 @@ namespace
 			const bool enabledChanged =
 				Enabled.exchange(enabled, std::memory_order_acq_rel) != enabled;
 			if (enabledChanged)
+			{
+				if (!enabled)
+				{
+					std::lock_guard<std::mutex> guard(TransmissionMutex);
+					Transmissions.ClearPending();
+				}
 				MarkChanged();
+			}
 			if (enabled)
 				EnsureWorkerLocked();
 			// This is a display switch. Keep the connection and transmission state
@@ -155,7 +187,7 @@ namespace
 			status.enabled = Enabled.load(std::memory_order_acquire);
 			status.trackAudioConnected = Connected.load(std::memory_order_acquire);
 			std::lock_guard<std::mutex> transmissionGuard(TransmissionMutex);
-			status.activeTransmissionCount = Transmissions.size();
+			status.activeTransmissionCount = Transmissions.ActiveCalls().size();
 			return status;
 		}
 
@@ -165,10 +197,39 @@ namespace
 			if (!Enabled.load(std::memory_order_acquire))
 				return result;
 			std::lock_guard<std::mutex> transmissionGuard(TransmissionMutex);
-			result.reserve(Transmissions.size());
-			for (const auto& entry : Transmissions)
+			result.reserve(Transmissions.ActiveCalls().size());
+			for (const auto& entry : Transmissions.ActiveCalls())
 				result.push_back(entry.first);
 			return result;
+		}
+
+		bool IsCallPending(const char* rawCallsign) const
+		{
+			if (!Enabled.load(std::memory_order_acquire) || rawCallsign == nullptr)
+				return false;
+			const auto callsign = NormalizeCallsign(rawCallsign, std::strlen(rawCallsign));
+			std::lock_guard<std::mutex> guard(TransmissionMutex);
+			return Transmissions.IsPending(callsign);
+		}
+
+		void ResetCall(const char* rawCallsign)
+		{
+			if (rawCallsign == nullptr)
+				return;
+			const auto callsign = NormalizeCallsign(rawCallsign, std::strlen(rawCallsign));
+			std::lock_guard<std::mutex> guard(TransmissionMutex);
+			if (Transmissions.Acknowledge(callsign))
+				MarkChanged();
+		}
+
+		void ForgetAircraft(const char* rawCallsign)
+		{
+			if (rawCallsign == nullptr)
+				return;
+			const auto callsign = NormalizeCallsign(rawCallsign, std::strlen(rawCallsign));
+			std::lock_guard<std::mutex> guard(TransmissionMutex);
+			Transmissions.Forget(callsign);
+			MarkChanged();
 		}
 
 	private:
@@ -230,6 +291,8 @@ namespace
 			WorkerRunning.store(false, std::memory_order_release);
 			Connected.store(false, std::memory_order_release);
 			ClearTransmissions();
+			std::lock_guard<std::mutex> guard(TransmissionMutex);
+			Transmissions.Clear();
 		}
 
 		void WorkerEntry() noexcept
@@ -504,19 +567,13 @@ namespace
 			// Tracking each frequency prevents one receiver from ending another active transmission
 			if (type == "kRxBegin")
 			{
-				if (Transmissions[callsign].insert(frequency).second)
+				if (Transmissions.Begin(callsign, frequency, Enabled.load(std::memory_order_acquire)))
 					MarkChanged();
 				return;
 			}
 
-			auto callsignIt = Transmissions.find(callsign);
-			if (callsignIt == Transmissions.end())
-				return;
-			if (callsignIt->second.erase(frequency) == 0)
-				return;
-			if (callsignIt->second.empty())
-				Transmissions.erase(callsignIt);
-			MarkChanged();
+			if (Transmissions.End(callsign, frequency))
+				MarkChanged();
 		}
 
 		static std::string NormalizeCallsign(const char* text, std::size_t length)
@@ -556,9 +613,10 @@ namespace
 		void ClearTransmissions()
 		{
 			std::lock_guard<std::mutex> transmissionGuard(TransmissionMutex);
-			if (Transmissions.empty())
+			if (Transmissions.ActiveCalls().empty())
 				return;
-			Transmissions.clear();
+			// A TrackAudio reconnect ends live rings, not unacknowledged calls.
+			Transmissions.ClearActive();
 			MarkChanged();
 		}
 
@@ -637,7 +695,8 @@ namespace
 		std::atomic<bool> WorkerRunning{ false };
 		std::atomic<std::uint64_t> Generation{ 0 };
 		std::uint64_t LastUiGeneration = 0;
-		std::map<std::string, std::set<FrequencyHz>> Transmissions;
+		VsmrRdf::TransmissionState Transmissions;
+		CSMRPlugin* Plugin = nullptr; // UI thread only; never read by the worker.
 		SharedInternetHandle ActiveWebSocket;
 	};
 
@@ -674,6 +733,18 @@ namespace VsmrRdf
 	Status GetStatus()
 	{
 		return Service().GetStatus();
+	}
+
+	bool IsCallPending(const char* callsign) { return Service().IsCallPending(callsign); }
+	void ResetCall(const char* callsign) { Service().ResetCall(callsign); }
+	void ForgetAircraft(const char* callsign) { Service().ForgetAircraft(callsign); }
+
+	bool IsGroundTarget(EuroScopePlugIn::CRadarTarget target)
+	{
+		if (!target.IsValid())
+			return false;
+		const auto position = target.GetPosition();
+		return position.IsValid() && !VsmrTargetRoleLogic::IsAirborneForTagRole(false, position.GetReportedGS());
 	}
 
 	void Draw(
