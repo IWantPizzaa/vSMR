@@ -357,6 +357,7 @@
     <ClInclude Include="src\radar\RadarScreenSupport.hpp" />
     <ClInclude Include="src\radar\RadarUiSupport.hpp" />
     <ClInclude Include="src\rdf\RdfOverlay.hpp" />
+    <ClInclude Include="src\rdf\RdfTransmissionState.hpp" />
     <ClInclude Include="src\safety\Rimcas.hpp" />
     <ClInclude Include="src\safety\RimcasLogic.hpp" />
     <ClInclude Include="src\scene\RadarScene.hpp" />

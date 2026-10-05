@@ -224,6 +224,7 @@
     <ClInclude Include="src\radar\RadarScreenSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarUiSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\rdf\RdfOverlay.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\rdf\RdfTransmissionState.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\safety\Rimcas.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\safety\RimcasLogic.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\scene\RadarScene.hpp"><Filter>Headers</Filter></ClInclude>
