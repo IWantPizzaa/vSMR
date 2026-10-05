@@ -49,6 +49,7 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 	std::string stagedAvisoColorPalette = Owner->GetAvisoColorPalette();
 	bool hasStagedUiColorTheme = false;
 	std::string stagedUiColorTheme = Owner->GetUiColorTheme();
+	bool stagedWeatherAllAirports = Owner->WeatherAllAirports;
 	if (payload->HasMember("settings"))
 	{
 		const rapidjson::Value& settings = (*payload)["settings"];
@@ -56,6 +57,15 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 		{
 			error = "Save settings must be an object.";
 			return false;
+		}
+		if (settings.HasMember("weatherAllAirports"))
+		{
+			if (!settings["weatherAllAirports"].IsBool())
+			{
+				error = "METAR airport grouping must be a boolean setting.";
+				return false;
+			}
+			stagedWeatherAllAirports = settings["weatherAllAirports"].GetBool();
 		}
 		if (settings.HasMember("showFps"))
 		{
@@ -500,6 +510,8 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 		Owner->SetUiColorTheme(stagedUiColorTheme, true);
 
 	bool reloadFailed = false;
+	Owner->WeatherAllAirports = stagedWeatherAllAirports;
+	Owner->SaveDataToAsr("WeatherAllAirports", "Group open AVISO airports in METAR", stagedWeatherAllAirports ? "1" : "0");
 	bool avisoReloadFailed = false;
 	for (CSMRRadar* radar : RadarScreensOpened)
 	{

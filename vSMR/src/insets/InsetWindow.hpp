@@ -88,6 +88,7 @@ public:
 
 	virtual void render(HDC Hdc, CSMRRadar * radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
 	virtual void setAirport(std::string icao);
+	const std::string& GetAirport() const { return icao; }
 	virtual POINT projectPoint(CPosition pos);
 	virtual void OnClickScreenObject(const char * sItemString, POINT Pt, int Button, CSMRRadar* radarScreen);
 	virtual bool OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Area, bool released, const RECT* layoutBounds = nullptr);
@@ -95,6 +96,8 @@ public:
 	bool IsSecondaryRadar() const;
 	bool IsWeather() const;
 	bool IsTimer() const;
+	bool UsesSizePreservingSnap() const { return IsTimer() || IsWeather(); }
+	AvisoLayoutMode GetChromeLayoutMode() const { return UsesSizePreservingSnap() ? AvisoLayoutMode::Floating : m_AvisoLayoutMode; }
 	bool SupportsPanAndZoom() const;
 	bool IsSnappedLayout() const;
 	bool IsPointInside(POINT Pt) const;
@@ -133,6 +136,9 @@ public:
 	double GetLastChromeRenderMilliseconds() const noexcept;
 	
 private:
+	int m_WeatherPage = 0;
+	int m_WeatherPageCount = 1;
+	std::string m_WeatherSelectedStation;
 	double GetAvisoViewportScreenRotationDeg() const noexcept;
 	void renderSecondaryRadarTargets(CDC& dc, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation, const CRect& windowAreaCRect);
 	struct AvisoTagTarget;

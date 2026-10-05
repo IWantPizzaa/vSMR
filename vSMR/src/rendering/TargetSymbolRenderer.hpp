@@ -87,12 +87,22 @@ namespace VsmrTargetRendering
 			const Visible& visible = AlwaysVisible{}, const DrawOptions& options = DrawOptions{})
 		{
 			if (!target.position.valid) return {};
-			m_Projected.Update(target, m_Settings.presentation, options, project, visible);
-			return DrawProjectedTarget(target, options);
+			const auto geometry = ResolveSymbolGeometry(target);
+			m_Projected.Update(target, m_Settings.presentation, options, project, visible, geometry.trailMargin);
+			return DrawProjectedTarget(target, options, geometry);
 		}
 
 	private:
-		DrawResult DrawProjectedTarget(const VsmrScene::Target& target, const DrawOptions& options);
+		struct SymbolGeometry
+		{
+			Gdiplus::Bitmap* sourceBitmap = nullptr;
+			double bitmapWidth = 0.0, bitmapHeight = 0.0;
+			double length = 0.0, halfWidth = 0.0, diagonal = 0.0;
+			double trailDiameter = 0.0;
+			int trailMargin = 0;
+		};
+		SymbolGeometry ResolveSymbolGeometry(const VsmrScene::Target& target) const;
+		DrawResult DrawProjectedTarget(const VsmrScene::Target& target, const DrawOptions& options, const SymbolGeometry& geometry);
 		VsmrRendering::BrushCache m_Brushes;
 		Gdiplus::Graphics& m_Graphics;
 		FrameSettings m_Settings;

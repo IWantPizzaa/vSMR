@@ -266,6 +266,23 @@ bool CSMRPlugin::HandleHoldingPointFunctionCall(
 		const char* callsign = flightPlan.GetCallsign();
 		if (callsign == nullptr || callsign[0] == '\0')
 			return true;
+		// Apply on the initial HP click, including when the popup is cancelled.
+		// Do not turn an already airborne aircraft back into a taxiing departure.
+		const auto target = flightPlan.GetCorrelatedRadarTarget();
+		const bool airborne = target.IsValid() && target.GetPosition().IsValid() &&
+			VsmrTargetRoleLogic::IsAirborneForTagRole(false, target.GetPosition().GetReportedGS());
+		if (!airborne)
+		{
+			auto assignedData = flightPlan.GetControllerAssignedData();
+			if (VsmrGroundStateSync::SetTaxiForHoldingPoint(assignedData))
+			{
+				VsmrGroundState::ForgetAircraft(callsign);
+				for (CSMRRadar* radar : RadarScreensOpened)
+					if (radar != nullptr && !radar->IsShutdownRequested()) radar->RequestRefresh();
+			}
+			else
+				DisplayUserMessage("vSMR", "Holding Point", "EuroScope could not apply Taxi or restore the scratchpad. Check aircraft ownership and scratchpad.", true, true, false, false, false);
+		}
 		{
 			std::lock_guard<std::mutex> guard(HoldingPointEditMutex);
 			PendingHoldingPointCallsign = callsign;

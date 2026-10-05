@@ -2,6 +2,19 @@
 
 ## [2.0.0] - Unreleased
 
+- Added an LFSB Real AVISO palette based on the supplied reference: dark blue-grey background, grey-violet runways/buildings, fine grass boundaries, green taxiway labels, muted yellow stands and orange/blue guidance. Runway/paved-surface outlines are disabled to avoid artificial polygon seams at the runway intersection and on the apron. Both runways retain the same neutral colour rather than the reference's red runway. All 235 existing geometries and Dark/Light styling are preserved.
+
+- Restored LFBO's screenshot-reference Real palette: grass uses the uniform slate-grey background fill, with fine outlines to keep its 13 existing polygons identifiable instead of adding dark patches. Existing surface outlines, geometry, other Real colours and Dark/Light rendering are unchanged.
+
+- Added an optional EuroScope list/tag item `RDF` (width 2) with a yellow/grey blinking `TX` for ground aircraft heard through native TrackAudio RDF. Calls remain pending after reception ends, including overlapping speakers, until the local `RDF reset` action acknowledges them. Reset never changes live RDF rings or flight-plan data; a later new transmission reactivates the item. Airborne/disconnected aircraft are cleaned up automatically. Requires Native RDF enabled; list columns and mouse bindings remain user-configured.
+
+- Fixed past-position markers keeping a fixed pixel size while aircraft icons changed with zoom. Dots, rings and ring strokes now follow the rendered icon dimensions (including minimum/maximum sizes, resolution scaling and missing-icon fallback) on main AVISO, CoFrance/AVISO insets and SRW. Trail sample counts, spacing and fading are unchanged; culling uses the scaled marker extent.
+
+- Opening the HP tag editor now sets a ground aircraft to Taxi immediately, preserving scratchpad text and real speed assignments while clearing the shared lineup marker. Applies through the common tag action on main AVISO and insets; rejected EuroScope writes are reported.
+- METAR detail now adapts automatically to available space and airport count; removed the manual Full/Compact/Mini selector and its saved override. All-open-airports or single-airport selection remains available in Settings and is saved with the ASR. Open AVISO/CoFrance airports are deduplicated and fetched together; responsive detail and title-bar paging keep every airport accessible without growing a snapped window.
+
+- Added a single-line minimum-size METAR view showing only ICAO, wind (including VRB/gusts) and QNH. Weather windows now snap to edges/corners without enlarging; floating chrome, resize hitboxes and saved anchors keep the same content dimensions in AVISO and CoFrance views.
+
 - Show `CONFIG - NOT LOADED` when vSID is online but reports an unloaded automatic configuration, and `CONFIG - MANUAL ONLY` for unmanaged airports, instead of leaving an unexplained configuration heading.
 
 - Updated the vSID interface for generic `rules`, `areas` and `autoconfig` bridge snapshots. Configuration buttons follow live rules, send explicit airport-scoped assignments, support LFPB and LFOB's PGEAST rule, and keep LFPG taxi areas independent of Linked/Unlinked. Display Auto/manual status and offer Resume auto config for a manual override; retain compatibility with older companion builds and never change EuroScope's active airports/runways.

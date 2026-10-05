@@ -273,7 +273,7 @@ namespace
 			const auto& document = model.GetDocument();
 			if (!document.HasMember("metadata") || !document["metadata"].HasMember("geometry_source")) continue;
 			const auto& metadata = document["metadata"];
-			const bool hasReal = airport == "LFPG" || airport == "LFPO" || airport == "LFML" || airport == "LFMN" || airport == "LFBO" || airport == "LFLL";
+			const bool hasReal = airport == "LFPG" || airport == "LFPO" || airport == "LFML" || airport == "LFMN" || airport == "LFBO" || airport == "LFLL" || airport == "LFSB";
 			const auto& palettes = metadata["color_palettes"];
 			Expect(palettes.Size() == (hasReal ? 3U : 2U) &&
 				std::string(palettes[rapidjson::SizeType(0)].GetString()) == "dark" &&
@@ -285,6 +285,47 @@ namespace
 			for (const auto& feature : document["features"].GetArray())
 				Expect(!feature["properties"].HasMember("color_palettes"),
 					"Every palette uses the same sector-pack geometry: " + airport);
+			if (airport == "LFSB")
+			{
+				const auto& styles = document["styles"];
+				Expect(model.FeatureCount() == 235U && styles.MemberCount() == 13U,
+					"LFSB Real retains all existing geometry and shared style IDs");
+				Expect(std::string(metadata["background_colors"]["real"].GetString()) == "#252B37",
+					"LFSB Real uses the reference dark blue-grey background");
+				for (auto style = styles.MemberBegin(); style != styles.MemberEnd(); ++style)
+				{
+					const auto& paint = style->value["paint"];
+					Expect(paint.HasMember("palette-overrides") && paint["palette-overrides"].HasMember("real"),
+						"Every LFSB style explicitly defines its Real palette");
+					Expect(!VsmrAviso::ResolvePolygonOutline(&paint, nullptr, nullptr, nullptr),
+						"LFSB Dark remains fill-only instead of inheriting Real outlines");
+				}
+				for (const char* styleId : { "polygon.runwayconcrete.555555", "polygon.hardsurface2.595e5b",
+					"polygon.hardsurface3.8a807f", "polygon.hardsurface4.969393" })
+				{
+					const auto& paint = styles[styleId]["paint"];
+					Expect(!VsmrAviso::ResolvePolygonOutline(&paint, nullptr, &paint["palette-overrides"]["real"], nullptr),
+						"LFSB Real runway/apron polygon joins must not become artificial contour lines");
+				}
+				const auto& runway = styles["polygon.runwayconcrete.555555"]["paint"];
+				Expect(std::string(runway["palette-overrides"]["real"]["fill"].GetString()) == "#62687C" &&
+					std::string(runway["fill"].GetString()) == "#111318" &&
+					std::string(runway["palette-overrides"]["light"]["fill"].GetString()) == "#555555",
+					"LFSB both Real runways use grey-violet, never the red closed-runway reference colour; Dark/Light remain unchanged");
+				unsigned runwayParts = 0;
+				for (const auto& feature : document["features"].GetArray())
+				{
+					const auto& properties = feature["properties"];
+					if (std::string(properties["style_id"].GetString()) != "polygon.runwayconcrete.555555") continue;
+					++runwayParts;
+					Expect(!properties.HasMember("fill") && !properties.HasMember("palette-overrides"),
+						"All LFSB runway geometry inherits the same Real fill without red feature overrides");
+				}
+				Expect(runwayParts == 3U, "LFSB preserves the existing three runway polygon parts");
+				Expect(std::string(styles["label.taxiways"]["paint"]["palette-overrides"]["real"]["text-color"].GetString()) == "#7EA18B" &&
+					std::string(styles["label.gates"]["paint"]["palette-overrides"]["real"]["text-color"].GetString()) == "#B7AE6A",
+					"LFSB Real distinguishes green taxiway labels from subdued yellow stands");
+			}
 			if (airport == "LFLL")
 			{
 				Expect(model.FeatureCount() == 420U && document["styles"].MemberCount() == 21U,
@@ -349,6 +390,20 @@ namespace
 				Expect(std::string(metadata["background_colors"]["real"].GetString()) == "#434C51",
 					"LFBO Real uses the reference slate background");
 				const auto& styles = document["styles"];
+				const auto& grass = styles["polygon.grassurface.00512f"]["paint"];
+				const std::string realGrass = grass["palette-overrides"]["real"]["fill"].GetString();
+				const auto& realGrassPaint = grass["palette-overrides"]["real"];
+				Expect(realGrass == "#434C51" && realGrass == metadata["background_colors"]["real"].GetString(),
+					"LFBO Real restores the screenshot-reference uniform slate fill instead of dark grass patches");
+				Expect(VsmrAviso::ResolvePolygonOutline(&grass, nullptr, &realGrassPaint, nullptr) &&
+					std::string(realGrassPaint["stroke"].GetString()) == "#5B656B" && grass["stroke-width"].GetDouble() == 0.75,
+					"LFBO Real grass stays identifiable through fine outlines matching the paved surfaces");
+				Expect(!VsmrAviso::ResolvePolygonOutline(&grass, nullptr, nullptr, nullptr) &&
+					!VsmrAviso::ResolvePolygonOutline(&grass, nullptr, &grass["palette-overrides"]["light"], nullptr),
+					"LFBO grass outlines are enabled only in Real");
+				Expect(std::string(grass["fill"].GetString()) == "#010D19" &&
+					std::string(grass["palette-overrides"]["light"]["fill"].GetString()) == "#00512F",
+					"LFBO grass visibility fix leaves Dark and Light styling unchanged");
 				for (auto style = styles.MemberBegin(); style != styles.MemberEnd(); ++style)
 				{
 					const auto& paint = style->value["paint"];

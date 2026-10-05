@@ -558,6 +558,71 @@ namespace
 		}
 	}
 
+	void TestTrailZoomScaling(std::vector<std::string>& failures)
+	{
+		Gdiplus::Bitmap canvas(1024, 512, PixelFormat32bppARGB);
+		Gdiplus::Graphics graphics(&canvas);
+		graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+		Gdiplus::Bitmap source(8, 8, PixelFormat32bppARGB);
+		for (const auto icon : { VsmrScene::IconStyle::Nova, VsmrScene::IconStyle::Diamond,
+			VsmrScene::IconStyle::Triangle, VsmrScene::IconStyle::Realistic })
+		{
+			for (const bool bitmapAvailable : {true, false})
+			{
+				auto target = MakeTarget(icon);
+				target.transponderModeC = true;
+				target.style.wingspanMeters = 36;
+				target.style.lengthMeters = 40;
+				target.trailPositions = {{48.0, 1.0, true}};
+				const auto project = [icon](const VsmrScene::GeoPoint& position) -> POINT {
+					// Diamond's quarter-interval trail sampling still lands at x=200.
+					if (position.longitude < 2.0) return {icon == VsmrScene::IconStyle::Diamond ? -1300 : 200, 256};
+					return {700, position.latitude > 48.0 ? 240 : 256};
+				};
+				const auto draw = [&](double zoom, double symbolScale, bool trail, int& margin) {
+					VsmrTargetRendering::FrameSettings settings;
+					settings.presentation.icon = icon;
+					settings.presentation.symbolScale = symbolScale;
+					settings.pixelsPerMeter = zoom;
+					if (bitmapAvailable) settings.iconCache.getSourceBitmap = [&](const std::string&) { return &source; };
+					VsmrTargetRendering::Frame frame(graphics, std::move(settings));
+					VsmrTargetRendering::DrawOptions options;
+					options.drawTrail = trail;
+					return frame.DrawTarget(target, project, [&](const POINT&, int suppliedMargin) {
+						margin = suppliedMargin;
+						return true;
+					}, options);
+				};
+				for (const double scale : {1.0, 2.0})
+				{
+					int margin = 0;
+					const auto baseline = draw(1.0, scale, true, margin);
+					const int baselineRadius = 200 - baseline.visualBounds.left;
+					for (const double zoom : {0.5, 1.0, 2.0})
+					{
+						const auto actual = draw(zoom, scale, true, margin);
+						const double radius = 200 - actual.visualBounds.left;
+						const double expected = baselineRadius * (icon == VsmrScene::IconStyle::Nova ? 1.0 : zoom);
+						Check(actual.trailDrawn && std::abs(radius - expected) <= 2.0,
+							"trail size follows aircraft zoom and resolution, including missing-bitmap fallback", failures);
+						Check(margin >= radius, "viewport culling covers the full scaled trail, including ring stroke", failures);
+					}
+					for (const double zoom : {0.0, 0.01, 0.05, 10.0, 100.0})
+					{
+						const auto actual = draw(zoom, scale, true, margin);
+						const int diameter = (200 - actual.visualBounds.left) * 2;
+						Check(actual.trailDrawn && diameter <= (std::min)(Width(actual.symbolBounds), Height(actual.symbolBounds)) + 2,
+							"trail never outgrows its aircraft when icon sizing reaches a zoom clamp", failures);
+					}
+					const auto withoutTrail = draw(1.0, scale, false, margin);
+					Check(!withoutTrail.trailDrawn && ::EqualRect(&withoutTrail.visualBounds, &withoutTrail.symbolBounds) &&
+						::EqualRect(&withoutTrail.symbolBounds, &baseline.symbolBounds) && ::EqualRect(&withoutTrail.hitBounds, &baseline.hitBounds),
+						"trail scaling does not change the aircraft symbol, hit area or disabled-trail behavior", failures);
+				}
+			}
+		}
+	}
+
 	void TestCollapsedProjectionArrow(
 		Gdiplus::Graphics& graphics,
 		std::vector<std::string>& failures)
@@ -867,6 +932,7 @@ std::vector<std::string> RunSharedRenderingBehaviorTests()
 		graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
 		TestCollapsedProjectionArrow(graphics, failures);
 		TestTargetResolutionScaling(graphics, failures);
+		TestTrailZoomScaling(failures);
 		TestGraphicsStateRestoration(graphics, failures);
 		TestSharedTagGeometry(graphics, failures);
 	}

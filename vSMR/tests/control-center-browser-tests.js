@@ -711,6 +711,19 @@
       "UI theme changes shared design colors without changing the AVISO palette");
 
     const rdfToggle = document.querySelector("#settingsRdfEnabled");
+	const weatherAirports = document.querySelector("#settingsWeatherAirports");
+	expect(!document.querySelector("#settingsWeatherDisplayMode") && !("weatherDisplayMode" in api.getState().settings),
+	  "METAR detail is automatic with no manual mode setting");
+	expect(weatherAirports?.options.length === 2, "METAR settings retain both airport list choices");
+	for (const selection of ["single", "all"]) {
+	  const saveStart = outbound.length;
+	  weatherAirports.value = selection;
+	  weatherAirports.dispatchEvent(new Event("change", { bubbles: true }));
+	  const all = selection === "all";
+	  expect(api.getState().settings.weatherAllAirports === all, "METAR grouping stages immediately");
+	  await waitFor(() => outbound.slice(saveStart).some(message => message.type === "state.save" &&
+	    message.payload?.settings?.weatherAllAirports === all), "METAR grouping is included in saved settings");
+	}
     const northToggle = document.querySelector("#settingsShowNorthIndicator");
     expect(northToggle?.checked, "Settings exposes the automatic north indicator, enabled by default");
     for (const enabled of [false, true]) {

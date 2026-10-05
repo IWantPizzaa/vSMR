@@ -4,6 +4,7 @@
 
 #include "aircraft/HoldingPoint.hpp"
 #include "crash/CrashRuntime.hpp"
+#include "rdf/RdfOverlay.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -32,7 +33,6 @@ void CSMRPlugin::OnGetTagItem(
 	double* pFontSize)
 {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnGetTagItem");
-	(void)RadarTarget;
 	(void)TagData;
 	(void)pFontSize;
 	if (Logger::is_verbose_mode())
@@ -40,6 +40,29 @@ void CSMRPlugin::OnGetTagItem(
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 	{
 		strcpy_s(sItemString, 16, "");
+		return;
+	}
+
+	if (ItemCode == TAG_ITEM_RDF)
+	{
+		if (pColorCode != nullptr)
+			*pColorCode = TAG_COLOR_RGB_DEFINED;
+		if (pRGB != nullptr)
+			*pRGB = BLINK ? RGB(130, 130, 130) : RGB(255, 255, 0);
+		strcpy_s(sItemString, 16, " ");
+		if (!FlightPlan.IsValid())
+			return;
+		const char* callsign = FlightPlan.GetCallsign();
+		if (!VsmrRdf::IsCallPending(callsign))
+			return;
+		if (!RadarTarget.IsValid())
+			RadarTarget = FlightPlan.GetCorrelatedRadarTarget();
+		if (!VsmrRdf::IsGroundTarget(RadarTarget))
+		{
+			VsmrRdf::ResetCall(callsign);
+			return;
+		}
+		strcpy_s(sItemString, 16, "TX");
 		return;
 	}
 
