@@ -166,6 +166,12 @@ This only controls map-group visibility; it does not select vSID rules or config
 | Commands, logs, and problem reports | [Troubleshooting](https://github.com/IWantPizzaa/vSMR/wiki/Commands-and-Troubleshooting) |
 | Source builds and release packaging | [Development](https://github.com/IWantPizzaa/vSMR/wiki/Development-and-Releases) |
 
+### RDF departure-list indication
+
+With TrackAudio running and **Native RDF** enabled in Settings (or `.smr rdf on`), vSMR provides an optional EuroScope list item **RDF**. In the departure-list column setup, select the vSMR **RDF** item, set the width to **2**, and bind its left-click action to vSMR **RDF reset**. vSMR does not rewrite your EuroScope list layout or mouse bindings.
+
+`TX` blinks yellow/grey for each ground aircraft heard transmitting, including simultaneous speakers. It stays pending after the call ends until clicked, so brief calls are not lost between refreshes. Reset acknowledges only the selected aircraft locally, without changing its flight plan or the live RDF ring. A new transmission activates it again; duplicate events or reception on another frequency during the same call do not undo a reset. Ground filtering follows vSMR's departure-tag speed threshold (reported ground speed at most 50 kt); an uncorrelated aircraft has no indication. Aircraft disconnect/takeoff and disabling Native RDF clear pending indications. A TrackAudio reconnect clears live rings but preserves known ground calls awaiting acknowledgement.
+
 ## Useful commands
 
 | Command | Purpose |

@@ -141,6 +141,7 @@
     <ClInclude Include="..\src\aviso\AvisoRasterGeometry.hpp" />
     <ClInclude Include="..\src\aviso\AvisoPolygonOutline.hpp" />
     <ClInclude Include="..\src\radar\RecentAirports.hpp" />
+    <ClInclude Include="..\src\rdf\RdfTransmissionState.hpp" />
     <ClInclude Include="..\src\config\RuntimeConfig.hpp" />
     <ClInclude Include="..\src\config\LayeredConfig.hpp" />
     <ClInclude Include="..\src\aviso\AvisoOverrides.hpp" />

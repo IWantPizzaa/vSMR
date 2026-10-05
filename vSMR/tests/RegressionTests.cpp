@@ -17,6 +17,7 @@
 #include "insets/WeatherInsetLayout.hpp"
 #include "radar/RecentAirports.hpp"
 #include "radar/RadarGeometry.hpp"
+#include "rdf/RdfTransmissionState.hpp"
 #include "safety/RimcasLogic.hpp"
 #include "scene/TargetRoleLogic.hpp"
 #include "shared/JsonInputLimits.hpp"
@@ -1534,6 +1535,40 @@ void TestSharedTimerCountdowns()
 	Expect(!nextSession.Running(4) && !nextSession.Expired(4), "New plugin session starts with idle timers");
 }
 
+void TestRdfCallAcknowledgements()
+{
+	VsmrRdf::TransmissionState calls;
+	constexpr std::int64_t ground = 121800000;
+	constexpr std::int64_t tower = 119250000;
+	Expect(!calls.End("AFR101", ground), "RDF ignores an unmatched transmission end");
+	Expect(calls.Begin("AFR101", ground) && calls.Begin("EZY202", ground) &&
+		calls.Begin("BAW303", tower) && calls.PendingCalls().size() == 3 && calls.ActiveCalls().size() == 3,
+		"RDF remembers three simultaneous speakers independently across frequencies");
+	Expect(calls.End("AFR101", ground) && calls.IsPending("AFR101"),
+		"RDF retains even a short call after reception ends before the next UI tick");
+	Expect(calls.Acknowledge("EZY202") && !calls.IsPending("EZY202") && calls.ActiveCalls().count("EZY202") == 1,
+		"RDF reset acknowledges only selected speaker and never hides its live ring");
+	Expect(!calls.Begin("EZY202", ground) && calls.Begin("EZY202", tower) && !calls.IsPending("EZY202"),
+		"RDF duplicate or second receiver does not relatch an acknowledged ongoing call");
+	Expect(calls.End("EZY202", ground) && calls.ActiveCalls().count("EZY202") == 1 &&
+		!calls.End("EZY202", ground) && !calls.End("EZY202", 123000000),
+		"RDF receiver end and unknown ends do not stop another active receiver");
+	Expect(calls.End("EZY202", tower) && calls.Begin("EZY202", ground) && calls.IsPending("EZY202"),
+		"RDF a genuine new transmission relatches after reset");
+	calls.Forget("BAW303");
+	Expect(!calls.IsPending("BAW303") && calls.ActiveCalls().count("BAW303") == 0 && calls.IsPending("AFR101"),
+		"RDF flight-plan disconnect forgets only that aircraft");
+	calls.ClearActive();
+	Expect(calls.ActiveCalls().empty() && calls.IsPending("AFR101") && calls.IsPending("EZY202"),
+		"TrackAudio disconnect clears live rings but preserves calls still awaiting acknowledgement");
+	calls.ClearPending();
+	Expect(calls.Begin("AFR101", ground, false) && !calls.IsPending("AFR101"),
+		"Disabled RDF receives live events without accumulating hidden list requests");
+	calls.Clear();
+	Expect(calls.ActiveCalls().empty() && calls.PendingCalls().empty() && !calls.Acknowledge("AFR101"),
+		"RDF shutdown clears session state and resetting an empty item is harmless");
+}
+
 int wmain(int argc, wchar_t** argv)
 {
 	const std::filesystem::path repositoryRoot = argc > 1
@@ -1541,6 +1576,7 @@ int wmain(int argc, wchar_t** argv)
 		: std::filesystem::current_path();
 
 	TestGroundState();
+	TestRdfCallAcknowledgements();
 	TestSharedTimerCountdowns();
 	TestWeatherInsetLayout();
 	TestRunwayVisibilityRules(repositoryRoot);
