@@ -15,13 +15,13 @@ namespace VsmrRdf
 		using FrequencyHz = std::int64_t;
 		using ActiveMap = std::map<std::string, std::set<FrequencyHz>>;
 
-		bool Begin(const std::string& callsign, FrequencyHz frequency, bool rememberCall = true)
+		bool Begin(const std::string& callsign, FrequencyHz frequency)
 		{
 			auto& frequencies = Active[callsign];
 			const bool newCall = frequencies.empty();
 			if (!frequencies.insert(frequency).second)
 				return false;
-			if (newCall && rememberCall)
+			if (newCall)
 				Pending.insert(callsign);
 			return true;
 		}
