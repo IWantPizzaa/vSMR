@@ -2,11 +2,13 @@
 
 ## [2.0.0] - Unreleased
 
+- RDF list detection, blinking TX and reset now work independently of Native RDF map visibility, including startup with `.smr rdf off`. Hiding the overlay no longer clears pending calls.
+
 - Added an LFSB Real AVISO palette based on the supplied reference: dark blue-grey background, grey-violet runways/buildings, fine grass boundaries, green taxiway labels, muted yellow stands and orange/blue guidance. Runway/paved-surface outlines are disabled to avoid artificial polygon seams at the runway intersection and on the apron. Both runways retain the same neutral colour rather than the reference's red runway. All 235 existing geometries and Dark/Light styling are preserved.
 
 - Restored LFBO's screenshot-reference Real palette: grass uses the uniform slate-grey background fill, with fine outlines to keep its 13 existing polygons identifiable instead of adding dark patches. Existing surface outlines, geometry, other Real colours and Dark/Light rendering are unchanged.
 
-- Added an optional EuroScope list/tag item `RDF` (width 2) with a yellow/grey blinking `TX` for ground aircraft heard through native TrackAudio RDF. Calls remain pending after reception ends, including overlapping speakers, until the local `RDF reset` action acknowledges them. Reset never changes live RDF rings or flight-plan data; a later new transmission reactivates the item. Airborne/disconnected aircraft are cleaned up automatically. Requires Native RDF enabled; list columns and mouse bindings remain user-configured.
+- Added an optional EuroScope list/tag item `RDF` (width 2) with a yellow/grey blinking `TX` for ground aircraft heard through native TrackAudio RDF. Calls remain pending after reception ends, including overlapping speakers, until the local `RDF reset` action acknowledges them. Reset never changes live RDF rings or flight-plan data; a later new transmission reactivates the item. Airborne/disconnected aircraft are cleaned up automatically. Requires TrackAudio running; list columns and mouse bindings remain user-configured.
 
 - Fixed past-position markers keeping a fixed pixel size while aircraft icons changed with zoom. Dots, rings and ring strokes now follow the rendered icon dimensions (including minimum/maximum sizes, resolution scaling and missing-icon fallback) on main AVISO, CoFrance/AVISO insets and SRW. Trail sample counts, spacing and fading are unchanged; culling uses the scaled marker extent.
 
