@@ -16,6 +16,9 @@ namespace VsmrRadar
 			if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) return;
 		}
 		history.erase(std::remove(history.begin(), history.end(), airport), history.end());
+		// The startup fallback must not appear in the recent-airport menu.
+		history.erase(std::remove(history.begin(), history.end(), "EGKK"), history.end());
+		if (airport == "EGKK") return;
 		history.insert(history.begin(), std::move(airport));
 		if (history.size() > 5U) history.resize(5U);
 	}

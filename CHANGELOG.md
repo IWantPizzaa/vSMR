@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- Excluded the EGKK startup fallback from Recent Airports without preventing normal airport selection.
+
 - RDF list detection, blinking TX and reset now work independently of Native RDF map visibility, including startup with `.smr rdf off`. Hiding the overlay no longer clears pending calls.
 
 - Added an LFSB Real AVISO palette based on the supplied reference: dark blue-grey background, grey-violet runways/buildings, fine grass boundaries, green taxiway labels, muted yellow stands and orange/blue guidance. Runway/paved-surface outlines are disabled to avoid artificial polygon seams at the runway intersection and on the apron. Both runways retain the same neutral colour rather than the reference's red runway. All 235 existing geometries and Dark/Light styling are preserved.
