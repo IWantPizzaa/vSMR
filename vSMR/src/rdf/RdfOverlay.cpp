@@ -104,10 +104,7 @@ namespace
 				Enabled.exchange(enabled, std::memory_order_acq_rel) != enabled;
 			if (enabledChanged)
 				MarkChanged();
-			if (enabled)
-				EnsureWorkerLocked();
-			else
-				StopWorkerLocked();
+			EnsureWorkerLocked();
 		}
 
 		void Stop()
@@ -122,7 +119,7 @@ namespace
 		{
 			{
 				std::lock_guard<std::mutex> lifecycleGuard(LifecycleMutex);
-				if (Enabled.load(std::memory_order_acquire))
+				if (Plugin != nullptr)
 					EnsureWorkerLocked();
 			}
 
@@ -146,7 +143,7 @@ namespace
 			bool blinking = false;
 			{
 				std::lock_guard<std::mutex> guard(TransmissionMutex);
-				blinking = Enabled.load(std::memory_order_acquire) && !Transmissions.PendingCalls().empty();
+				blinking = !Transmissions.PendingCalls().empty();
 			}
 			const std::uint64_t generation =
 				Generation.load(std::memory_order_acquire);
@@ -167,14 +164,9 @@ namespace
 				Enabled.exchange(enabled, std::memory_order_acq_rel) != enabled;
 			if (enabledChanged)
 			{
-				if (!enabled)
-				{
-					std::lock_guard<std::mutex> guard(TransmissionMutex);
-					Transmissions.ClearPending();
-				}
 				MarkChanged();
 			}
-			if (enabled)
+			if (Plugin != nullptr)
 				EnsureWorkerLocked();
 			// This is a display switch. Keep the connection and transmission state
 			// alive so a pending synchronous receive cannot block EuroScope here,
@@ -205,7 +197,7 @@ namespace
 
 		bool IsCallPending(const char* rawCallsign) const
 		{
-			if (!Enabled.load(std::memory_order_acquire) || rawCallsign == nullptr)
+			if (rawCallsign == nullptr)
 				return false;
 			const auto callsign = NormalizeCallsign(rawCallsign, std::strlen(rawCallsign));
 			std::lock_guard<std::mutex> guard(TransmissionMutex);
@@ -567,7 +559,7 @@ namespace
 			// Tracking each frequency prevents one receiver from ending another active transmission
 			if (type == "kRxBegin")
 			{
-				if (Transmissions.Begin(callsign, frequency, Enabled.load(std::memory_order_acquire)))
+				if (Transmissions.Begin(callsign, frequency))
 					MarkChanged();
 				return;
 			}

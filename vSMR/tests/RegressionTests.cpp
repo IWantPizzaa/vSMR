@@ -1562,8 +1562,8 @@ void TestRdfCallAcknowledgements()
 	Expect(calls.ActiveCalls().empty() && calls.IsPending("AFR101") && calls.IsPending("EZY202"),
 		"TrackAudio disconnect clears live rings but preserves calls still awaiting acknowledgement");
 	calls.ClearPending();
-	Expect(calls.Begin("AFR101", ground, false) && !calls.IsPending("AFR101"),
-		"Disabled RDF receives live events without accumulating hidden list requests");
+	Expect(calls.Begin("AFR101", ground) && calls.IsPending("AFR101"),
+		"RDF list requests are always remembered independently of overlay visibility");
 	calls.Clear();
 	Expect(calls.ActiveCalls().empty() && calls.PendingCalls().empty() && !calls.Acknowledge("AFR101"),
 		"RDF shutdown clears session state and resetting an empty item is harmless");
