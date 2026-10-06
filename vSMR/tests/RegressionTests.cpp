@@ -447,6 +447,13 @@ namespace
 		for (const char* airport : { "", "LF", "LF PG", "LF.P" })
 			VsmrRadar::RememberAirport(history, airport);
 		Expect(history == before, "Invalid airport input cannot displace recent airports");
+		history.push_back("EGKK");
+		VsmrRadar::RememberAirport(history, "egkk");
+		Expect(history == before, "EGKK fallback is removed without displacing other recent airports");
+		history.push_back("EGKK");
+		VsmrRadar::RememberAirport(history, "LFPG");
+		Expect(std::find(history.begin(), history.end(), "EGKK") == history.end() && history.front() == "LFPG",
+			"Remembering a real airport also removes stale EGKK history");
 	}
 
 	void TestVsidBridgeData()
