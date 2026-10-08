@@ -273,8 +273,15 @@ namespace
 			const auto& document = model.GetDocument();
 			if (!document.HasMember("metadata") || !document["metadata"].HasMember("geometry_source")) continue;
 			const auto& metadata = document["metadata"];
-			const bool hasReal = airport == "LFPG" || airport == "LFPO" || airport == "LFML" || airport == "LFMN" || airport == "LFBO" || airport == "LFLL" || airport == "LFSB";
+			const bool hasReal = airport == "LFPG" || airport == "LFPO" || airport == "LFPO_Work" || airport == "LFML" || airport == "LFMN" || airport == "LFBO" || airport == "LFLL" || airport == "LFSB";
 			const auto& palettes = metadata["color_palettes"];
+			if (airport == "LFPO_Work")
+			{
+				Expect(model.FeatureCount() == 576U && std::string(metadata["airport"].GetString()) == "LFPO",
+					"Orly works variant preserves supplied geometry and operational ICAO LFPO");
+				Expect(std::filesystem::exists(avisoRoot / "LFPO.geojson"),
+					"Orly works variant does not replace the standard LFPO AVISO");
+			}
 			Expect(palettes.Size() == (hasReal ? 3U : 2U) &&
 				std::string(palettes[rapidjson::SizeType(0)].GetString()) == "dark" &&
 				std::string(palettes[1].GetString()) == "light" &&
@@ -437,11 +444,16 @@ namespace
 					Expect(group["visible"].GetBool(), "LFPG arrow groups are available and initially visible");
 				}
 				Expect(east && west, "LFPG exposes East Arrows and West Arrows separately");
-				Expect(model.FeatureCount() == 1474U, "LFPG retains 1468 supplied features plus six grouped arrow features");
+				// The 18-airport refresh added the two named 60 m limit lines.
+				Expect(model.FeatureCount() == 1476U, "LFPG retains 1470 supplied features plus six grouped arrow features");
+				bool eastLimit = false, westLimit = false;
 				int eastArrows = 0, westArrows = 0, ungroupedFeatures = 0;
 				for (const auto& feature : document["features"].GetArray())
 				{
 					const auto& properties = feature["properties"];
+					const std::string featureId = feature["id"].GetString();
+					eastLimit = eastLimit || featureId == "LFPG-3111b389fe7400785d03";
+					westLimit = westLimit || featureId == "LFPG-341594b8aadf72cf5869";
 					const auto& groups = properties["vsmr_group_ids"];
 					if (groups.Empty()) { ++ungroupedFeatures; continue; }
 					Expect(groups.Size() == 1U, "Each LFPG arrow belongs to only one direction group");
@@ -460,8 +472,9 @@ namespace
 						if (id == "ground-layout-west") westArrows += arrowCount;
 					}
 				}
-				Expect(eastArrows == 89 && westArrows == 97 && ungroupedFeatures == 1468,
+				Expect(eastArrows == 89 && westArrows == 97 && ungroupedFeatures == 1470,
 					"LFPG preserves the original East/West arrow sets and ungrouped airport layout");
+				Expect(eastLimit && westLimit, "LFPG preserves both supplied East/West 60 m limit lines");
 				bool grassPaletteFound = false;
 				for (auto style = document["styles"].MemberBegin(); style != document["styles"].MemberEnd(); ++style)
 				{

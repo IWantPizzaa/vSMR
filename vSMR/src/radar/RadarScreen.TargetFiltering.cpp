@@ -1,7 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "radar/RadarScreen.hpp"
 #include "aircraft/GroundState.hpp"
-#include "scene/TargetRoleLogic.hpp"
+#include "radar/DisplayModeVisibility.hpp"
 #include "tags/TagColorRules.hpp"
 #include "tags/CdmTagHelpers.hpp"
 #include "crash/CrashRuntime.hpp"
@@ -116,58 +116,29 @@ bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorre
 
 	// Resolving arrival or departure role relative to the active airport
 	const std::string activeAirport = getActiveAirport();
-	const char* destination = fp.GetFlightPlanData().GetDestination();
-	const char* origin = fp.GetFlightPlanData().GetOrigin();
+	const char* destinationText = fp.GetFlightPlanData().GetDestination();
+	const std::string destination = destinationText != nullptr ? destinationText : "";
+	const char* originText = fp.GetFlightPlanData().GetOrigin();
+	const std::string origin = originText != nullptr ? originText : "";
 	const bool isArrival =
-		destination != nullptr &&
-		destination[0] != '\0' &&
+		!destination.empty() &&
 		!activeAirport.empty() &&
-		_stricmp(destination, activeAirport.c_str()) == 0 &&
-		(origin == nullptr || _stricmp(origin, activeAirport.c_str()) != 0);
+		_stricmp(destination.c_str(), activeAirport.c_str()) == 0 &&
+		_stricmp(origin.c_str(), activeAirport.c_str()) != 0;
 	const bool isDeparture =
-		origin != nullptr &&
-		origin[0] != '\0' &&
+		!origin.empty() &&
 		!activeAirport.empty() &&
-		_stricmp(origin, activeAirport.c_str()) == 0;
+		_stricmp(origin.c_str(), activeAirport.c_str()) == 0;
 
-	if (isArrival && !settings.statuses.arrivals)
-		return false;
-	if (VsmrTargetRoleLogic::IsAirborneForTagRole(isArrival, reportedGs) &&
-		!settings.statuses.airborne)
-		return false;
-	if (targetOnRunway && !settings.statuses.onRunway)
-		return false;
-
-	if (isArrival)
-		return true;
-
-	if (!isDeparture && destination != nullptr && destination[0] != '\0')
-		return settings.statuses.arrivals;
-
-	// Applying departure visibility by operational ground state
+	// Actual arrivals retain their role; other ground traffic uses its status.
+	const char* groundStateText = fp.GetGroundState();
+	const std::string groundState = groundStateText != nullptr ? groundStateText : "";
 	const GroundStateCategory targetStatus = classifyGroundStateWithSharedState(
-		fp.GetGroundState(), reportedGs, targetOnRunway, fp.GetControllerAssignedData().GetAssignedSpeed());
-	switch (targetStatus)
-	{
-	case GroundStateCategory::Push:
-		return settings.statuses.push;
-	case GroundStateCategory::Stup:
-		return settings.statuses.startup;
-	case GroundStateCategory::Taxi:
-		return settings.statuses.taxi;
-	case GroundStateCategory::Lnup:
-		return settings.statuses.lineup;
-	case GroundStateCategory::Depa:
-		return settings.statuses.departure;
-	case GroundStateCategory::Nsts:
-	case GroundStateCategory::Gate:
-	case GroundStateCategory::Unknown:
-		return settings.statuses.noStatus;
-	case GroundStateCategory::Arr:
-		return settings.statuses.arrivals;
-	default:
-		return true;
-	}
+		groundState.c_str(), reportedGs, targetOnRunway, fp.GetControllerAssignedData().GetAssignedSpeed());
+	return VsmrDisplayModeVisibility::IsVisible(
+		settings.statuses, isArrival, isDeparture, !destination.empty(),
+		reportedGs, targetOnRunway, targetStatus,
+		VsmrGroundState::IsExplicitlyParked(groundState), fp.GetFlightPlanData().IsReceived());
 }
 
 CPosition CSMRRadar::Haversine(CPosition origin, double heading, double distance)
