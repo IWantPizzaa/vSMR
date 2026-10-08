@@ -2,7 +2,7 @@
 
 ## [2.0.0] - Unreleased
 
-- Fixed Modes > Visible statuses: ground aircraft without an operational status now follow No Status rather than the Arrivals airport-role fallback. Airborne, on-runway, flight-plan and correlation filters remain in effect.
+- Added Parked to Modes > Visible statuses, saved independently per mode and enabled by default for existing profiles. Ground arrivals remain controlled by Arrivals; other ground aircraft use Parked or No Status before the generic non-local destination fallback. Airborne, on-runway, flight-plan and correlation filters remain in effect.
 
 - Excluded the EGKK startup fallback from Recent Airports without preventing normal airport selection.
 

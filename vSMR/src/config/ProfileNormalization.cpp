@@ -706,6 +706,7 @@ namespace
 				mode.AddMember("max_airborne_speed_kt", legacyMaximumAirborneSpeedKt, allocator);
 				Value statuses(kObjectType);
 				statuses.AddMember("no_status", true, allocator);
+				statuses.AddMember("parked", true, allocator);
 				statuses.AddMember("push", true, allocator);
 				statuses.AddMember("startup", true, allocator);
 				statuses.AddMember("taxi", true, allocator);
@@ -745,6 +746,7 @@ namespace
 					ensureIntMember(items[i], "max_airborne_altitude_ft", legacyMaximumAirborneAltitudeFt, 0, 60000);
 					ensureIntMember(items[i], "max_airborne_speed_kt", legacyMaximumAirborneSpeedKt, 0, 1000);
 					Value& statuses = ensureObjectMember(items[i], "statuses");
+					ensureBoolMember(statuses, "parked", true);
 					if (!statuses.HasMember("lineup") || !statuses["lineup"].IsBool())
 					{
 						const bool visible = statuses.HasMember("lnup") && statuses["lnup"].IsBool()
