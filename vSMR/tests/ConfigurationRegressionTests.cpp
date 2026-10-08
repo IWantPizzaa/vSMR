@@ -273,8 +273,15 @@ namespace
 			const auto& document = model.GetDocument();
 			if (!document.HasMember("metadata") || !document["metadata"].HasMember("geometry_source")) continue;
 			const auto& metadata = document["metadata"];
-			const bool hasReal = airport == "LFPG" || airport == "LFPO" || airport == "LFML" || airport == "LFMN" || airport == "LFBO" || airport == "LFLL" || airport == "LFSB";
+			const bool hasReal = airport == "LFPG" || airport == "LFPO" || airport == "LFPO_Work" || airport == "LFML" || airport == "LFMN" || airport == "LFBO" || airport == "LFLL" || airport == "LFSB";
 			const auto& palettes = metadata["color_palettes"];
+			if (airport == "LFPO_Work")
+			{
+				Expect(model.FeatureCount() == 576U && std::string(metadata["airport"].GetString()) == "LFPO",
+					"Orly works variant preserves supplied geometry and operational ICAO LFPO");
+				Expect(std::filesystem::exists(avisoRoot / "LFPO.geojson"),
+					"Orly works variant does not replace the standard LFPO AVISO");
+			}
 			Expect(palettes.Size() == (hasReal ? 3U : 2U) &&
 				std::string(palettes[rapidjson::SizeType(0)].GetString()) == "dark" &&
 				std::string(palettes[1].GetString()) == "light" &&

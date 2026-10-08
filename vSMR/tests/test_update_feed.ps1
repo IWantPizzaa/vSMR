@@ -37,6 +37,26 @@ try {
         runtime_abi = 1; validation_only = $true; files = [ordered]@{ 'vSMR_Data/default.json' = $entry } }
     Save-Record
     Generate
+    Write-Fixture 'payload/vSMR_Data/AVISO/LFPO_Work.geojson' '{"type":"FeatureCollection","features":[]}'
+    & git -C $fixture add -- payload
+    & git -C $fixture -c user.name=FeedTests -c user.email=feed-tests@example.invalid -c commit.gpgsign=false commit --quiet -m 'Add works AVISO fixture'
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot commit works AVISO fixture.' }
+    $script:commit = [string](& git -C $fixture rev-parse HEAD)
+    $worksPath = Join-Path $fixture 'payload/vSMR_Data/AVISO/LFPO_Work.geojson'
+    $script:record.files['vSMR_Data/AVISO/LFPO_Work.geojson'] = [ordered]@{
+        sha256 = (Get-FileHash -LiteralPath $worksPath).Hash.ToLowerInvariant()
+        size = [long](Get-Item -LiteralPath $worksPath).Length
+    }
+    Save-Record
+    Generate
+    $script:record.files.Remove('vSMR_Data/AVISO/LFPO_Work.geojson')
+    Remove-Item -LiteralPath $worksPath
+    & git -C $fixture add -- payload
+    & git -C $fixture -c user.name=FeedTests -c user.email=feed-tests@example.invalid -c commit.gpgsign=false commit --quiet -m 'Restore original payload fixture'
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot restore original feed fixture.' }
+    $script:commit = [string](& git -C $fixture rev-parse HEAD)
+    Save-Record
+    Generate
     $resultPath = Join-Path $fixture 'beta/version.validation-only.json'
     $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
     if ($result.content_commit -ne $script:commit -or $result.files.'vSMR_Data/default.json'.sha256 -ne $entry.sha256 -or

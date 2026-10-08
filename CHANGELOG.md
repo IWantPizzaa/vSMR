@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- Added the supplied Orly 2026 runway 06/24 works AVISO as the alternative `LFPO_Work.geojson`, retaining the standard `LFPO.geojson` unchanged. Both use operational ICAO LFPO; the works variant can be selected through the AVISO file picker and is included in release/update packaging.
+
 - PDC logon now follows the connected DEL/GND/TWR position's airport when exactly one AVISO context is open (including CoFrance with its AVISO inset). A manual logon edit disables synchronization for the rest of the plugin session, including network reconnects. Password-only edits do not lock synchronization; active/connecting Hoppie sessions are never interrupted and no automatic connection is made.
 
 - Fixed AVISO inset centers after ICAO changes and opening AVISO/CoFrance ASRs: uninitialized centers are no longer restored as valid; restored centers are checked once against the current airport geometry and viewport size. Linked views wait for the main view to reach the new airport, while valid saved pan/zoom and subsequent manual movement are preserved.
