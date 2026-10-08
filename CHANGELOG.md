@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- PDC logon now follows the connected DEL/GND/TWR position's airport when exactly one AVISO context is open (including CoFrance with its AVISO inset). A manual logon edit disables synchronization for the rest of the plugin session, including network reconnects. Password-only edits do not lock synchronization; active/connecting Hoppie sessions are never interrupted and no automatic connection is made.
+
 - Fixed AVISO inset centers after ICAO changes and opening AVISO/CoFrance ASRs: uninitialized centers are no longer restored as valid; restored centers are checked once against the current airport geometry and viewport size. Linked views wait for the main view to reach the new airport, while valid saved pan/zoom and subsequent manual movement are preserved.
 
 - Added Parked to Modes > Visible statuses, saved independently per mode and enabled by default for existing profiles. Only explicitly selected PARK/PARKED statuses use Parked; stationary departures with an empty status remain under No Status. Ground aircraft whose flight-plan data has not been received use No flight plan, even if EuroScope provides a valid placeholder. Other ground arrivals remain under Arrivals; airborne, on-runway and correlation filters remain in effect.

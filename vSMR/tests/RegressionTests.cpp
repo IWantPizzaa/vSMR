@@ -16,6 +16,7 @@
 #include "integrations/VsidBridgeData.hpp"
 #include "insets/TimerCountdownState.hpp"
 #include "insets/AvisoViewportCenter.hpp"
+#include "datalink/PdcLogonSync.hpp"
 #include "insets/WeatherInsetLayout.hpp"
 #include "radar/RecentAirports.hpp"
 #include "radar/DisplayModeVisibility.hpp"
@@ -760,6 +761,32 @@ namespace
 		Expect(
 			VsmrTargetRoleLogic::IsAirborneForTagRole(false, 51),
 			"departure above 50 kt remains airborne");
+	}
+
+	void TestPdcLogonSynchronization()
+	{
+		PdcLogonSync sync;
+		for (int facility : { 2, 3, 4 })
+			Expect(sync.Resolve(true, facility, "LFPG_N_TWR", 1) == "LFPG",
+				"single AVISO logon follows delivery, ground and tower position airport");
+		Expect(sync.Resolve(true, 4, "lfbo_twr", 1) == "LFBO", "logon ICAO is normalized");
+		for (int facility : { 0, 1, 5, 6 })
+			Expect(sync.Resolve(true, facility, "LFPG_APP", 1).empty(),
+				"observer, FSS, approach and center positions do not synchronize PDC logon");
+		Expect(sync.Resolve(false, 4, "LFPG_TWR", 1).empty(), "disconnected positions do not synchronize");
+		for (std::size_t count : { 0U, 2U, 3U })
+			Expect(sync.Resolve(true, 4, "LFPG_TWR", count).empty(), "only one AVISO context permits synchronization");
+		for (const char* position : { "", "LFPG", "LFPG-TWR", "LFP_TWR", "12PG_TWR" })
+			Expect(sync.Resolve(true, 4, position, 1).empty(), "invalid position airport prefixes are rejected");
+		Expect(sync.Resolve(true, 4, "LFSB_TWR", 1) == "LFSB", "position changes synchronize before manual edit");
+		sync.MarkManualEdit();
+		Expect(sync.Resolve(true, 4, "LFBO_TWR", 1).empty(), "manual edit locks logon synchronization");
+		(void)sync.Resolve(false, 4, "LFBO_TWR", 1);
+		Expect(sync.Resolve(true, 3, "LFPG_GND", 1).empty(), "manual override survives network reconnects");
+		(void)sync.Resolve(true, 4, "LFBO_TWR", 2);
+		Expect(sync.Resolve(true, 4, "LFBO_TWR", 1).empty(), "closing other AVISOs does not clear manual override");
+		PdcLogonSync newSession;
+		Expect(newSession.Resolve(true, 4, "LFBO_TWR", 1) == "LFBO", "a new plugin session permits synchronization again");
 	}
 
 	void TestAvisoViewportCenters()
@@ -1806,6 +1833,7 @@ int wmain(int argc, wchar_t** argv)
 	TestTargetRoleThresholds();
 	TestDisplayModeStatusVisibility();
 	TestAvisoViewportCenters();
+	TestPdcLogonSynchronization();
 	TestWeatherParsing();
 	TestRuntimeReleaseLifecycle();
 	for (const std::string& failure : RunAvisoRasterPipelineTests())

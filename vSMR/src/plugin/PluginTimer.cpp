@@ -44,6 +44,7 @@ void CSMRPlugin::OnTimer(int Counter)
 	if (Logger::is_verbose_mode())
 		Logger::info(std::string(__FUNCSIG__));
 	BLINK = !BLINK;
+	SyncPdcLogonWithControllerPosition();
 	VsmrRdf::OnTimer();
 
 	// Consume runway notifications after EuroScope's dialog callback has returned.
