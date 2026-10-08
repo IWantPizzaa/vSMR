@@ -3,7 +3,7 @@
   "release": "2.0.0",
   "source": "dev PR #34: official GNG layouts and current settings (4819ea1)",
   "imported": "2026-09-25",
-  "file_count": 160,
+  "file_count": 161,
   "files": {
     "LFAC.geojson": "9cc7a39256e68254c581bace8fa3a34a3f32eaf9d7c6ad5e15c698670095117f",
     "LFAD.geojson": "4181a32373b64f39fd44055b6901011ca5bd2cb0e603324762ca652eaa84b838",
@@ -116,6 +116,7 @@
     "LFPM.geojson": "22254d5372913af916656c351a53a3b2a278632c2be5c62c3cbdc98010ff21cd",
     "LFPN.geojson": "9db78290ee203de114e39884b09bd2b4b539e710bd4a2a540f604c6634455273",
     "LFPO.geojson": "44b681a05676741e53486b119f466df671d8ffa201ab7b0e2f4ea7ec8d32b08e",
+    "LFPO_Work.geojson": "8550e942fd417c5a02e5c493ca0a3499fe3d5dd3fbcea351c1f4b6ea26183c25",
     "LFPT.geojson": "2247e58c57e6c83adbbbe3f9321b7f4ce3567ab215e7862757e58c22a1e9d128",
     "LFPV.geojson": "4c564171efa714ab4198c84a3b7587ff0fd2ff1726e0419070b9fb711d0ff1e2",
     "LFPX.geojson": "d577cb5dad8227881146e754b64d1270c96a82e2857f772ebafe194c0904fae7",

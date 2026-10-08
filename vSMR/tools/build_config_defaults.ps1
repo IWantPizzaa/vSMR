@@ -35,7 +35,7 @@ $assetHashes = [ordered]@{}
 # every old value as an apparent user change.
 $assetHashes.Add('vSMR_Profiles.json', (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant())
 foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'vSMR/data/AVISO') -Filter '*.geojson' -File | Sort-Object Name)) {
-    if ($file.Name -notmatch '^[A-Z0-9]{4}\.geojson$') { continue }
+    if ($file.Name -notmatch '^[A-Z0-9]{4}(?:_[A-Za-z0-9][A-Za-z0-9_-]{0,47})?\.geojson$') { continue }
     $assetHashes.Add('AVISO/' + $file.Name, (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant())
 }
 $runwayVisibility = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'vSMR/data/runway_group_visibility.json') -Raw | ConvertFrom-Json
