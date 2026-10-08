@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- Fixed Modes > Visible statuses: ground aircraft without an operational status now follow No Status rather than the Arrivals airport-role fallback. Airborne, on-runway, flight-plan and correlation filters remain in effect.
+
 - Excluded the EGKK startup fallback from Recent Airports without preventing normal airport selection.
 
 - RDF list detection, blinking TX and reset now work independently of Native RDF map visibility, including startup with `.smr rdf off`. Hiding the overlay no longer clears pending calls.
