@@ -142,7 +142,7 @@ namespace vsmr::updater::files
         // Same closed ownership inventory as create_update_feed.ps1. User
         // backups, logs, baselines and arbitrary files are never update targets.
         static const std::regex owned(
-            R"(^(vsmr\.dll|vsmr_data/(default\.json|airports_hp\.json|icao_aircraft\.json|aviso-update-policy\.json|aviso/[a-z0-9]{4}\.geojson|aircraft_icons/[a-z0-9_-]+\.png|audio/[a-z0-9_.-]+\.wav|runtime/[a-z0-9_.-]+\.dll|crashreporter/vsmrcrashhandler\.dll|tools/[a-z0-9_.-]+\.(exe|ps1|cs|patch)|licenses/[a-z0-9_.-]+\.(txt|md)|vsmr_webui/(index\.html|styles\.css|data\.js|app-bundle\.js)))$)");
+            R"(^(vsmr\.dll|vsmr_data/(default\.json|airports_hp\.json|icao_aircraft\.json|aviso-update-policy\.json|aviso/[a-z0-9]{4}(?:_[a-z0-9][a-z0-9_-]{0,47})?\.geojson|aircraft_icons/[a-z0-9_-]+\.png|audio/[a-z0-9_.-]+\.wav|runtime/[a-z0-9_.-]+\.dll|crashreporter/vsmrcrashhandler\.dll|tools/[a-z0-9_.-]+\.(exe|ps1|cs|patch)|licenses/[a-z0-9_.-]+\.(txt|md)|vsmr_webui/(index\.html|styles\.css|data\.js|app-bundle\.js)))$)");
         if (!std::regex_match(lower, owned)) return false;
         if (lower == "vsmr_data/version.json" || lower == "vsmr_data/profiles.json" || lower == "vsmr_data/profiles_backup.json" ||
             lower == "vsmr_data/vsmr_profiles.json") return false;
