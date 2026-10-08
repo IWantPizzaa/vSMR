@@ -197,7 +197,7 @@ After building the native test executable, run the regression suite independentl
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tests\run_tests.ps1
 ```
 
-Release-input checks enforce matching 2.0.0 versions, the reviewed hashes of all 160 maps, and an update policy that never deletes a bundled airport. LFPG retains the supplied map's 1,468 features plus 89 East arrows and 97 West arrows, independently controlled through the **East Arrows** and **West Arrows** groups. The hash manifest records this post-import restoration.
+Release-input checks enforce matching 2.0.0 versions, the reviewed hashes of all 161 AVISO files (including the separate LFPO_Work variant), and an update policy that never deletes a bundled airport. LFPG contains 1,470 ungrouped features, including the two 60 m limit lines, plus six grouped features carrying 89 East arrows and 97 West arrows, independently controlled through the **East Arrows** and **West Arrows** groups. The hash manifest records these committed geometries.
 
 Publishable artifacts require a clean source commit and verified bundled-asset provenance. Signing is optional; configuring a signing certificate/pin or `-RequireSignature` enforces signed binaries and the matching detached update signature. The packager, binary product versions, and AppVeyor settings target 2.0.0; loader version remains 1.3.0 and runtime ABI remains 1. Five resource/dependency groups still need provenance verification, including the compiled bridge client shim; local validation packages are not distributable releases. See the [provenance register](vSMR/data/Licenses/ASSET_PROVENANCE.txt). Keep the changelog entry Unreleased and do not publish the tag or stable feed until those gates are resolved.
 
