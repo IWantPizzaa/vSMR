@@ -69,7 +69,7 @@ if ($expected.Count -ne $manifest.file_count -or $actual.Count -ne $expected.Cou
     throw 'Bundled AVISO file count differs from the reviewed import manifest.'
 }
 foreach ($file in $expected) {
-    if ($file.Name -notmatch '^[A-Z0-9]{4}\.geojson$' -or $file.Value -notmatch '^[0-9a-f]{64}$') {
+    if ($file.Name -notmatch '^[A-Z0-9]{4}(?:_[A-Za-z0-9][A-Za-z0-9_-]{0,47})?\.geojson$' -or $file.Value -notmatch '^[0-9a-f]{64}$') {
         throw 'Invalid AVISO filename or SHA-256 in the import manifest.'
     }
     $path = Join-Path $avisoRoot $file.Name

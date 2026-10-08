@@ -8,14 +8,19 @@
 #include "bootstrap/loader/RuntimeReleaseState.hpp"
 #include "config/RuntimeConfig.hpp"
 #include "config/RuntimeConfig.Internal.hpp"
+#include "config/ProfileNormalization.hpp"
 #include "control_center/ControlCenterMessageProtocol.hpp"
 #include "control_center/RuntimeResourceFiles.hpp"
 #include "control_center/WebMessageValidation.hpp"
 #include "integrations/CdmBridgeData.hpp"
 #include "integrations/VsidBridgeData.hpp"
 #include "insets/TimerCountdownState.hpp"
+#include "insets/AvisoViewportCenter.hpp"
+#include "datalink/PdcLogonSync.hpp"
 #include "insets/WeatherInsetLayout.hpp"
 #include "radar/RecentAirports.hpp"
+#include "radar/DisplayModeVisibility.hpp"
+#include "radar/RadarScreenTypes.hpp"
 #include "radar/RadarGeometry.hpp"
 #include "rdf/RdfTransmissionState.hpp"
 #include "safety/RimcasLogic.hpp"
@@ -756,6 +761,234 @@ namespace
 		Expect(
 			VsmrTargetRoleLogic::IsAirborneForTagRole(false, 51),
 			"departure above 50 kt remains airborne");
+	}
+
+	void TestPdcLogonSynchronization()
+	{
+		PdcLogonSync sync;
+		for (int facility : { 2, 3, 4 })
+			Expect(sync.Resolve(true, facility, "LFPG_N_TWR", 1) == "LFPG",
+				"single AVISO logon follows delivery, ground and tower position airport");
+		Expect(sync.Resolve(true, 4, "lfbo_twr", 1) == "LFBO", "logon ICAO is normalized");
+		for (int facility : { 0, 1, 5, 6 })
+			Expect(sync.Resolve(true, facility, "LFPG_APP", 1).empty(),
+				"observer, FSS, approach and center positions do not synchronize PDC logon");
+		Expect(sync.Resolve(false, 4, "LFPG_TWR", 1).empty(), "disconnected positions do not synchronize");
+		for (std::size_t count : { 0U, 2U, 3U })
+			Expect(sync.Resolve(true, 4, "LFPG_TWR", count).empty(), "only one AVISO context permits synchronization");
+		for (const char* position : { "", "LFPG", "LFPG-TWR", "LFP_TWR", "12PG_TWR" })
+			Expect(sync.Resolve(true, 4, position, 1).empty(), "invalid position airport prefixes are rejected");
+		Expect(sync.Resolve(true, 4, "LFSB_TWR", 1) == "LFSB", "position changes synchronize before manual edit");
+		sync.MarkManualEdit();
+		Expect(sync.Resolve(true, 4, "LFBO_TWR", 1).empty(), "manual edit locks logon synchronization");
+		(void)sync.Resolve(false, 4, "LFBO_TWR", 1);
+		Expect(sync.Resolve(true, 3, "LFPG_GND", 1).empty(), "manual override survives network reconnects");
+		(void)sync.Resolve(true, 4, "LFBO_TWR", 2);
+		Expect(sync.Resolve(true, 4, "LFBO_TWR", 1).empty(), "closing other AVISOs does not clear manual override");
+		PdcLogonSync newSession;
+		Expect(newSession.Resolve(true, 4, "LFBO_TWR", 1) == "LFBO", "a new plugin session permits synchronization again");
+	}
+
+	void TestAvisoViewportCenters()
+	{
+		using VsmrAvisoViewportCenter::HasRestorableCenter;
+		using VsmrAvisoViewportCenter::OverlapsAirport;
+		Expect(!HasRestorableCenter(true, true, false),
+			"saving an unopened inset does not make its zero center initialized");
+		Expect(!HasRestorableCenter(false, true, true) &&
+			!HasRestorableCenter(true, false, true),
+			"partially saved centers are not restored");
+		Expect(HasRestorableCenter(true, true, true), "initialized centers remain restorable");
+		struct AirportBounds { double latitude, longitude; };
+		const AirportBounds airports[] = { {49.01, 2.55}, {43.63, 1.36}, {45.72, 5.08} };
+		for (const auto& airport : airports)
+		{
+			const auto overlaps = [&](double latitude, double longitude, double span) {
+				return OverlapsAirport(latitude, longitude, span, span,
+					airport.latitude - 0.02, airport.latitude + 0.02,
+					airport.longitude - 0.02, airport.longitude + 0.02);
+			};
+			Expect(overlaps(airport.latitude, airport.longitude, 0.01),
+				"the airport's own saved inset center is preserved");
+			Expect(!overlaps(0.0, 0.0, 0.01), "legacy uninitialized zero centers are rejected");
+			Expect(overlaps(airport.latitude + 0.03, airport.longitude, 0.02),
+				"panned views outside the bounds remain valid when the airport is still visible");
+			for (const auto& other : airports)
+				if (other.latitude != airport.latitude)
+					Expect(!overlaps(other.latitude, other.longitude, 0.01),
+						"a restored center or linked main view at another ICAO is rejected");
+			Expect(!overlaps(std::nan(""), airport.longitude, 0.01), "non-finite centers are rejected");
+		}
+		Expect(!OverlapsAirport(49.0, 2.5, -1.0, 1.0, 48.0, 50.0, 2.0, 3.0),
+			"invalid viewport extents are rejected");
+	}
+
+	void TestDisplayModeStatusVisibility()
+	{
+		using VsmrDisplayModeVisibility::IsVisible;
+		using VsmrRadarTypes::DisplayModeStatusVisibility;
+		rapidjson::Document legacyProfile;
+		legacyProfile.Parse<0>(R"({"filters":{"display_modes":{"active":"Custom","items":[{"name":"Custom","statuses":{"no_status":false,"arrivals":false}},{"name":"Hidden parked","statuses":{"parked":false}}]}}})");
+		VsmrProfile::Normalize(legacyProfile, legacyProfile.GetAllocator());
+		const auto& migratedModes = legacyProfile["filters"]["display_modes"]["items"];
+		Expect(migratedModes[0]["statuses"].HasMember("parked") &&
+			migratedModes[0]["statuses"]["parked"].GetBool(),
+			"legacy display modes enable Parked by default");
+		Expect(!migratedModes[0]["statuses"]["no_status"].GetBool() &&
+			!migratedModes[0]["statuses"]["arrivals"].GetBool() &&
+			!migratedModes[1]["statuses"]["parked"].GetBool(),
+			"normalization preserves explicit Parked and other visibility choices");
+		VsmrProfile::Normalize(legacyProfile, legacyProfile.GetAllocator());
+		Expect(!legacyProfile["filters"]["display_modes"]["items"][1]["statuses"]["parked"].GetBool(),
+			"Parked remains disabled after repeated profile normalization");
+		struct AirportRole
+		{
+			bool arrival;
+			bool departure;
+			bool hasDestination;
+		};
+		const AirportRole roles[] = {
+			{ false, true, true },
+			{ false, false, true }, { false, false, false }
+		};
+		const char* noStatusStates[] = { nullptr, "", "  ", "NSTS", "unknown", "GATE", "STAND", "STBY" };
+		for (const auto& role : roles)
+		{
+			for (const char* rawState : noStatusStates)
+			{
+				for (const int gs : { 0, 20, 40 })
+				{
+					const auto state = classifyGroundStateWithSharedState(rawState, gs, false, 0);
+					for (const bool arrivals : { false, true })
+					{
+						for (const bool noStatus : { false, true })
+						{
+							DisplayModeStatusVisibility statuses;
+							statuses.noStatus = noStatus;
+							statuses.arrivals = arrivals;
+							statuses.parked = !noStatus;
+							Expect(IsVisible(statuses, role.arrival, role.departure,
+								role.hasDestination, gs, false, state) == noStatus,
+								"non-arrival ground No Status follows its own toggle");
+							statuses.onRunway = false;
+							Expect(!IsVisible(statuses, role.arrival, role.departure,
+								role.hasDestination, gs, true, state),
+								"No Status does not bypass the on-runway gate");
+						}
+					}
+				}
+			}
+		}
+
+		using Toggle = bool DisplayModeStatusVisibility::*;
+		const std::pair<GroundStateCategory, Toggle> mappings[] = {
+			{ GroundStateCategory::Push, &DisplayModeStatusVisibility::push },
+			{ GroundStateCategory::Stup, &DisplayModeStatusVisibility::startup },
+			{ GroundStateCategory::Taxi, &DisplayModeStatusVisibility::taxi },
+			{ GroundStateCategory::Lnup, &DisplayModeStatusVisibility::lineup },
+			{ GroundStateCategory::Depa, &DisplayModeStatusVisibility::departure },
+			{ GroundStateCategory::Arr, &DisplayModeStatusVisibility::arrivals }
+		};
+		for (const auto& mapping : mappings)
+		{
+			DisplayModeStatusVisibility statuses;
+			statuses.noStatus = false;
+			Expect(IsVisible(statuses, false, true, true, 20, false, mapping.first),
+				"explicit departure ground statuses do not depend on No Status");
+			statuses.*mapping.second = false;
+			Expect(!IsVisible(statuses, false, true, true, 20, false, mapping.first),
+				"explicit departure ground status follows its own toggle");
+		}
+		for (const auto state : { GroundStateCategory::Arr, GroundStateCategory::Taxi,
+			GroundStateCategory::Nsts, GroundStateCategory::Unknown, GroundStateCategory::Gate })
+		{
+			DisplayModeStatusVisibility statuses;
+			statuses.noStatus = false;
+			statuses.parked = false;
+			Expect(IsVisible(statuses, true, false, true, 20, false, state),
+				"all ground arrivals follow Arrivals independently of No Status and Parked");
+			statuses.arrivals = false;
+			statuses.noStatus = true;
+			statuses.parked = true;
+			Expect(!IsVisible(statuses, true, false, true, 20, false, state),
+				"Arrivals hides ground arrivals regardless of No Status and Parked");
+		}
+		for (const auto& role : roles)
+		{
+			for (const char* rawState : { "PARK", "PARKED", "parked", " P_A-R K " })
+			{
+				const auto state = classifyGroundStateWithSharedState(rawState, 0, false, 0);
+				Expect(state == GroundStateCategory::Gate, "parked states classify as Gate");
+				Expect(VsmrGroundState::IsExplicitlyParked(rawState), "explicit parked status is recognized");
+				for (const bool parked : { false, true })
+				{
+					for (const bool otherStatuses : { false, true })
+					{
+						DisplayModeStatusVisibility flags;
+						flags.parked = parked;
+						flags.noStatus = otherStatuses;
+						flags.arrivals = otherStatuses;
+						Expect(IsVisible(flags, role.arrival, role.departure,
+							role.hasDestination, 0, false, state, VsmrGroundState::IsExplicitlyParked(rawState)) == parked,
+							"parked non-arrivals follow Parked independently of other toggles");
+						flags.onRunway = false;
+						Expect(!IsVisible(flags, role.arrival, role.departure,
+							role.hasDestination, 0, true, state, true),
+							"Parked does not bypass the on-runway gate");
+					}
+				}
+			}
+		}
+
+		for (const bool arrival : { false, true })
+		{
+			for (const bool parked : { false, true })
+			{
+				for (const bool noFlightPlan : { false, true })
+				{
+					DisplayModeStatusVisibility flags;
+					flags.noFlightPlan = noFlightPlan;
+					flags.parked = !noFlightPlan;
+					flags.noStatus = !noFlightPlan;
+					flags.arrivals = !noFlightPlan;
+					Expect(IsVisible(flags, arrival, !arrival, true, 0, false,
+						GroundStateCategory::Gate, parked, false) == noFlightPlan,
+						"valid EuroScope placeholders follow No flight plan, not Parked or airport role");
+					flags.noFlightPlan = true;
+					flags.parked = parked;
+					Expect(IsVisible(flags, arrival, !arrival, true, 0, false,
+						GroundStateCategory::Gate, true) == parked,
+						"explicit parked status follows Parked even for arrivals");
+				}
+			}
+		}
+		Expect(!VsmrGroundState::IsExplicitlyParked("") &&
+			!VsmrGroundState::IsExplicitlyParked("NSTS") &&
+			!VsmrGroundState::IsExplicitlyParked("STAND"),
+			"empty and non-PARK statuses never opt into Parked visibility");
+
+		DisplayModeStatusVisibility statuses;
+		statuses.noStatus = false;
+		Expect(IsVisible(statuses, true, false, true, 41, false, GroundStateCategory::Nsts),
+			"airborne arrivals are not reclassified as ground No Status");
+		statuses.arrivals = false;
+		Expect(!IsVisible(statuses, true, false, true, 41, false, GroundStateCategory::Nsts),
+			"airborne arrivals retain the Arrivals gate");
+		statuses.arrivals = true;
+		statuses.noStatus = true;
+		statuses.airborne = false;
+		Expect(!IsVisible(statuses, true, false, true, 41, false, GroundStateCategory::Nsts),
+			"No Status does not bypass the arrival airborne threshold");
+		Expect(IsVisible(statuses, false, true, true, 50, false, GroundStateCategory::Nsts),
+			"departure No Status retains the ground speed threshold");
+		Expect(!IsVisible(statuses, false, true, true, 51, false, GroundStateCategory::Nsts),
+			"No Status does not bypass the departure airborne threshold");
+		statuses.airborne = true;
+		statuses.lineup = false;
+		const auto sharedLineup = classifyGroundStateWithSharedState(
+			"TAXI", 0, false, VsmrGroundStateSync::LineupAssignedSpeed);
+		Expect(!IsVisible(statuses, false, true, true, 0, false, sharedLineup),
+			"shared lineup remains controlled by Lineup rather than No Status");
 	}
 
 	void TestRuntimeReleaseLifecycle()
@@ -1598,6 +1831,9 @@ int wmain(int argc, wchar_t** argv)
 	TestCdmBridgeData();
 	TestRimcasRules();
 	TestTargetRoleThresholds();
+	TestDisplayModeStatusVisibility();
+	TestAvisoViewportCenters();
+	TestPdcLogonSynchronization();
 	TestWeatherParsing();
 	TestRuntimeReleaseLifecycle();
 	for (const std::string& failure : RunAvisoRasterPipelineTests())
