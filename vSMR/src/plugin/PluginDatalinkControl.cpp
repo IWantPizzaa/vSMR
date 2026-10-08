@@ -66,12 +66,48 @@ DatalinkControlState CSMRPlugin::GetDatalinkControlState() const
 	return state;
 }
 
+void CSMRPlugin::SyncPdcLogonWithControllerPosition()
+{
+	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
+		HoppieConnected.load(std::memory_order_acquire) ||
+		HoppieConnecting.load(std::memory_order_acquire))
+		return;
+	const int connectionType = GetConnectionType();
+	if (connectionType != CONNECTION_TYPE_DIRECT && connectionType != CONNECTION_TYPE_VIA_PROXY)
+		return;
+	const CController controller = ControllerMyself();
+	if (!controller.IsValid() || !controller.IsController())
+		return;
+	const char* callsignText = controller.GetCallsign();
+	const std::string position = callsignText != nullptr ? callsignText : "";
+	std::size_t avisoCount = 0;
+	for (CSMRRadar* radar : RadarScreensOpened)
+	{
+		if (radar != nullptr && !radar->IsShutdownRequested() &&
+			(!radar->IsInsetsOnly() || radar->IsAppWindowDisplayed(APPWINDOW_AVISO - APPWINDOW_BASE)))
+			++avisoCount;
+	}
+	const std::string airport = PdcLogonSynchronization.Resolve(
+		true, controller.GetFacility(), position, avisoCount);
+	if (airport.empty())
+		return;
+	{
+		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
+		if (logonCallsign == airport)
+			return;
+	}
+	std::string error;
+	if (UpdateDatalinkControlSettings(airport, "", false, error, true, true))
+		RefreshControllerDependentOverlays();
+}
+
 bool CSMRPlugin::UpdateDatalinkControlSettings(
 	const std::string& callsign,
 	const std::string& password,
 	bool replacePassword,
 	std::string& error,
-	bool updateConnectionSettings)
+	bool updateConnectionSettings,
+	bool automaticLogonUpdate)
 {
 	error.clear();
 	const std::string normalizedCallsign =
@@ -110,6 +146,9 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 	if (updateConnectionSettings)
 	{
 		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
+		if (!automaticLogonUpdate && (!replacePassword ||
+			ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(logonCallsign)) != normalizedCallsign))
+			PdcLogonSynchronization.MarkManualEdit();
 		credentialsChanged =
 			ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(logonCallsign)) != normalizedCallsign ||
 			(replacePassword && logonCode != normalizedPassword);
@@ -150,6 +189,7 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 
 bool CSMRPlugin::ConnectDatalink(std::string& error)
 {
+	SyncPdcLogonWithControllerPosition();
 	error.clear();
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 	{

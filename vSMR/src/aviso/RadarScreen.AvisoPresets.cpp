@@ -2,6 +2,7 @@
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "insets/InsetWindow.hpp"
+#include "insets/AvisoViewportCenter.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "shared/RapidJsonUtils.hpp"
 #include "shared/TextUtils.hpp"
@@ -898,6 +899,8 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 		avisoWindow->m_AvisoCenterLongitude = preset.secondaryCenterLongitude;
 		avisoWindow->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(std::clamp(preset.secondaryLayoutMode, 0, 8));
 		avisoWindow->m_AvisoViewInitialized = true;
+		avisoWindow->m_AvisoCenterContext.clear();
+		avisoWindow->m_AvisoLinkedMainAirport.clear();
 		avisoWindow->ResetAvisoInteractionState();
 		avisoWindow->InvalidateAvisoViewportRendering();
 	}
@@ -1356,6 +1359,21 @@ void CSMRRadar::SyncLinkedAvisoSecondaryToMainView()
 	const double maxLon = (std::max)(displayA.m_Longitude, displayB.m_Longitude);
 	const double centerLat = (minLat + maxLat) * 0.5;
 	const double centerLon = (minLon + maxLon) * 0.5;
+
+	// EuroScope can still expose the previous airport's main view during an
+	// ICAO/ASR transition. Do not import it into the new airport's inset.
+	const std::string airport = getActiveAirport();
+	if (avisoWindow->m_AvisoLinkedMainAirport != airport)
+	{
+		const std::string path = ResolveAvisoGeoJsonPathForAirport(airport);
+		if (AvisoGeoJsonLoadedPath != path || !AvisoGeoJsonHasBounds ||
+			!VsmrAvisoViewportCenter::OverlapsAirport(centerLat, centerLon,
+				(maxLat - minLat) * 0.5, (maxLon - minLon) * 0.5,
+				AvisoGeoJsonMinLatitude, AvisoGeoJsonMaxLatitude,
+				AvisoGeoJsonMinLongitude, AvisoGeoJsonMaxLongitude))
+			return;
+		avisoWindow->m_AvisoLinkedMainAirport = airport;
+	}
 
 	// Converting the main geographic bounds to the inset pixels-per-NM scale
 	CRect radarArea(GetRadarArea());
