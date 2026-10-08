@@ -12,13 +12,21 @@ namespace VsmrDisplayModeVisibility
 		bool hasDestination,
 		int reportedGs,
 		bool targetOnRunway,
-		GroundStateCategory targetStatus) noexcept
+		GroundStateCategory targetStatus,
+		bool explicitlyParked = false,
+		bool flightPlanDataReceived = true) noexcept
 	{
 		const bool airborne = VsmrTargetRoleLogic::IsAirborneForTagRole(isArrival, reportedGs);
 		if (airborne && !statuses.airborne)
 			return false;
 		if (targetOnRunway && !statuses.onRunway)
 			return false;
+		if (!airborne && !flightPlanDataReceived)
+			return statuses.noFlightPlan;
+		// Gate also represents stationary targets with an empty ground status.
+		// Only the explicit PARK/PARKED selection belongs to the Parked filter.
+		if (!airborne && explicitlyParked)
+			return statuses.parked;
 
 		// Actual arrivals retain their role, including after landing.
 		if (isArrival)
@@ -27,13 +35,11 @@ namespace VsmrDisplayModeVisibility
 		// Resolve ground states before the generic non-local destination fallback.
 		if (!airborne &&
 			(targetStatus == GroundStateCategory::Nsts ||
+			 targetStatus == GroundStateCategory::Gate ||
 			 targetStatus == GroundStateCategory::Unknown))
 		{
 			return statuses.noStatus;
 		}
-
-		if (!airborne && targetStatus == GroundStateCategory::Gate)
-			return statuses.parked;
 
 		if (!isDeparture && hasDestination)
 			return statuses.arrivals;
@@ -46,8 +52,8 @@ namespace VsmrDisplayModeVisibility
 		case GroundStateCategory::Lnup: return statuses.lineup;
 		case GroundStateCategory::Depa: return statuses.departure;
 		case GroundStateCategory::Nsts:
+		case GroundStateCategory::Gate:
 		case GroundStateCategory::Unknown: return statuses.noStatus;
-		case GroundStateCategory::Gate: return statuses.parked;
 		case GroundStateCategory::Arr: return statuses.arrivals;
 		default: return true;
 		}
