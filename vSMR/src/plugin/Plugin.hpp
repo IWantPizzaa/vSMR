@@ -4,6 +4,7 @@
 #include "insets/TimerCountdownState.hpp"
 #include "platform/windows/network/HttpHelper.hpp"
 #include "datalink/CpdlcSettingsDialog.hpp"
+#include "datalink/PdcLogonSync.hpp"
 #include "datalink/DatalinkDialog.hpp"
 #include <string>
 #include <algorithm>
@@ -66,7 +67,8 @@ public:
 		const std::string& password,
 		bool replacePassword,
 		std::string& error,
-		bool updateConnectionSettings = true);
+		bool updateConnectionSettings = true,
+		bool automaticLogonUpdate = false);
 	bool ConnectDatalink(std::string& error);
 	bool DisconnectDatalink(std::string& error);
 	bool PollDatalink(std::string& error);
@@ -124,6 +126,8 @@ public:
 	virtual CRadarScreen * OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated);
 
 private:
+	PdcLogonSync PdcLogonSynchronization;
+	void SyncPdcLogonWithControllerPosition();
 	TimerCountdownState TimerCountdowns;
 	friend class VsmrPluginCommandHandler;
 	friend bool VsmrShutdownPlugin();
