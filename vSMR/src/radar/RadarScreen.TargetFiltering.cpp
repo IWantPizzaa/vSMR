@@ -131,11 +131,14 @@ bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorre
 		_stricmp(origin.c_str(), activeAirport.c_str()) == 0;
 
 	// Actual arrivals retain their role; other ground traffic uses its status.
+	const char* groundStateText = fp.GetGroundState();
+	const std::string groundState = groundStateText != nullptr ? groundStateText : "";
 	const GroundStateCategory targetStatus = classifyGroundStateWithSharedState(
-		fp.GetGroundState(), reportedGs, targetOnRunway, fp.GetControllerAssignedData().GetAssignedSpeed());
+		groundState.c_str(), reportedGs, targetOnRunway, fp.GetControllerAssignedData().GetAssignedSpeed());
 	return VsmrDisplayModeVisibility::IsVisible(
 		settings.statuses, isArrival, isDeparture, !destination.empty(),
-		reportedGs, targetOnRunway, targetStatus);
+		reportedGs, targetOnRunway, targetStatus,
+		VsmrGroundState::IsExplicitlyParked(groundState), fp.GetFlightPlanData().IsReceived());
 }
 
 CPosition CSMRRadar::Haversine(CPosition origin, double heading, double distance)
