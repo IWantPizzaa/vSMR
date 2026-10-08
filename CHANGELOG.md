@@ -2,6 +2,8 @@
 
 ## [2.0.0] - Unreleased
 
+- Removed the bundled-asset provenance register and its blocking release/feed checks. Retained third-party license notices, including VATSIM Radar's CC BY-NC 4.0 aircraft silhouettes and the maintainer-declared GPL v3 alarm. Clean-source, version, regression and configured signing checks remain enforced.
+
 - Added the supplied Orly 2026 runway 06/24 works AVISO as the alternative `LFPO_Work.geojson`, retaining the standard `LFPO.geojson` unchanged. Both use operational ICAO LFPO; the works variant can be selected through the AVISO file picker and is included in release/update packaging.
 
 - PDC logon now follows the connected DEL/GND/TWR position's airport when exactly one AVISO context is open (including CoFrance with its AVISO inset). A manual logon edit disables synchronization for the rest of the plugin session, including network reconnects. Password-only edits do not lock synchronization; active/connecting Hoppie sessions are never interrupted and no automatic connection is made.
@@ -58,8 +60,9 @@
 - Added confirmed, section-scoped resets for selected colors, tag definitions, AVISO styles, icon/trail options, tag font/layout, color rules and alert options. Other sections, EuroScope runway assignments and manual runway closures are preserved; custom profiles fall back to the bundled Default profile.
 - Harmonized inconsistent C++/resource, browser-test and bundled-source asset filenames. A shared distribution mapping preserves installed filenames and compatibility with existing loaders, custom sounds and configuration migration. Documented conventions in README.md.
 
-Release metadata targets 2.0.0; publication is pending the outstanding resource
-and dependency permissions in `vSMR/data/Licenses/ASSET_PROVENANCE.txt`.
+Release metadata targets 2.0.0. GitHub release preparation remains draft-only
+until the maintainer explicitly publishes it; third-party notices are shipped
+in `vSMR/data/Licenses/ASSET_NOTICES.txt`.
 
 ### Added
 
