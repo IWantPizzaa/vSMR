@@ -69,6 +69,8 @@ public:
 	double m_AvisoDragStartLatitude = 0.0;
 	double m_AvisoDragStartLongitude = 0.0;
 	bool m_AvisoViewInitialized = false;
+	std::string m_AvisoCenterContext;
+	std::string m_AvisoLinkedMainAirport;
 	bool m_AvisoRightPanning = false;
 	bool m_AvisoPanClickPending = false;
 	bool m_AvisoScrollSelected = false;
