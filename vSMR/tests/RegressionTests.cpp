@@ -15,6 +15,7 @@
 #include "integrations/CdmBridgeData.hpp"
 #include "integrations/VsidBridgeData.hpp"
 #include "insets/TimerCountdownState.hpp"
+#include "insets/AvisoViewportCenter.hpp"
 #include "insets/WeatherInsetLayout.hpp"
 #include "radar/RecentAirports.hpp"
 #include "radar/DisplayModeVisibility.hpp"
@@ -759,6 +760,40 @@ namespace
 		Expect(
 			VsmrTargetRoleLogic::IsAirborneForTagRole(false, 51),
 			"departure above 50 kt remains airborne");
+	}
+
+	void TestAvisoViewportCenters()
+	{
+		using VsmrAvisoViewportCenter::HasRestorableCenter;
+		using VsmrAvisoViewportCenter::OverlapsAirport;
+		Expect(!HasRestorableCenter(true, true, false),
+			"saving an unopened inset does not make its zero center initialized");
+		Expect(!HasRestorableCenter(false, true, true) &&
+			!HasRestorableCenter(true, false, true),
+			"partially saved centers are not restored");
+		Expect(HasRestorableCenter(true, true, true), "initialized centers remain restorable");
+		struct AirportBounds { double latitude, longitude; };
+		const AirportBounds airports[] = { {49.01, 2.55}, {43.63, 1.36}, {45.72, 5.08} };
+		for (const auto& airport : airports)
+		{
+			const auto overlaps = [&](double latitude, double longitude, double span) {
+				return OverlapsAirport(latitude, longitude, span, span,
+					airport.latitude - 0.02, airport.latitude + 0.02,
+					airport.longitude - 0.02, airport.longitude + 0.02);
+			};
+			Expect(overlaps(airport.latitude, airport.longitude, 0.01),
+				"the airport's own saved inset center is preserved");
+			Expect(!overlaps(0.0, 0.0, 0.01), "legacy uninitialized zero centers are rejected");
+			Expect(overlaps(airport.latitude + 0.03, airport.longitude, 0.02),
+				"panned views outside the bounds remain valid when the airport is still visible");
+			for (const auto& other : airports)
+				if (other.latitude != airport.latitude)
+					Expect(!overlaps(other.latitude, other.longitude, 0.01),
+						"a restored center or linked main view at another ICAO is rejected");
+			Expect(!overlaps(std::nan(""), airport.longitude, 0.01), "non-finite centers are rejected");
+		}
+		Expect(!OverlapsAirport(49.0, 2.5, -1.0, 1.0, 48.0, 50.0, 2.0, 3.0),
+			"invalid viewport extents are rejected");
 	}
 
 	void TestDisplayModeStatusVisibility()
@@ -1770,6 +1805,7 @@ int wmain(int argc, wchar_t** argv)
 	TestRimcasRules();
 	TestTargetRoleThresholds();
 	TestDisplayModeStatusVisibility();
+	TestAvisoViewportCenters();
 	TestWeatherParsing();
 	TestRuntimeReleaseLifecycle();
 	for (const std::string& failure : RunAvisoRasterPipelineTests())

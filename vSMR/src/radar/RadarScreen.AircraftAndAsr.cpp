@@ -5,6 +5,7 @@
 #include "radar/RadarScreen.Registry.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
 #include "insets/InsetWindow.hpp"
+#include "insets/AvisoViewportCenter.hpp"
 #include "insets/WeatherInsetLayout.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashRuntime.hpp"
@@ -637,6 +638,8 @@ void CSMRRadar::ResetInsetWindowState(int appWindowId, bool preserveVisibility)
 		window->m_AvisoDragStartLatitude = 0.0;
 		window->m_AvisoDragStartLongitude = 0.0;
 		window->m_AvisoViewInitialized = false;
+		window->m_AvisoCenterContext.clear();
+		window->m_AvisoLinkedMainAirport.clear();
 		window->ClearAvisoViewportCache();
 	}
 	else if (window->IsWeather())
@@ -744,6 +747,7 @@ void CSMRRadar::SaveInsetStateToAsrForAirport(const std::string& airport)
 		save(windowPrefix + "BottomRightY", "AVISO viewport position", std::to_string(window->m_Area.bottom));
 		save(windowPrefix + "CenterLat", "AVISO viewport center", std::to_string(window->m_AvisoCenterLatitude));
 		save(windowPrefix + "CenterLon", "AVISO viewport center", std::to_string(window->m_AvisoCenterLongitude));
+		save(windowPrefix + "CenterInitialized", "AVISO viewport center initialized", window->m_AvisoViewInitialized ? "1" : "0");
 		save(windowPrefix + "Scale", "AVISO viewport zoom", std::to_string(window->m_AvisoScale));
 		save(windowPrefix + "NorthX", "AVISO compass X offset", std::to_string(window->m_NorthIndicatorOffset.x));
 		save(windowPrefix + "NorthY", "AVISO compass Y offset", std::to_string(window->m_NorthIndicatorOffset.y));
@@ -1046,8 +1050,17 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 			windowPrefix + "CenterLat", -85.0, 85.0, window->m_AvisoCenterLatitude);
 		const bool longitudeLoaded = readDouble(
 			windowPrefix + "CenterLon", -180.0, 180.0, window->m_AvisoCenterLongitude);
-		centerLoaded = latitudeLoaded && longitudeLoaded;
+		int centerInitialized = 1; // Older ASRs are validated against the airport at render time.
+		if (const char* initialized = read(windowPrefix + "CenterInitialized"))
+		{
+			centerInitialized = 0;
+			ParseAsrInt(initialized, 0, 1, centerInitialized);
+		}
+		centerLoaded = VsmrAvisoViewportCenter::HasRestorableCenter(
+			latitudeLoaded, longitudeLoaded, centerInitialized != 0);
 		window->m_AvisoViewInitialized = centerLoaded;
+		window->m_AvisoCenterContext.clear();
+		window->m_AvisoLinkedMainAirport.clear();
 		readInt(windowPrefix + "Scale", 1, 2400, window->m_AvisoScale);
 		int northX = -1, northY = -1;
 		readInt(windowPrefix + "NorthX", -1, 100000, northX);

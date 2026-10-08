@@ -193,6 +193,7 @@
     <ClInclude Include="src\insets\InsetWindow.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\insets\TimerCountdownState.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\insets\WeatherInsetLayout.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\insets\AvisoViewportCenter.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\VsidConfigurationData.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\insets\InsetWindow.Internal.hpp"><Filter>Headers</Filter></ClInclude>
 	<ClInclude Include="src\platform\windows\EuroScopeCommandLine.hpp"><Filter>Headers</Filter></ClInclude>
