@@ -20,17 +20,22 @@ namespace VsmrDisplayModeVisibility
 		if (targetOnRunway && !statuses.onRunway)
 			return false;
 
-		// A ground aircraft without an operational status belongs to No Status,
-		// even when its flight-plan destination gives it an arrival airport role.
+		// Actual arrivals retain their role, including after landing.
+		if (isArrival)
+			return statuses.arrivals;
+
+		// Resolve ground states before the generic non-local destination fallback.
 		if (!airborne &&
 			(targetStatus == GroundStateCategory::Nsts ||
-			 targetStatus == GroundStateCategory::Gate ||
 			 targetStatus == GroundStateCategory::Unknown))
 		{
 			return statuses.noStatus;
 		}
 
-		if (isArrival || (!isDeparture && hasDestination))
+		if (!airborne && targetStatus == GroundStateCategory::Gate)
+			return statuses.parked;
+
+		if (!isDeparture && hasDestination)
 			return statuses.arrivals;
 
 		switch (targetStatus)
@@ -41,8 +46,8 @@ namespace VsmrDisplayModeVisibility
 		case GroundStateCategory::Lnup: return statuses.lineup;
 		case GroundStateCategory::Depa: return statuses.departure;
 		case GroundStateCategory::Nsts:
-		case GroundStateCategory::Gate:
 		case GroundStateCategory::Unknown: return statuses.noStatus;
+		case GroundStateCategory::Gate: return statuses.parked;
 		case GroundStateCategory::Arr: return statuses.arrivals;
 		default: return true;
 		}

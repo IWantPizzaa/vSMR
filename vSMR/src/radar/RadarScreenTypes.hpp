@@ -262,6 +262,7 @@ namespace VsmrRadarTypes
 	struct DisplayModeStatusVisibility
 	{
 		bool noStatus = true;
+		bool parked = true;
 		bool push = true;
 		bool startup = true;
 		bool taxi = true;
