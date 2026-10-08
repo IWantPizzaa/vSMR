@@ -736,6 +736,7 @@
     $("#modePropertiesCaption").textContent = data.name || "Mode properties";
     $("#modeName").value = data.name || "";
     data.statuses ||= {};
+    if (typeof data.statuses.parked !== "boolean") data.statuses.parked = true;
     if (typeof data.statuses.lineup !== "boolean")
       data.statuses.lineup = typeof data.statuses.lnup === "boolean" ? data.statuses.lnup : (typeof data.statuses.taxi === "boolean" ? data.statuses.taxi : true);
     delete data.statuses.lnup;

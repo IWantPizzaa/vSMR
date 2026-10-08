@@ -149,6 +149,7 @@ namespace
 		keyValue.SetString("statuses", allocator);
 		Value statusValue(rapidjson::kObjectType);
 		VsmrRapidJson::SetBoolMember(statusValue, "no_status", statuses.noStatus, allocator);
+		VsmrRapidJson::SetBoolMember(statusValue, "parked", statuses.parked, allocator);
 		VsmrRapidJson::SetBoolMember(statusValue, "push", statuses.push, allocator);
 		VsmrRapidJson::SetBoolMember(statusValue, "startup", statuses.startup, allocator);
 		VsmrRapidJson::SetBoolMember(statusValue, "taxi", statuses.taxi, allocator);
@@ -206,6 +207,7 @@ namespace
 		{
 			const rapidjson::Value& statuses = modeValue["statuses"];
 			settings.statuses.noStatus = ReadBoolMember(statuses, "no_status", settings.statuses.noStatus);
+			settings.statuses.parked = ReadBoolMember(statuses, "parked", settings.statuses.parked);
 			settings.statuses.push = ReadBoolMember(statuses, "push", settings.statuses.push);
 			settings.statuses.startup = ReadBoolMember(statuses, "startup", ReadBoolMember(statuses, "stup", settings.statuses.startup));
 			settings.statuses.taxi = ReadBoolMember(statuses, "taxi", settings.statuses.taxi);

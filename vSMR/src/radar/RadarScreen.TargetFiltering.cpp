@@ -130,7 +130,7 @@ bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorre
 		!activeAirport.empty() &&
 		_stricmp(origin.c_str(), activeAirport.c_str()) == 0;
 
-	// No Status is resolved before the airport-role fallback for ground traffic.
+	// Actual arrivals retain their role; other ground traffic uses its status.
 	const GroundStateCategory targetStatus = classifyGroundStateWithSharedState(
 		fp.GetGroundState(), reportedGs, targetOnRunway, fp.GetControllerAssignedData().GetAssignedSpeed());
 	return VsmrDisplayModeVisibility::IsVisible(
