@@ -134,6 +134,8 @@
     <ClInclude Include="UpdaterUrlPolicyTests.hpp" />
     <ClInclude Include="..\src\aircraft\GroundState.hpp" />
     <ClInclude Include="..\src\aircraft\HoldingPoint.hpp" />
+    <ClInclude Include="..\src\insets\AvisoViewportCenter.hpp" />
+    <ClInclude Include="..\src\datalink\PdcLogonSync.hpp" />
     <ClInclude Include="..\src\aviso\AvisoDocumentModel.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterBlitter.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterPipeline.hpp" />
@@ -166,6 +168,7 @@
     <ClInclude Include="..\src\bootstrap\loader\RuntimeReleaseState.hpp" />
     <ClInclude Include="..\src\safety\RimcasLogic.hpp" />
     <ClInclude Include="..\src\scene\TargetRoleLogic.hpp" />
+    <ClInclude Include="..\src\radar\DisplayModeVisibility.hpp" />
     <ClInclude Include="..\src\shared\JsonInputLimits.hpp" />
     <ClInclude Include="..\src\shared\RapidJsonStringViewStream.hpp" />
     <ClInclude Include="..\src\tags\TagColorRules.hpp" />

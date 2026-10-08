@@ -38,6 +38,16 @@ try {
     Write-Fixture 'vSMR/data/aviso_update_policy.json' $validPolicy
     & $validator -RepositoryRoot $fixtureRoot
 
+    Write-Fixture 'vSMR/data/AVISO/AAAA_Work.geojson' '{}'
+    $manifest.files['AAAA_Work.geojson'] = $mapHash
+    $manifest.file_count = 2
+    Write-Fixture 'vSMR/tests/fixtures/aviso_inventory.json' ($manifest | ConvertTo-Json -Depth 5)
+    & $validator -RepositoryRoot $fixtureRoot
+    Remove-Item -LiteralPath (Join-Path $fixtureRoot 'vSMR/data/AVISO/AAAA_Work.geojson')
+    $manifest.files.Remove('AAAA_Work.geojson')
+    $manifest.file_count = 1
+    Write-Fixture 'vSMR/tests/fixtures/aviso_inventory.json' ($manifest | ConvertTo-Json -Depth 5)
+
     Write-Fixture 'vSMR/data/AVISO/AAAA.geojson' '{ }'
     Assert-Rejected 'Bundled AVISO differs*'
     Write-Fixture 'vSMR/data/AVISO/AAAA.geojson' '{}'

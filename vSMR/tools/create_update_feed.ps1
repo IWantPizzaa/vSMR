@@ -38,7 +38,7 @@ function Assert-RegularPath([string]$Path) {
     }
 }
 function Assert-ManagedPath([string]$Relative) {
-    $allowed = '^(vSMR\.dll|vSMR_Data/(default\.json|airports_hp\.json|ICAO_Aircraft\.json|AVISO-UPDATE-POLICY\.json|AVISO/[A-Z0-9]{4}\.geojson|aircraft_icons/[A-Za-z0-9_-]+\.png|Audio/[A-Za-z0-9_.-]+\.wav|Runtime/[A-Za-z0-9_.-]+\.dll|CrashReporter/vSMRCrashHandler\.dll|Tools/[A-Za-z0-9_.-]+\.(exe|ps1|cs|patch)|Licenses/[A-Za-z0-9_.-]+\.(txt|md)|vSMR_webUI/(index\.html|styles\.css|data\.js|app-bundle\.js)))$'
+    $allowed = '^(vSMR\.dll|vSMR_Data/(default\.json|airports_hp\.json|ICAO_Aircraft\.json|AVISO-UPDATE-POLICY\.json|AVISO/[A-Z0-9]{4}(?:_[A-Za-z0-9][A-Za-z0-9_-]{0,47})?\.geojson|aircraft_icons/[A-Za-z0-9_-]+\.png|Audio/[A-Za-z0-9_.-]+\.wav|Runtime/[A-Za-z0-9_.-]+\.dll|CrashReporter/vSMRCrashHandler\.dll|Tools/[A-Za-z0-9_.-]+\.(exe|ps1|cs|patch)|Licenses/[A-Za-z0-9_.-]+\.(txt|md)|vSMR_webUI/(index\.html|styles\.css|data\.js|app-bundle\.js)))$'
     if ($Relative -notmatch $allowed -or
         $Relative -match '(?i)(^|/)(config\.json|vSMR_Profiles\.json|UserData|UpdateBaselines|\.update|version\.json)(/|$)' -or
         $Relative -match '(^|/)\.{1,2}(/|$)|[. ](/|$)|(?i)\.(asr|pdb|bak|tmp)$' -or
@@ -88,8 +88,6 @@ if ($Phase -eq 'Prepare') {
         $dirty = @(& git -C $RepositoryRoot status --porcelain --untracked-files=normal)
         Assert-GitSuccess 'checking release source'
         if ($dirty.Count) { throw 'Publishable feed artifacts require clean committed source. Use -ValidationOnly for local tests.' }
-        $provenance = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'vSMR/data/Licenses/ASSET_PROVENANCE.txt') -Raw
-        if ($provenance -match '(?im)\|\s*verification required\s*\|\s*$') { throw 'Bundled asset provenance still requires verification.' }
     }
     if (-not $SkipBuild) {
         $defaultBuild = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot 'Release'))

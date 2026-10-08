@@ -143,6 +143,18 @@ inline static GroundStateCategory classifyGroundState(const char* rawState, int 
 }
 namespace VsmrGroundState
 {
+	inline bool IsExplicitlyParked(const std::string& rawState)
+	{
+		std::string normalized;
+		for (unsigned char c : rawState)
+		{
+			if (std::isspace(c) || c == '-' || c == '_')
+				continue;
+			normalized.push_back(static_cast<char>(std::toupper(c)));
+		}
+		return normalized == "PARK" || normalized == "PARKED";
+	}
+
 	// Callsigns retained for the cleanup in CSMRPlugin::OnTimer. Any client that
 	// sees a reserved assigned speed records the callsign, so a state another
 	// controller shared is cleaned up as well.

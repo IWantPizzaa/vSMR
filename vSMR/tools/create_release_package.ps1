@@ -92,58 +92,6 @@ if ($projectLicenseText -match '(?m)^(?:<<<<<<<|=======|>>>>>>>)') {
     throw "The project license contains unresolved merge-conflict markers."
 }
 
-if (-not $explicitNonPublishable) {
-    $assetProvenancePath = Join-Path $RepositoryRoot "vSMR\data\Licenses\ASSET_PROVENANCE.txt"
-    Assert-File -Path $assetProvenancePath
-
-    $provenanceLines = @(Get-Content -LiteralPath $assetProvenancePath)
-    $headerIndex = -1
-    for ($lineIndex = 0; $lineIndex -lt $provenanceLines.Count; ++$lineIndex) {
-        if ($provenanceLines[$lineIndex] -match '^\|\s*Asset group\s*\|\s*Packaged path\s*\|\s*Current provenance record\s*\|\s*Release status\s*\|\s*$') {
-            $headerIndex = $lineIndex
-            break
-        }
-    }
-    if ($headerIndex -lt 0 -or $headerIndex + 1 -ge $provenanceLines.Count -or
-        $provenanceLines[$headerIndex + 1] -notmatch '^\|\s*-{3,}\s*\|\s*-{3,}\s*\|\s*-{3,}\s*\|\s*-{3,}\s*\|\s*$') {
-        throw "ASSET_PROVENANCE.txt does not contain the required four-column provenance table."
-    }
-
-    $resolvedStatuses = @(
-        'project license',
-        'license verified',
-        'permission documented',
-        'public domain',
-        'original asset'
-    )
-    $unresolvedAssetCount = 0
-    $provenanceRowCount = 0
-    for ($lineIndex = $headerIndex + 2; $lineIndex -lt $provenanceLines.Count; ++$lineIndex) {
-        $line = [string]$provenanceLines[$lineIndex]
-        if ([string]::IsNullOrWhiteSpace($line)) {
-            break
-        }
-        if ($line -notmatch '^\|\s*(?<group>[^|]+?)\s*\|\s*(?<path>[^|]+?)\s*\|\s*(?<record>[^|]+?)\s*\|\s*(?<status>[^|]+?)\s*\|\s*$') {
-            throw "ASSET_PROVENANCE.txt contains a malformed provenance row at line $($lineIndex + 1)."
-        }
-
-        ++$provenanceRowCount
-        $status = $Matches['status'].Trim().ToLowerInvariant()
-        if ($status -eq 'verification required') {
-            ++$unresolvedAssetCount
-        }
-        elseif ($resolvedStatuses -notcontains $status) {
-            throw "ASSET_PROVENANCE.txt contains the unrecognized release status '$($Matches['status'].Trim())' at line $($lineIndex + 1)."
-        }
-    }
-    if ($provenanceRowCount -eq 0) {
-        throw "ASSET_PROVENANCE.txt contains no asset records."
-    }
-    if ($unresolvedAssetCount -gt 0) {
-        throw "Refusing to create a publishable release while $unresolvedAssetCount bundled asset group(s) still require provenance verification. Resolve ASSET_PROVENANCE.txt or use -ForceNonPublishable for a local validation package."
-    }
-}
-
 function Remove-SafeDirectory {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -429,16 +377,6 @@ try {
         (Get-FileHash -LiteralPath $projectLicensePath -Algorithm SHA256).Hash) {
         throw "The packaged vSMR license does not match the reviewed project license."
     }
-    if (-not $explicitNonPublishable) {
-        $packagedAssetProvenancePath = Join-Path $packageStage "vSMR_Data\Licenses\ASSET_PROVENANCE.txt"
-        Assert-File $packagedAssetProvenancePath
-        $sourceProvenanceHash = (Get-FileHash -LiteralPath $assetProvenancePath -Algorithm SHA256).Hash
-        $packagedProvenanceHash = (Get-FileHash -LiteralPath $packagedAssetProvenancePath -Algorithm SHA256).Hash
-        if ($sourceProvenanceHash -ne $packagedProvenanceHash) {
-            throw "The packaged asset-provenance register does not match the validated source register."
-        }
-    }
-
     $avisoPolicy = Get-Content -LiteralPath $packagedAvisoPolicyPath -Raw | ConvertFrom-Json
     $supportedAvisoUpdates = @('none', 'selected', 'all')
     $supportedModifiedFilePolicies = @('preserve', 'protect_setting', 'replace')

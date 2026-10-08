@@ -326,6 +326,8 @@
     <ClInclude Include="src\insets\InsetWindow.hpp" />
     <ClInclude Include="src\insets\TimerCountdownState.hpp" />
     <ClInclude Include="src\insets\WeatherInsetLayout.hpp" />
+    <ClInclude Include="src\insets\AvisoViewportCenter.hpp" />
+    <ClInclude Include="src\datalink\PdcLogonSync.hpp" />
     <ClInclude Include="src\insets\InsetWindow.Internal.hpp" />
 	<ClInclude Include="src\platform\windows\EuroScopeCommandLine.hpp" />
     <ClInclude Include="src\platform\windows\GdiColorUtils.hpp" />
@@ -362,6 +364,7 @@
     <ClInclude Include="src\safety\RimcasLogic.hpp" />
     <ClInclude Include="src\scene\RadarScene.hpp" />
     <ClInclude Include="src\scene\TargetRoleLogic.hpp" />
+    <ClInclude Include="src\radar\DisplayModeVisibility.hpp" />
     <ClInclude Include="src\shared\JsonInputLimits.hpp" />
     <ClInclude Include="src\shared\logging\Logger.hpp" />
     <ClInclude Include="src\shared\RapidJsonStringViewStream.hpp" />

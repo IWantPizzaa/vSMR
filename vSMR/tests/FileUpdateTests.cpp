@@ -151,6 +151,10 @@ std::vector<std::string> RunFileUpdateTests()
             "vSMR_Data/Runtime/a.dll:alternate", "vSMR_Data/Runtime/../config.json", "vSMR_Data/Audio/a.wav.", "C:/vSMR.dll", "vSMR_Data/Runtime/a%2fb.dll" })
             check(!fu::IsManagedPath(path), std::string("rejects protected/unsafe path ") + path);
         check(fu::IsManagedPath("vSMR.dll") && fu::IsManagedPath("vSMR_Data/default.json") && fu::IsManagedPath("vSMR_Data/AVISO/LFLL.geojson"), "accepts managed assets");
+        check(fu::IsManagedPath("vSMR_Data/AVISO/LFPO_Work.geojson"), "accepts bundled airport variants");
+        for (const char* path : { "vSMR_Data/AVISO/LFPO_.geojson", "vSMR_Data/AVISO/LFPO_../config.geojson",
+            "vSMR_Data/AVISO/LFPO_Work.geojson.bak", "vSMR_Data/AVISO/LFPO_Work extra.geojson" })
+            check(!fu::IsManagedPath(path), std::string("rejects unsafe airport variant ") + path);
         up::url_policy::ParsedHttpsUrl parsed;
         const std::wstring manifestUrl = L"https://raw.githubusercontent.com/IWantPizzaa/vSMR/update-feed/beta/version.json";
         check(up::url_policy::TryParseAllowedHttpsUrl(manifestUrl, parsed), "allows exact raw channel endpoint");

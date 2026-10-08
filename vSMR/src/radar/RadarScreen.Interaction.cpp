@@ -1270,7 +1270,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 			rawStatus.end());
 		std::transform(rawStatus.begin(), rawStatus.end(), rawStatus.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
 		const bool rawTaxiIn = rawStatus == "TXIN";
-		const bool rawParked = rawStatus == "PARK" || rawStatus == "PARKED";
+		const bool rawParked = VsmrGroundState::IsExplicitlyParked(rawStatus);
 		const std::string activeAirport = getActiveAirport();
 		const char* origin = fp.GetFlightPlanData().GetOrigin();
 		const char* destination = fp.GetFlightPlanData().GetDestination();

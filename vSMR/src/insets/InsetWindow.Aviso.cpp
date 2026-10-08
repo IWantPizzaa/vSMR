@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "aviso/AvisoRasterSizing.hpp"
 #include "insets/InsetWindow.hpp"
+#include "insets/AvisoViewportCenter.hpp"
 #include "insets/InsetWindow.Internal.hpp"
 #include "aviso/AvisoRasterBlitter.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
@@ -1191,11 +1192,34 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		dc.Detach();
 		return;
 	}
+	// Validate a restored center once per airport/source, not while the user pans.
+	const std::string centerContext = airport + "|" + path;
+	if (m_AvisoCenterContext != centerContext && radar_screen->AvisoGeoJsonHasBounds)
+	{
+		const double metersPerPixel = kAvisoMetersPerNm / static_cast<double>((std::max)(1, m_AvisoScale));
+		const double viewportRadiusMeters = std::hypot(
+			static_cast<double>(viewportWidth), static_cast<double>(viewportHeight)) * metersPerPixel * 0.5;
+		if (!VsmrAvisoViewportCenter::OverlapsAirport(
+			m_AvisoCenterLatitude, m_AvisoCenterLongitude,
+			viewportRadiusMeters / kAvisoLatMetersPerDegree,
+			viewportRadiusMeters / (kAvisoLonMetersPerDegree * AvisoCosLatitude(m_AvisoCenterLatitude)),
+			radar_screen->AvisoGeoJsonMinLatitude, radar_screen->AvisoGeoJsonMaxLatitude,
+			radar_screen->AvisoGeoJsonMinLongitude, radar_screen->AvisoGeoJsonMaxLongitude))
+		{
+			m_AvisoViewInitialized = false;
+			ClearAvisoViewportCache();
+		}
+	}
 	// Initializing the view from the airport or dataset bounds
 	if (!m_AvisoViewInitialized)
 	{
 		CPosition airportPosition;
-		if (radar_screen->TryGetActiveAirportPosition(airportPosition))
+		if (radar_screen->TryGetActiveAirportPosition(airportPosition) &&
+			(!radar_screen->AvisoGeoJsonHasBounds ||
+			 VsmrAvisoViewportCenter::OverlapsAirport(
+				airportPosition.m_Latitude, airportPosition.m_Longitude, 0.0, 0.0,
+				radar_screen->AvisoGeoJsonMinLatitude, radar_screen->AvisoGeoJsonMaxLatitude,
+				radar_screen->AvisoGeoJsonMinLongitude, radar_screen->AvisoGeoJsonMaxLongitude)))
 		{
 			m_AvisoCenterLatitude = airportPosition.m_Latitude;
 			m_AvisoCenterLongitude = airportPosition.m_Longitude;
@@ -1208,6 +1232,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		m_AvisoViewInitialized = true;
 		m_AvisoCenterLatitude = ClampAvisoLatitude(m_AvisoCenterLatitude);
 	}
+	m_AvisoCenterContext = centerContext;
 
 	// ----- Resolving the cached raster -----
 	std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> completedRenderResult = m_AvisoState->TakeCompletedRender();
