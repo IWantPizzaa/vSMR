@@ -2,7 +2,7 @@
 
 ## [2.0.0] - Unreleased
 
-- Added Parked to Modes > Visible statuses, saved independently per mode and enabled by default for existing profiles. Ground arrivals remain controlled by Arrivals; other ground aircraft use Parked or No Status before the generic non-local destination fallback. Airborne, on-runway, flight-plan and correlation filters remain in effect.
+- Added Parked to Modes > Visible statuses, saved independently per mode and enabled by default for existing profiles. Only explicitly selected PARK/PARKED statuses use Parked; stationary departures with an empty status remain under No Status. Ground aircraft whose flight-plan data has not been received use No flight plan, even if EuroScope provides a valid placeholder. Other ground arrivals remain under Arrivals; airborne, on-runway and correlation filters remain in effect.
 
 - Excluded the EGKK startup fallback from Recent Airports without preventing normal airport selection.
 

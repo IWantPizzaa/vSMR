@@ -789,7 +789,7 @@ namespace
 			{ false, true, true },
 			{ false, false, true }, { false, false, false }
 		};
-		const char* noStatusStates[] = { "NSTS", "unknown" };
+		const char* noStatusStates[] = { nullptr, "", "  ", "NSTS", "unknown", "GATE", "STAND", "STBY" };
 		for (const auto& role : roles)
 		{
 			for (const char* rawState : noStatusStates)
@@ -804,6 +804,7 @@ namespace
 							DisplayModeStatusVisibility statuses;
 							statuses.noStatus = noStatus;
 							statuses.arrivals = arrivals;
+							statuses.parked = !noStatus;
 							Expect(IsVisible(statuses, role.arrival, role.departure,
 								role.hasDestination, gs, false, state) == noStatus,
 								"non-arrival ground No Status follows its own toggle");
@@ -852,10 +853,11 @@ namespace
 		}
 		for (const auto& role : roles)
 		{
-			for (const char* rawState : { "PARK", "GATE", "STAND", "STBY", "" })
+			for (const char* rawState : { "PARK", "PARKED", "parked", " P_A-R K " })
 			{
 				const auto state = classifyGroundStateWithSharedState(rawState, 0, false, 0);
 				Expect(state == GroundStateCategory::Gate, "parked states classify as Gate");
+				Expect(VsmrGroundState::IsExplicitlyParked(rawState), "explicit parked status is recognized");
 				for (const bool parked : { false, true })
 				{
 					for (const bool otherStatuses : { false, true })
@@ -865,16 +867,43 @@ namespace
 						flags.noStatus = otherStatuses;
 						flags.arrivals = otherStatuses;
 						Expect(IsVisible(flags, role.arrival, role.departure,
-							role.hasDestination, 0, false, state) == parked,
+							role.hasDestination, 0, false, state, VsmrGroundState::IsExplicitlyParked(rawState)) == parked,
 							"parked non-arrivals follow Parked independently of other toggles");
 						flags.onRunway = false;
 						Expect(!IsVisible(flags, role.arrival, role.departure,
-							role.hasDestination, 0, true, state),
+							role.hasDestination, 0, true, state, true),
 							"Parked does not bypass the on-runway gate");
 					}
 				}
 			}
 		}
+
+		for (const bool arrival : { false, true })
+		{
+			for (const bool parked : { false, true })
+			{
+				for (const bool noFlightPlan : { false, true })
+				{
+					DisplayModeStatusVisibility flags;
+					flags.noFlightPlan = noFlightPlan;
+					flags.parked = !noFlightPlan;
+					flags.noStatus = !noFlightPlan;
+					flags.arrivals = !noFlightPlan;
+					Expect(IsVisible(flags, arrival, !arrival, true, 0, false,
+						GroundStateCategory::Gate, parked, false) == noFlightPlan,
+						"valid EuroScope placeholders follow No flight plan, not Parked or airport role");
+					flags.noFlightPlan = true;
+					flags.parked = parked;
+					Expect(IsVisible(flags, arrival, !arrival, true, 0, false,
+						GroundStateCategory::Gate, true) == parked,
+						"explicit parked status follows Parked even for arrivals");
+				}
+			}
+		}
+		Expect(!VsmrGroundState::IsExplicitlyParked("") &&
+			!VsmrGroundState::IsExplicitlyParked("NSTS") &&
+			!VsmrGroundState::IsExplicitlyParked("STAND"),
+			"empty and non-PARK statuses never opt into Parked visibility");
 
 		DisplayModeStatusVisibility statuses;
 		statuses.noStatus = false;
