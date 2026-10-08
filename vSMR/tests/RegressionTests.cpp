@@ -16,6 +16,8 @@
 #include "insets/TimerCountdownState.hpp"
 #include "insets/WeatherInsetLayout.hpp"
 #include "radar/RecentAirports.hpp"
+#include "radar/DisplayModeVisibility.hpp"
+#include "radar/RadarScreenTypes.hpp"
 #include "radar/RadarGeometry.hpp"
 #include "rdf/RdfTransmissionState.hpp"
 #include "safety/RimcasLogic.hpp"
@@ -756,6 +758,102 @@ namespace
 		Expect(
 			VsmrTargetRoleLogic::IsAirborneForTagRole(false, 51),
 			"departure above 50 kt remains airborne");
+	}
+
+	void TestDisplayModeStatusVisibility()
+	{
+		using VsmrDisplayModeVisibility::IsVisible;
+		using VsmrRadarTypes::DisplayModeStatusVisibility;
+		struct AirportRole
+		{
+			bool arrival;
+			bool departure;
+			bool hasDestination;
+		};
+		const AirportRole roles[] = {
+			{ false, true, true }, { true, false, true },
+			{ false, false, true }, { false, false, false }
+		};
+		const char* noStatusStates[] = { nullptr, "", "NSTS", "PARK", "unknown" };
+		for (const auto& role : roles)
+		{
+			for (const char* rawState : noStatusStates)
+			{
+				for (const int gs : { 0, 20, 40 })
+				{
+					const auto state = classifyGroundStateWithSharedState(rawState, gs, false, 0);
+					for (const bool arrivals : { false, true })
+					{
+						for (const bool noStatus : { false, true })
+						{
+							DisplayModeStatusVisibility statuses;
+							statuses.noStatus = noStatus;
+							statuses.arrivals = arrivals;
+							Expect(IsVisible(statuses, role.arrival, role.departure,
+								role.hasDestination, gs, false, state) == noStatus,
+								"ground No Status follows its own toggle for every airport role");
+							statuses.onRunway = false;
+							Expect(!IsVisible(statuses, role.arrival, role.departure,
+								role.hasDestination, gs, true, state),
+								"No Status does not bypass the on-runway gate");
+						}
+					}
+				}
+			}
+		}
+
+		using Toggle = bool DisplayModeStatusVisibility::*;
+		const std::pair<GroundStateCategory, Toggle> mappings[] = {
+			{ GroundStateCategory::Push, &DisplayModeStatusVisibility::push },
+			{ GroundStateCategory::Stup, &DisplayModeStatusVisibility::startup },
+			{ GroundStateCategory::Taxi, &DisplayModeStatusVisibility::taxi },
+			{ GroundStateCategory::Lnup, &DisplayModeStatusVisibility::lineup },
+			{ GroundStateCategory::Depa, &DisplayModeStatusVisibility::departure },
+			{ GroundStateCategory::Arr, &DisplayModeStatusVisibility::arrivals }
+		};
+		for (const auto& mapping : mappings)
+		{
+			DisplayModeStatusVisibility statuses;
+			statuses.noStatus = false;
+			Expect(IsVisible(statuses, false, true, true, 20, false, mapping.first),
+				"explicit departure ground statuses do not depend on No Status");
+			statuses.*mapping.second = false;
+			Expect(!IsVisible(statuses, false, true, true, 20, false, mapping.first),
+				"explicit departure ground status follows its own toggle");
+		}
+		for (const auto state : { GroundStateCategory::Arr, GroundStateCategory::Taxi })
+		{
+			DisplayModeStatusVisibility statuses;
+			statuses.noStatus = false;
+			Expect(IsVisible(statuses, true, false, true, 20, false, state),
+				"arrivals with an explicit ground status retain Arrivals visibility");
+			statuses.arrivals = false;
+			Expect(!IsVisible(statuses, true, false, true, 20, false, state),
+				"Arrivals still hides arrivals with an explicit ground status");
+		}
+
+		DisplayModeStatusVisibility statuses;
+		statuses.noStatus = false;
+		Expect(IsVisible(statuses, true, false, true, 41, false, GroundStateCategory::Nsts),
+			"airborne arrivals are not reclassified as ground No Status");
+		statuses.arrivals = false;
+		Expect(!IsVisible(statuses, true, false, true, 41, false, GroundStateCategory::Nsts),
+			"airborne arrivals retain the Arrivals gate");
+		statuses.arrivals = true;
+		statuses.noStatus = true;
+		statuses.airborne = false;
+		Expect(!IsVisible(statuses, true, false, true, 41, false, GroundStateCategory::Nsts),
+			"No Status does not bypass the arrival airborne threshold");
+		Expect(IsVisible(statuses, false, true, true, 50, false, GroundStateCategory::Nsts),
+			"departure No Status retains the ground speed threshold");
+		Expect(!IsVisible(statuses, false, true, true, 51, false, GroundStateCategory::Nsts),
+			"No Status does not bypass the departure airborne threshold");
+		statuses.airborne = true;
+		statuses.lineup = false;
+		const auto sharedLineup = classifyGroundStateWithSharedState(
+			"TAXI", 0, false, VsmrGroundStateSync::LineupAssignedSpeed);
+		Expect(!IsVisible(statuses, false, true, true, 0, false, sharedLineup),
+			"shared lineup remains controlled by Lineup rather than No Status");
 	}
 
 	void TestRuntimeReleaseLifecycle()
@@ -1598,6 +1696,7 @@ int wmain(int argc, wchar_t** argv)
 	TestCdmBridgeData();
 	TestRimcasRules();
 	TestTargetRoleThresholds();
+	TestDisplayModeStatusVisibility();
 	TestWeatherParsing();
 	TestRuntimeReleaseLifecycle();
 	for (const std::string& failure : RunAvisoRasterPipelineTests())
