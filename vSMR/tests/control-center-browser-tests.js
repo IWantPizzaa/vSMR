@@ -119,6 +119,8 @@
     expect(Array.isArray(initial.profiles) && initial.profiles.length > 0,
       "bundled profiles initialize");
     expect(initial.aviso?.type === "FeatureCollection", "bundled AVISO initializes");
+    expect(initial.settings?.avisoColorPalette === "light" && initial.aviso?.metadata?.default_color_palette === "light",
+      "new AVISO sessions and the bundled preview default to Light");
 
     const authoritative = structuredClone(initial);
     authoritative.airport = "TEST";

@@ -1253,7 +1253,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	if ((p_value = GetDataFromAsr("ShowFps")) != NULL)
 		ShowFps = atoi(p_value) != 0;
 
-	AvisoColorPalette = "dark";
+	AvisoColorPalette = "light";
 	if ((p_value = GetDataFromAsr("AvisoColorPalette")) != NULL)
 		SetAvisoColorPalette(p_value, false);
 	EnsureAvisoColorPaletteAvailable(false);

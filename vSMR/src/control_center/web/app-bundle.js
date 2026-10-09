@@ -538,7 +538,8 @@
     const palette = String(value || "").trim().toLowerCase();
     if (palette === "day") return "light";
     if (palette === "light" || palette === "real") return palette;
-    return "dark";
+    if (palette === "dark" || palette === "night") return "dark";
+    return "light";
   }
 
   function avisoColorPalettes(aviso = state?.aviso, configured = null) {
@@ -763,7 +764,7 @@
         uiColorTheme: "night",
         weatherAllAirports: true,
         showNorthIndicator: true,
-        avisoColorPalette: "dark",
+        avisoColorPalette: "light",
         avisoColorPalettes: ["dark", "light", "real"],
         dataHealth: {
           profilesHealthy: true,
