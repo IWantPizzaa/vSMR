@@ -2,6 +2,8 @@
 
 ## [2.0.1] - Unreleased
 
+- Fixed CoFrance v2 aircraft and tags overlapping vSMR insets: custom hosts now render overlays in the latest refresh phase actually received, even when native EuroScope radar content is disabled. Hosts without late callbacks retain the visible fallback; native AVISO rendering is unchanged.
+
 ## [2.0.0] - 2026-10-18
 
 - Removed the bundled-asset provenance register and its blocking release/feed checks. Retained third-party license notices, including VATSIM Radar's CC BY-NC 4.0 aircraft silhouettes and the maintainer-declared GPL v3 alarm. Clean-source, version, regression and configured signing checks remain enforced.

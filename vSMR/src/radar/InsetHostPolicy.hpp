@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string_view>
+#include <EuroScopePlugIn.h>
 
 namespace VsmrRadar
 {
@@ -13,11 +14,20 @@ namespace VsmrRadar
 			id == "resize_tr" || id == "resize_bl" || id == "resize_br";
 	}
 
-	inline bool UsesAfterListsPhase(bool insetsOnly, bool needRadarContent) noexcept
+	inline int ResolveRefreshPhase(bool insetsOnly, bool needRadarContent, unsigned int phasesSeen) noexcept
 	{
-		// Do not depend on native TAG/list phases for custom displays that
-		// disable EuroScope's native radar content (including CoFrance).
-		return insetsOnly && needRadarContent;
+		using namespace EuroScopePlugIn;
+		if (!insetsOnly) return REFRESH_PHASE_BEFORE_TAGS;
+		// Custom renderers may provide late callbacks even with native radar
+		// content disabled. Prefer the latest phase actually delivered so their
+		// targets/tags stay behind our inset surfaces, independent of DLL order.
+		if (needRadarContent || (phasesSeen & (1u << REFRESH_PHASE_AFTER_LISTS)) != 0)
+			return REFRESH_PHASE_AFTER_LISTS;
+		if ((phasesSeen & (1u << REFRESH_PHASE_AFTER_TAGS)) != 0)
+			return REFRESH_PHASE_AFTER_TAGS;
+		// Older custom hosts may only deliver BEFORE_TAGS. Keep them visible;
+		// on the first frame a later callback upgrades the phase immediately.
+		return REFRESH_PHASE_BEFORE_TAGS;
 	}
 
 	inline ScreenRole ResolveScreenRole(const char* displayName, bool geoReferenced) noexcept
