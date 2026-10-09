@@ -895,12 +895,31 @@ std::vector<std::string> RunSharedRenderingBehaviorTests()
 	Check(!VsmrRadar::IsInsetChromeDrag("") && !VsmrRadar::IsInsetChromeDrag("window") &&
 		!VsmrRadar::IsInsetChromeDrag("close") && !VsmrRadar::IsInsetChromeDrag("resize_unknown"),
 		"non-drag inset objects cannot bypass overlay pointer ownership", failures);
-	Check(!VsmrRadar::UsesAfterListsPhase(true, false),
-		"custom CoFrance displays do not depend on native TAG/list refresh phases", failures);
-	Check(VsmrRadar::UsesAfterListsPhase(true, true),
+	using namespace EuroScopePlugIn;
+	Check(VsmrRadar::ResolveRefreshPhase(true, false, 0) == REFRESH_PHASE_BEFORE_TAGS,
+		"custom hosts without late callbacks keep a visible before-TAG fallback", failures);
+	Check(VsmrRadar::ResolveRefreshPhase(true, true, 0) == REFRESH_PHASE_AFTER_LISTS,
 		"inset hosts with native radar content use the late overlay phase", failures);
-	Check(!VsmrRadar::UsesAfterListsPhase(false, false) && !VsmrRadar::UsesAfterListsPhase(false, true),
-		"native SMR keeps its original before-TAG rendering phase", failures);
+	const unsigned int afterTags = 1u << REFRESH_PHASE_AFTER_TAGS;
+	const unsigned int afterLists = 1u << REFRESH_PHASE_AFTER_LISTS;
+	Check(VsmrRadar::ResolveRefreshPhase(true, false, afterTags) == REFRESH_PHASE_AFTER_TAGS,
+		"CoFrance custom targets stay behind insets when after-TAG callbacks are available", failures);
+	Check(VsmrRadar::ResolveRefreshPhase(true, false, afterTags | afterLists) == REFRESH_PHASE_AFTER_LISTS,
+		"CoFrance prefers the latest delivered phase even without native radar content", failures);
+	for (bool nativeContent : { false, true })
+		Check(VsmrRadar::ResolveRefreshPhase(false, nativeContent, afterTags | afterLists) == REFRESH_PHASE_BEFORE_TAGS,
+			"native SMR keeps its original before-TAG rendering phase", failures);
+	unsigned int observedPhases = 0;
+	for (int phase = REFRESH_PHASE_BACK_BITMAP; phase <= REFRESH_PHASE_AFTER_LISTS; ++phase)
+	{
+		observedPhases |= 1u << phase;
+		if (phase >= REFRESH_PHASE_BEFORE_TAGS)
+			Check(VsmrRadar::ResolveRefreshPhase(true, false, observedPhases) == phase,
+				"first CoFrance frame immediately promotes overlays on each newly observed late callback", failures);
+	}
+	for (int phase = REFRESH_PHASE_BACK_BITMAP; phase <= REFRESH_PHASE_AFTER_LISTS; ++phase)
+		Check((VsmrRadar::ResolveRefreshPhase(true, false, observedPhases) == phase) == (phase == REFRESH_PHASE_AFTER_LISTS),
+			"subsequent CoFrance frames render insets once, after tags and lists", failures);
 	Check(ResolveScreenRole("CoFrance radar display", true) == ScreenRole::CoFranceInsets,
 		"CoFrance geo-referenced screens receive only the inset adapter", failures);
 	Check(ResolveScreenRole("SMR radar display", true) == ScreenRole::SurfaceRadar,
