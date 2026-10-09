@@ -227,6 +227,24 @@ namespace
 			HashSceneValue(result, token);
 			HashSceneValue(result, value);
 		}
+		const auto hashColor = [&](const VsmrScene::Color& color) {
+			HashSceneValue(result, color.alpha); HashSceneValue(result, color.red);
+			HashSceneValue(result, color.green); HashSceneValue(result, color.blue);
+		};
+		hashColor(target.style.color);
+		for (const auto* palette : { &target.tag.normalPalette, &target.tag.detailedPalette })
+		{
+			hashColor(palette->background); hashColor(palette->backgroundOnRunway); hashColor(palette->text);
+		}
+		for (const auto* variant : { &target.tag.normal, &target.tag.detailed })
+			for (const auto& line : variant->lines)
+				for (const auto& element : line.elements)
+				{
+					hashColor(element.effectiveColor); hashColor(element.ruleBackground);
+					HashSceneValue(result, element.bold); HashSceneValue(result, element.hasRuleBackground);
+					HashSceneValue(result, element.ruleBlink);
+					HashSceneValue(result, element.hasRuleBold); HashSceneValue(result, element.ruleBold);
+				}
 		return result;
 	}
 
@@ -797,17 +815,29 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			readColor((*targetsConfig)["ground_icons"], key, resolved)) return resolved;
 		return fallback;
 	};
-	auto evaluateTagColorRules = [&](const Target& target, bool detailed) -> TagColorRules::TagColorRuleOverrides
+	const std::time_t rulesNow = std::time(nullptr);
+	auto evaluateTagColorRules = [&](const Target& target, bool detailed, bool targetOnly = false) -> TagColorRules::TagColorRuleOverrides
 	{
 		const VsmrTags::CompiledDefinition& definitionRules = resolveTagDefinitionColorRules(
 			target.tag.definitionType,
 			target.tag.status,
 			detailed);
 		const CdmPilotData* pilotData = target.hasCdmData ? &target.cdmData : nullptr;
-		TagColorRules::TagColorRuleOverrides overrides = TagColorRules::EvaluateCdmColorRules(definitionRules.cdm, pilotData);
+		TagColorRules::TagColorRuleOverrides overrides = TagColorRules::EvaluateCdmColorRules(definitionRules.cdm, pilotData, rulesNow);
 		TagColorRules::MergeColorRuleOverrides(
 			overrides,
 			TagColorRules::EvaluateRunwayColorRules(definitionRules.runway, target.tag.tokens));
+		if (targetOnly)
+		{
+			// An icon is shared by normal/detailed tags and all viewports. V2 tag
+			// detail scopes therefore constrain tag effects, not the aircraft color.
+			TagColorRules::MergeColorRuleOverrides(overrides,
+				TagColorRules::EvaluateStructuredTargetColorRules(structuredRules,
+					target.tag.definitionType,
+					target.tag.status == "default" ? nullptr : target.tag.status.c_str(),
+					target.tag.tokens, pilotData, rulesNow));
+			return overrides;
+		}
 
 		TagColorRules::TagColorRuleOverrides structuredOverrides = TagColorRules::EvaluateStructuredTagColorRules(
 			structuredRules,
@@ -815,18 +845,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			target.tag.status == "default" ? nullptr : target.tag.status.c_str(),
 			detailed,
 			target.tag.tokens,
-			pilotData);
-		if (detailed)
-		{
-			const TagColorRules::TagColorRuleOverrides normalStructuredOverrides = TagColorRules::EvaluateStructuredTagColorRules(
-				structuredRules,
-				target.tag.definitionType,
-				target.tag.status == "default" ? nullptr : target.tag.status.c_str(),
-				false,
-				target.tag.tokens,
-				pilotData);
-			TagColorRules::MergeMissingColorRuleOverrides(structuredOverrides, normalStructuredOverrides);
-		}
+			pilotData, rulesNow, detailed);
 		TagColorRules::MergeColorRuleOverrides(overrides, structuredOverrides);
 		return overrides;
 	};
@@ -1000,7 +1019,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	if (labels != nullptr)
 		readColor(*labels, "squawk_error_color", squawkErrorColor);
 	const VsmrScene::Color capturedSquawkErrorColor = CopyColor(squawkErrorColor);
-	auto applyTagElementColors = [&](Target& target, TagVariant& variant, const TagPalette& palette)
+	auto applyTagElementColors = [&](Target& target, TagVariant& variant, const TagPalette& palette,
+		const TagColorRules::TagColorRuleOverrides& overrides)
 	{
 		const auto sqError = target.tag.tokens.find("sqerror");
 		const std::string* sqErrorText = sqError != target.tag.tokens.end() && !sqError->second.empty()
@@ -1049,6 +1069,27 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 				}
 				if (element.hasCustomColor)
 					element.effectiveColor = element.customColor;
+				element.hasRuleBackground = false;
+				element.ruleBackground = {};
+				element.ruleBlink = false;
+				element.hasRuleBold = false;
+				element.ruleBold = false;
+				const auto field = overrides.fieldEffects.find(token);
+				if (field != overrides.fieldEffects.end())
+				{
+					const auto& effect = field->second;
+					if (effect.hasColor && (sqErrorText == nullptr || element.text != *sqErrorText))
+						element.effectiveColor = VsmrScene::Color{ static_cast<std::uint8_t>(effect.colorA),
+							static_cast<std::uint8_t>(effect.colorR), static_cast<std::uint8_t>(effect.colorG), static_cast<std::uint8_t>(effect.colorB) };
+					if (effect.hasBackground)
+					{
+						element.hasRuleBackground = true;
+						element.ruleBackground = VsmrScene::Color{ static_cast<std::uint8_t>(effect.backgroundA),
+							static_cast<std::uint8_t>(effect.backgroundR), static_cast<std::uint8_t>(effect.backgroundG), static_cast<std::uint8_t>(effect.backgroundB) };
+					}
+					if (effect.hasBold) { element.hasRuleBold = true; element.ruleBold = effect.bold; }
+					if (effect.hasBlink) element.ruleBlink = effect.blink;
+				}
 			}
 		}
 	};
@@ -1066,6 +1107,9 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		target.tag.status = ResolveTagStatus(target);
 		if (labels != nullptr)
 			target.tag.status = ResolveConfiguredTagStatus(*labels, target.tag.definitionType, target.tag.status);
+		// The airborne rules scope is additive: departure/arrival still identify
+		// the flight, while this captured flag also permits an airborne-only rule.
+		target.tag.tokens["rule.airborne"] = target.airborne ? "true" : "false";
 		if (labels != nullptr)
 		{
 			VsmrTags::UpdateTagVariant(CompiledTagDefinitions.Get(*labels, target.tag.definitionType, target.tag.status, false), target, false, target.tag.normal);
@@ -1078,12 +1122,13 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		}
 		const TagColorRules::TagColorRuleOverrides normalTagColorOverrides = evaluateTagColorRules(target, false);
 		const TagColorRules::TagColorRuleOverrides detailedTagColorOverrides = evaluateTagColorRules(target, true);
+		const TagColorRules::TagColorRuleOverrides targetColorOverrides = evaluateTagColorRules(target, false, true);
 		target.tag.normalPalette = resolveBaseTagPalette(target);
 		target.tag.detailedPalette = target.tag.normalPalette;
 		applyTagColorRules(target.tag.normalPalette, normalTagColorOverrides);
 		applyTagColorRules(target.tag.detailedPalette, detailedTagColorOverrides);
-		applyTagElementColors(target, target.tag.normal, target.tag.normalPalette);
-		applyTagElementColors(target, target.tag.detailed, target.tag.detailedPalette);
+		applyTagElementColors(target, target.tag.normal, target.tag.normalPalette, normalTagColorOverrides);
+		applyTagElementColors(target, target.tag.detailed, target.tag.detailedPalette, detailedTagColorOverrides);
 		Gdiplus::Color primaryReturnColor(255, 255, 242, 73);
 		if (targetsConfig != nullptr)
 			readColor(*targetsConfig, "target_color", primaryReturnColor);
@@ -1117,13 +1162,13 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 				: groundColor("arr", groundColor("arrival_gate", groundColor("gate", Gdiplus::Color(255, 165, 165, 165))));
 		}
 
-		if (normalTagColorOverrides.hasTargetColor)
+		if (targetColorOverrides.hasTargetColor)
 		{
 			color = Gdiplus::Color(
-				static_cast<BYTE>(std::clamp(normalTagColorOverrides.targetA, 0, 255)),
-				static_cast<BYTE>(std::clamp(normalTagColorOverrides.targetR, 0, 255)),
-				static_cast<BYTE>(std::clamp(normalTagColorOverrides.targetG, 0, 255)),
-				static_cast<BYTE>(std::clamp(normalTagColorOverrides.targetB, 0, 255)));
+				static_cast<BYTE>(std::clamp(targetColorOverrides.targetA, 0, 255)),
+				static_cast<BYTE>(std::clamp(targetColorOverrides.targetR, 0, 255)),
+				static_cast<BYTE>(std::clamp(targetColorOverrides.targetG, 0, 255)),
+				static_cast<BYTE>(std::clamp(targetColorOverrides.targetB, 0, 255)));
 		}
 
 		if (target.rimcas.movementAlert == static_cast<int>(CRimcas::EMERG))
