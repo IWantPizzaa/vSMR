@@ -151,6 +151,40 @@ LFPG defaults show East Arrows (`ground-layout-east`) for 08/09 and West Arrows 
 
 This only controls map-group visibility; it does not select vSID rules or configurations. Changed rule decisions are recorded as `AVISO runway visibility` diagnostics, including the source airport and observed ARR/DEP runways. Use `.smr diagnostics` after reproducing a problem to export the recent diagnostic messages, or `.smr log normal` to enable file logging before changing runways.
 
+## Profile Rules
+
+Control Center > Profiles > Rules supports nested **All**, **Any** and **Not** groups, exact value lists, text comparisons and numeric ranges. Flight fields include SID, departure/arrival runway, scratchpad, holding point, callsign, origin/destination, aircraft type, wake, status, clearance, speed (knots) and flight level (hundreds of feet). CDM time conditions use **now minus the event time**, in minutes: -5 means five minutes before TOBT, +5 means five minutes after. They use UTC timestamps, not the displayed HHMM string.
+
+Each rule can apply several visual effects: aircraft color, tag background/text, or an individual tag field's color, background, bold or dim blinking. Rules never change flight plans or aircraft status. Rules run in list order; later matches override earlier effects on the same property. **Stop processing** stops the remaining rules after a match. Existing display-mode filters and safety alerts remain independent.
+
+Tag detail scopes apply strictly to new tag effects; a new rule's aircraft icon color is shared across normal/detailed tags and viewports. Field text colors override the whole-tag text color. Existing legacy rules retain their normal-tag styling fallback for detailed tags and their normal-tag icon scope.
+
+For new typed conditions, missing values do not satisfy equality, inequality, list exclusion or numeric comparisons; negating an unavailable comparison remains unavailable. Use **Missing** explicitly. Lists match complete values; use **Starts with** for prefixes. Legacy rules keep their original matching semantics, including their handling of missing data, and appear as legacy conditions until explicitly replaced.
+
+Example version-2 rule: between TOBT -5/+5 minutes, SID in a specified list **and** departure runway in a specified list:
+
+```json
+{
+  "name": "Departure ready window",
+  "enabled": true,
+  "tag_type": "departure",
+  "detail": "any",
+  "when": {
+    "all": [
+      { "field": "cdm.tobt", "op": "between", "min": -5, "max": 5 },
+      { "field": "flight.sid", "op": "in", "values": ["OPALE6B", "OPALE6G"] },
+      { "field": "flight.deprwy", "op": "in", "values": ["26R", "27L"] }
+    ]
+  },
+  "effects": [
+    { "type": "target_color", "color": { "r": 0, "g": 200, "b": 160, "a": 255 } },
+    { "type": "field_bold", "field": "callsign", "value": true }
+  ]
+}
+```
+
+Rules live under the profile's `rules: { "version": 2, "items": [...] }` section. The editor validates conditions and effects before saving; invalid imported rules cannot broaden into unconditional matches. Limits are 256 rules, 128 condition nodes and eight levels per rule, 128 list values per condition and 32 effects per rule. Missing CDM/vSID data cannot trigger their numeric/value conditions.
+
 ## Documentation
 
 | Topic | Wiki page |

@@ -28,9 +28,9 @@
     "5 km or closer", "4 km or closer", "3 km or closer", "2.5 km or closer", "2 km or closer"
   ];
   const MODE_STATUSES = ["no_status", "parked", "push", "startup", "taxi", "lineup", "departure", "on_runway", "airborne", "arrivals", "no_fpl", "uncorrelated"];
-  const RULE_STATUSES = ["default", "nofpl", "push", "stup", "taxi", "lnup", "depa", "airdep", "airdep_onrunway", "airarr", "airarr_onrunway"];
+  const RULE_STATUSES = ["default", "nsts", "nofpl", "push", "stup", "taxi", "lnup", "depa", "airdep", "airdep_onrunway", "airarr", "airarr_onrunway"];
   const RULE_STATUS_LABELS = {
-    default: "Default", nofpl: "No FPL", push: "Push", stup: "Startup", taxi: "Taxi", lnup: "Line Up",
+    default: "Default", nsts: "No status", nofpl: "No FPL", push: "Push", stup: "Startup", taxi: "Taxi", lnup: "Line Up",
     depa: "Departure", airdep: "Airborne departure", airdep_onrunway: "Departure on runway",
     airarr: "Airborne arrival", airarr_onrunway: "Arrival on runway"
   };
@@ -59,14 +59,43 @@
     uncorrelated: { default: "background_on_ground_color" }
   };
   const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "vsid_sid", "vsid_rwy", "vsid_cfl", "ready_startup", "tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat", "uk_stand", "sqerror", "groundstatus", "systemid"];
-  const RULE_SOURCES = ["cdm", "runway", "custom", "vsid"];
-  const RULE_SOURCE_LABELS = { cdm: "CDM", runway: "Runway", custom: "SID / custom", vsid: "vSID" };
-  const RULE_SOURCE_TOKENS = {
-    cdm: ["tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat"],
-    runway: ["deprwy", "seprwy", "arvrwy", "srvrwy"],
-    custom: ["asid", "ssid"],
-    vsid: ["vsid_sid", "vsid_rwy", "vsid_cfl"]
-  };
+  const RULE_LIMITS = { depth: 8, nodes: 128, effects: 32, values: 128, rules: 256 };
+  const RULE_FIELDS = [
+    ...["tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat"].map(token => ({
+      id: `cdm.${token}`, label: `CDM · ${token.toUpperCase()} offset (min)`, numeric: true, time: true
+    })),
+    ...["tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat"].map(token => ({
+      id: `cdm.${token}_state`, label: `CDM · ${token.toUpperCase()} state`
+    })),
+    ...Object.entries({ sid: "SID", deprwy: "Departure runway", arvrwy: "Arrival runway", scratchpad: "Scratchpad",
+      holdingpoint: "Holding point", origin: "Origin", destination: "Destination", actype: "Aircraft type", wake: "Wake category",
+      groundstatus: "Ground status", callsign: "Callsign", clearance: "Clearance (true / false)" })
+      .map(([token, label]) => ({ id: `flight.${token}`, label: `Flight · ${label}` })),
+    { id: "flight.gs", label: "Flight · Ground speed (kt)", numeric: true },
+    { id: "flight.flightlevel", label: "Flight · Flight level (hundreds of ft)", numeric: true },
+    { id: "vsid.sid", label: "vSID · SID" }, { id: "vsid.rwy", label: "vSID · Runway" }, { id: "vsid.cfl", label: "vSID · Cleared level" }
+  ];
+  // These native fields remain editable when imported, without offering
+  // currently unpopulated CDM times as new condition suggestions.
+  const RULE_COMPAT_FIELDS = [
+    ...["aobt", "atot", "aort"].flatMap(token => [
+      { id: `cdm.${token}`, label: `CDM · ${token.toUpperCase()} offset (min)`, numeric: true, time: true },
+      { id: `cdm.${token}_state`, label: `CDM · ${token.toUpperCase()} state` }
+    ]),
+    ...["deice", "tobt_set_by", "flow_restriction", "ecfmp_restriction", "manual_ctot"]
+      .map(token => ({ id: `cdm.${token}`, label: `CDM · ${humanize(token)}` }))
+  ];
+  const RULE_EFFECT_FIELDS = ["event_booking", "ready_startup", "groundstatus", "holdingpoint", "flightlevel", "scratchpad",
+    "clearance", "callsign", "systemid", "tendency", "uk_stand", "vsid_cfl", "vsid_rwy", "vsid_sid", "sqerror", "actype",
+    "arvrwy", "deprwy", "origin", "remark", "sctype", "seprwy", "srvrwy", "aobt", "aort", "asat", "asid", "asrt", "atot",
+    "ctot", "dest", "gate", "sate", "ssid", "tobt", "tsac", "tsat", "ttot", "wake", "ssr", "gs"];
+  const RULE_COMPAT_STATUSES = ["gate", "arr"];
+  const RULE_ALL_STATUSES = ["any", ...RULE_STATUSES, ...RULE_COMPAT_STATUSES];
+  const RULE_OPERATOR_LABELS = { equals: "is", not_equals: "is not", in: "is in list", not_in: "is not in list",
+    contains: "contains", starts_with: "starts with", ends_with: "ends with", set: "is set", missing: "is missing",
+    lt: "<", lte: "≤", gt: ">", gte: "≥", between: "between (inclusive)" };
+  const RULE_EFFECT_LABELS = { target_color: "Aircraft icon color", tag_color: "Tag background color", text_color: "All tag text color",
+    field_color: "Field text color", field_background: "Field background color", field_bold: "Field bold", field_blink: "Field blink" };
   const AVISO_BACKGROUND_STYLE_ID = "__aviso_background__";
   const ALERT_TYPES = ["NO PUSH", "NO TAXI", "NO TKOF", "STAT RPA", "RWY INC", "RWY TYPE", "RWY CLSD", "HIGH SPD", "EMERG"];
   const DEFAULT_ALERT_RUNWAYS = [

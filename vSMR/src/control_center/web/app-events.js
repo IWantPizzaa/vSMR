@@ -33,7 +33,7 @@
         control instanceof HTMLTextAreaElement)) return "";
     if (control.matches(
       '[type="search"], [type="file"], ' +
-      '#tagTokenSelect'
+      '#tagTokenSelect, #ruleTemplate'
     ) || control.closest(".updater-general-group, #runtimeMenu, .page-rail, dialog")) return "";
 
     const profilePanel = control.closest("[data-profile-panel]")?.dataset.profilePanel;
@@ -53,10 +53,16 @@
     if (!scope) return true;
     const sectionKey = editorSectionKey(control);
     if (sectionKey && !unappliedEditorSections.has(sectionKey)) return true;
-    if (control.matches("#colorHex, #ruleTargetColor, #ruleTagColor, #ruleTextColor") &&
-        !/^#?[0-9a-f]{6}$/i.test(control.value.trim())) return false;
+    if (control.matches("#colorHex, .rule-color-value") &&
+        !/^#?[0-9a-f]{6}$/i.test(control.value.trim())) {
+      if (scope === "rules") updateRuleValidationMessage("Enter a six-digit hexadecimal color, for example #FFFFFF.");
+      return false;
+    }
     if (control.matches(".color-channel-value") && !/^\d{1,3}$/.test(control.value.trim())) return false;
-    if (control.checkValidity && !control.checkValidity()) return false;
+    if (control.checkValidity && !control.checkValidity()) {
+      if (scope === "rules") updateRuleValidationMessage(control.validationMessage || "Finish the current value before saving.");
+      return false;
+    }
     const result = (() => {
       if (scope === "colors") return applyColorDraft({ render: false });
       if (scope === "icons") return applyIcons({ render: false });
@@ -307,7 +313,10 @@
         "#controlWindow [data-managed-profile-id], #controlWindow [data-aviso-group-id], " +
         "#controlWindow [data-aviso-geometry-style], #controlWindow [data-aviso-text-style]"
       );
-      if (guardedEditorAction && hasUnappliedEditorInputs() && !stageFocusedEditorValue()) {
+      const ruleRepairAction = guardedEditorAction?.closest('[data-profile-panel="rules"]') &&
+        ["add-condition", "add-condition-group", "delete-condition", "replace-legacy-condition", "apply-rule-template",
+          "add-rule-effect", "delete-rule-effect", "delete-rule", "paste-rule"].includes(guardedEditorAction.dataset.action);
+      if (guardedEditorAction && !ruleRepairAction && hasUnappliedEditorInputs() && !stageFocusedEditorValue()) {
         event.preventDefault();
         return;
       }
@@ -501,38 +510,46 @@
 
     $("#criteriaList").addEventListener("change", event => {
       const field = event.target.dataset.field;
-      if (!field || !["source", "token", "condition"].includes(field)) return;
-      const row = event.target.closest(".criterion-row");
-      const source = $("[data-field='source']", row);
-      const token = $("[data-field='token']", row);
-      const condition = $("[data-field='condition']", row);
-      if (field === "source") {
-        const tokens = ruleTokensForSource(source.value);
-        token.innerHTML = ruleSelectOptions(tokens, tokens[0]);
+      if (field === "group") {
+        changeRuleGroup(event.target.closest(".rule-condition-group").dataset.nodePath, event.target.value);
+        return;
       }
-      if (field === "source" || field === "token") {
-        condition.innerHTML = ruleSelectOptions(ruleConditionsFor(source.value, token.value), "any", { not_in: "not in" });
-        $("[data-field='condition-values']", row).value = "";
-      }
-      updateRuleConditionValueControl(row);
+      if (!["field", "op"].includes(field)) return;
+      const row = event.target.closest(".criterion-row"), path = row?.dataset.nodePath || "";
+      const selectedField = $("[data-field='field']", row).value;
+      const operator = field === "field" ? "set" : $("[data-field='op']", row).value;
+      editRuleStructure(() => {
+        const node = { field: selectedField, op: operator };
+        if (operator === "between") { node.min = -5; node.max = 5; }
+        else if (["in", "not_in"].includes(operator)) node.values = [];
+        else if (!["set", "missing"].includes(operator)) node.value = ruleFieldDefinition(selectedField)?.numeric ? 0 : "";
+        replaceRuleNode(path, node);
+      });
     });
 
-    ["Target", "Tag", "Text"].forEach(kind => {
-      $(`#ruleUse${kind}Color`).addEventListener("change", () => {
-        const enabled = $(`#ruleUse${kind}Color`).checked;
-        $(`#rule${kind}Color`).disabled = !enabled;
-        $(`#rule${kind}Picker`).disabled = !enabled;
+    $("#ruleEffectsList").addEventListener("change", event => {
+      if (event.target.dataset.field !== "effect-type") return;
+      const row = event.target.closest(".rule-effect-row"), index = Number(row.dataset.effectIndex), type = event.target.value;
+      const colorText = $("[data-field='effect-color']", row)?.value || "#ffffff";
+      const alpha = Number($("[data-field='effect-alpha']", row)?.value ?? 255);
+      const token = $("[data-field='effect-field']", row)?.value || "callsign";
+      editRuleStructure(rule => {
+        const effect = { type };
+        if (type.startsWith("field_")) effect.field = token;
+        if (type.endsWith("_color") || type === "field_background") effect.color = hexToColor(colorText, alpha);
+        else effect.value = true;
+        rule.effects[index] = effect;
       });
-      $(`#rule${kind}Color`).addEventListener("input", event => {
-        if (!/^#?[0-9a-f]{6}$/i.test(event.target.value.trim())) return;
-        const hex = normalizeHex(event.target.value, "#ffffff");
-        $(`#rule${kind}Picker`).value = hex;
-        $(`#rule${kind}Picker`).closest("label").style.setProperty("--swatch-color", hex);
-      });
-      $(`#rule${kind}Picker`).addEventListener("input", event => {
-        $(`#rule${kind}Color`).value = event.target.value.toUpperCase();
-        event.target.closest("label").style.setProperty("--swatch-color", event.target.value);
-      });
+    });
+    $("#ruleEffectsList").addEventListener("input", event => {
+      const row = event.target.closest(".rule-effect-row");
+      if (!row) return;
+      const field = event.target.dataset.field;
+      if (field === "effect-picker") $("[data-field='effect-color']", row).value = event.target.value.toUpperCase();
+      if (field === "effect-color" && /^#?[0-9a-f]{6}$/i.test(event.target.value.trim()))
+        $("[data-field='effect-picker']", row).value = normalizeHex(event.target.value, "#ffffff");
+      const picker = $("[data-field='effect-picker']", row);
+      if (picker) picker.closest("label").style.setProperty("--swatch-color", picker.value);
     });
 
     $("#ruleStatusButton").addEventListener("click", event => {
@@ -826,14 +843,15 @@
     else if (action === "new-rule") createRule();
     else if (action === "duplicate-rule") duplicateRule();
     else if (action === "delete-rule") deleteRule();
-    else if (action === "add-condition") {
-      const draft = captureRuleDraft();
-      if (!drafts.rule || !draft) return;
-      drafts.rule.data.criteria.push({ source: "cdm", token: "", condition: "" });
-      renderRuleEditor();
-      applyRule({ render: false });
-    }
-    else if (action === "delete-condition") deleteRuleCondition(Number(button.dataset.index));
+    else if (action === "move-rule-up") moveRule(-1);
+    else if (action === "move-rule-down") moveRule(1);
+    else if (action === "add-condition") addRuleCondition(button.dataset.nodePath || "");
+    else if (action === "add-condition-group") addRuleCondition(button.dataset.nodePath || "", true);
+    else if (action === "delete-condition") deleteRuleCondition(button.dataset.nodePath || "");
+    else if (action === "replace-legacy-condition") editRuleStructure(() => replaceRuleNode(button.dataset.nodePath || "", defaultRuleCondition()));
+    else if (action === "apply-rule-template") applyRuleTemplate($("#ruleTemplate").value);
+    else if (action === "add-rule-effect") addRuleEffect();
+    else if (action === "delete-rule-effect") deleteRuleEffect(Number(button.dataset.index));
     else if (action === "new-mode") createMode();
     else if (action === "duplicate-mode") duplicateMode();
     else if (action === "delete-mode") deleteMode();

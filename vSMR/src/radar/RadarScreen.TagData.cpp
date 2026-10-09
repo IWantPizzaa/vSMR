@@ -7,8 +7,10 @@
 #include "integrations/VsidBridgeClient.hpp"
 #include "tags/CdmTagHelpers.hpp"
 
+#include "tags/TagColorRules.hpp"
 #include "tags/TagDataFormatting.hpp"
 
+#include <algorithm>
 #include <utility>
 
 namespace
@@ -72,6 +74,45 @@ namespace
 			input.hasFlightPlan ? CopyTagText(fp.GetFlightPlanData().GetRemarks()) : "");
 		return input;
 	}
+
+	void AddRawRuleData(const VsmrTags::TagDataInput& input, VsmrTags::TokenValues& output)
+	{
+		// Rule predicates use the captured source values, never tag placeholders,
+		// shortened SIDs/callsigns, correlation fallbacks or display-only formatting.
+		// Reuse the same SDK snapshot as the tag so evaluation performs no new reads.
+		output["rule.callsign"] = input.callsign;
+		output["rule.sid"] = input.sid;
+		output["rule.asid"] = input.sid;
+		output["rule.deprwy"] = input.departureRunway;
+		output["rule.arvrwy"] = input.arrivalRunway;
+		output["rule.scratchpad"] = input.scratchpad;
+		output["rule.holdingpoint"] = input.holdingPoint;
+		output["rule.origin"] = input.origin;
+		output["rule.dest"] = input.destination;
+		output["rule.actype"] = input.aircraftType;
+		output["rule.wake"] = input.receivedFlightPlan &&
+			(input.wake == 'L' || input.wake == 'M' || input.wake == 'H' || input.wake == 'J')
+			? std::string(1, input.wake) : std::string();
+		output["rule.groundstatus"] = input.lineup ? "LNUP" : input.groundState;
+		output["rule.gs"] = input.hasRadarTarget ? std::to_string(input.groundSpeed) : std::string();
+		// Numeric flight levels are in hundreds of feet (FL100 -> 100).
+		output["rule.flightlevel"] = input.hasRadarTarget && !input.primary
+			? std::to_string(input.flightLevel / 100) : std::string();
+		output["rule.clearance"] = input.receivedFlightPlan
+			? (input.clearance ? "true" : "false") : "";
+		output["rule.uk_stand"] = input.stand;
+		output["rule.remark"] = input.remark;
+	}
+}
+
+bool CSMRRadar::HasClockSensitiveTagRules() const
+{
+	if (!GetActiveDisplayModeSettings().structuredRulesEnabled)
+		return false;
+	// GetStructuredTagColorRules caches the compiled profile; the timer only
+	// scans this bounded vector once per second, never the profile JSON per frame.
+	const auto& rules = GetStructuredTagColorRules();
+	return std::any_of(rules.begin(), rules.end(), VsmrTagColorRules::IsStructuredRuleClockSensitive);
 }
 
 void CSMRRadar::GenerateTagData(VsmrTags::TokenValues& TagReplacingMap, const CRadarTarget& rt, const CFlightPlan& fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, const std::string& ActiveAirport, const std::string& stableCallsign, const CdmPilotData* capturedCdmData, const int* capturedPreviousFlightLevel)
@@ -89,9 +130,13 @@ void CSMRRadar::GenerateTagData(VsmrTags::TokenValues& TagReplacingMap, const CR
 		input.remark = std::move(rampAgentData.remark);
 	}
 	VsmrTags::FormatTagData(input, TagReplacingMap);
+	AddRawRuleData(input, TagReplacingMap);
 	VsmrVsid::AircraftData vsidData;
 	const bool hasVsidData = VsmrVsid::TryGetAircraftData(bridgeCallsign, vsidData);
 	VsmrVsid::AddTagTokens(TagReplacingMap, hasVsidData ? &vsidData : nullptr);
+	TagReplacingMap["rule.vsid_sid"] = hasVsidData ? vsidData.sid : "";
+	TagReplacingMap["rule.vsid_rwy"] = hasVsidData ? vsidData.runway : "";
+	TagReplacingMap["rule.vsid_cfl"] = hasVsidData ? vsidData.clearedFlightLevel : "";
 	VsmrCdm::AddTagTokens(TagReplacingMap, capturedCdmData != nullptr ? &capturedCdmData->bridgeData : nullptr);
 	if (Logger::is_verbose_mode()) Logger::info("GenerateTagData: callsign=" + TagReplacingMap.at("callsign") +
 		" actype=" + TagReplacingMap.at("actype") + " gs=" + TagReplacingMap.at("gs"));

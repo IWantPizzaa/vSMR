@@ -35,6 +35,9 @@ namespace VsmrTagRendering
 		int action = 0;
 		bool bold = false;
 		VsmrScene::Color color;
+		bool hasRuleBackground = false;
+		VsmrScene::Color ruleBackground;
+		bool ruleBlink = false;
 		int width = 0;
 		int height = 0;
 	};

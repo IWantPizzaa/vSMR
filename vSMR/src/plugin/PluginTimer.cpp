@@ -186,7 +186,10 @@ void CSMRPlugin::OnTimer(int Counter)
 	{
 		if (radar == nullptr || radar->IsShutdownRequested())
 			continue;
-		bool refresh = false;
+		// Bridge revisions do not change when a TOBT/TSAT threshold is crossed
+		// or a rule-driven blink advances. Keep those rules live on both vSMR
+		// screens and CoFrance inset hosts through the normal refresh API.
+		bool refresh = radar->HasClockSensitiveTagRules();
 		if (radar->IsAppWindowDisplayed(weatherWindowId))
 		{
 			for (const auto& station : radar->GetOpenWeatherAirports()) QueueWeatherFetch(station);

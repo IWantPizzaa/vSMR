@@ -36,6 +36,36 @@ struct CdmPilotData
 
 struct StructuredTagColorRule
 {
+	// A bounded expression tree is compiled once when a profile is loaded.
+	// The "legacy" field retains the exact semantics of pre-v2 criteria.
+	struct RuleCondition
+	{
+		std::string kind = "leaf";
+		std::string field;
+		std::string op;
+		std::string source;
+		std::string token;
+		std::string condition;
+		std::string value;
+		bool valueIsNumber = false;
+		double numberValue = 0.0;
+		std::vector<std::string> values;
+		double minimum = 0.0;
+		double maximum = 0.0;
+		std::vector<RuleCondition> children;
+	};
+
+	struct RuleEffect
+	{
+		std::string type;
+		std::string field;
+		int r = 255;
+		int g = 255;
+		int b = 255;
+		int a = 255;
+		bool value = true;
+	};
+
 	struct Criterion
 	{
 		std::string source = "cdm";
@@ -52,6 +82,11 @@ struct StructuredTagColorRule
 	std::string status = "any";
 	std::vector<std::string> statuses;
 	std::string detail = "any";
+	bool enabled = true;
+	bool stopProcessing = false;
+	bool usesStructuredCondition = false;
+	RuleCondition when;
+	std::vector<RuleEffect> effects;
 	bool applyTarget = false;
 	int targetR = 255;
 	int targetG = 255;

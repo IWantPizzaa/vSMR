@@ -13,7 +13,10 @@
   }
 
   function createRule() {
-    rules().push({ source: "cdm", token: "tsat", condition: "set", criteria: [{ source: "cdm", token: "tsat", condition: "set" }], tag_type: "departure", status: "any", statuses: RULE_STATUSES.slice(), detail: "normal", text_color: hexToColor("#ffffff") });
+    if (rules().length >= RULE_LIMITS.rules) { showToast("Use at most 256 rules per profile", "error"); return; }
+    activeProfile().rules.version = 2;
+    rules().push({ enabled: true, stop_processing: false, when: { all: [defaultRuleCondition()] },
+      effects: [defaultRuleEffect()], tag_type: "departure", statuses: RULE_STATUSES.slice(), detail: "any" });
     state.ui.selectedRuleIndex = rules().length - 1;
     drafts.rule = null;
     clearUnappliedEditorSection($("#ruleName"));
@@ -22,7 +25,7 @@
   }
   function duplicateRule() {
     const item = rules()[state.ui.selectedRuleIndex];
-    if (!item) return;
+    if (!item || rules().length >= RULE_LIMITS.rules) return;
     const copy = clone(item);
     copy.name = `${ruleLabel(item, state.ui.selectedRuleIndex)} copy`;
     rules().splice(state.ui.selectedRuleIndex + 1, 0, copy);
@@ -41,13 +44,77 @@
     markDirty("Rule deleted", ["profiles"]);
     renderRules();
   }
-  function deleteRuleCondition(index) {
-    captureRuleDraft();
-    if (!drafts.rule) return;
-    drafts.rule.data.criteria.splice(index, 1);
-    if (!drafts.rule.data.criteria.length) drafts.rule.data.criteria.push({ source: "cdm", token: "", condition: "" });
+  function moveRule(direction) {
+    const items = rules(), index = state.ui.selectedRuleIndex, next = index + direction;
+    if (next < 0 || next >= items.length || !applyRule({ render: false })) return;
+    [items[index], items[next]] = [items[next], items[index]];
+    state.ui.selectedRuleIndex = next;
+    drafts.rule = null;
+    clearUnappliedEditorSection($("#ruleName"));
+    markDirty("Rule order updated", ["profiles"]);
+    renderRules();
+  }
+  function editRuleStructure(edit) {
+    if (!captureRuleDraft()) return;
+    edit(drafts.rule.data);
     renderRuleEditor();
+    markEditorSectionUnapplied($("#ruleName"));
     applyRule({ render: false });
+  }
+  function ruleNodeCount(node) {
+    if (!node || typeof node !== "object") return 0;
+    if (node.not) return 1 + ruleNodeCount(node.not);
+    return 1 + (node.all || node.any || []).reduce((count, child) => count + ruleNodeCount(child), 0);
+  }
+  function addRuleCondition(path, group = false) {
+    if (!captureRuleDraft()) return;
+    const node = ruleNodeAtPath(drafts.rule.data.when, path), key = node?.all ? "all" : node?.any ? "any" : "";
+    const depth = String(path || "").split("/").filter(part => ["all", "any", "not"].includes(part)).length + 1;
+    if (!path && node && !["all", "any", "not"].some(member => Object.hasOwn(node, member))) {
+      // A root leaf remains unchanged until the user explicitly asks to add
+      // another condition. Count the new ALL wrapper toward both limits.
+      const newNode = group ? { any: [defaultRuleCondition()] } : defaultRuleCondition();
+      if (ruleNodeCount(node) + 1 + ruleNodeCount(newNode) > RULE_LIMITS.nodes || (group ? 3 : 2) > RULE_LIMITS.depth) return;
+      editRuleStructure(rule => { rule.when = { all: [node, newNode] }; });
+      return;
+    }
+    if (!key) return;
+    if (ruleNodeCount(drafts.rule.data.when) + (group ? 2 : 1) > RULE_LIMITS.nodes ||
+        depth + (group ? 2 : 1) > RULE_LIMITS.depth) { showToast("Condition nesting or node limit reached", "error"); return; }
+    editRuleStructure(() => node[key].push(group ? { any: [defaultRuleCondition()] } : defaultRuleCondition()));
+  }
+  function deleteRuleCondition(path) {
+    editRuleStructure(() => {
+      if (!path) { drafts.rule.data.when = defaultRuleCondition(); return; }
+      const parts = path.split("/").filter(Boolean), key = parts.pop();
+      const parent = ruleNodeAtPath(drafts.rule.data.when, parts.join("/"));
+      if (Array.isArray(parent)) parent.splice(Number(key), 1);
+      else if (parent && key === "not") parent.not = defaultRuleCondition();
+    });
+  }
+  function changeRuleGroup(path, operator) {
+    editRuleStructure(() => {
+      const node = ruleNodeAtPath(drafts.rule.data.when, path);
+      const children = node?.all || node?.any || (node?.not ? [node.not] : [defaultRuleCondition()]);
+      replaceRuleNode(path, operator === "not" ? { not: children.length === 1 ? children[0] : { all: children } } : { [operator]: children });
+    });
+  }
+  function applyRuleTemplate(name) {
+    const templates = {
+      tobt: { all: [{ field: "cdm.tobt", op: "between", min: -5, max: 5 }] },
+      "sid-runway": { all: [{ field: "flight.sid", op: "in", values: ["SID1A", "SID2B"] }, { field: "flight.deprwy", op: "in", values: ["26R", "27L"] }] },
+      "holding-runway": { all: [{ field: "flight.holdingpoint", op: "equals", value: "N4" }, { field: "flight.deprwy", op: "equals", value: "26R" }] },
+      scratchpad: { all: [{ field: "flight.scratchpad", op: "equals", value: "READY" }] }
+    };
+    if (!Object.hasOwn(templates, name)) return;
+    editRuleStructure(rule => { rule.when = clone(templates[name]); });
+  }
+  function addRuleEffect() {
+    if ((drafts.rule?.data?.effects || []).length >= RULE_LIMITS.effects) return;
+    editRuleStructure(rule => rule.effects.push(defaultRuleEffect()));
+  }
+  function deleteRuleEffect(index) {
+    editRuleStructure(rule => { rule.effects.splice(index, 1); });
   }
 
   function createMode() {

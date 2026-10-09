@@ -56,6 +56,11 @@ namespace VsmrScene
 		bool hasCustomColor = false;
 		Color customColor;
 		Color effectiveColor;
+		bool hasRuleBackground = false;
+		Color ruleBackground;
+		bool ruleBlink = false;
+		bool hasRuleBold = false;
+		bool ruleBold = false;
 		bool clearanceToken = false;
 	};
 

@@ -347,8 +347,11 @@ namespace VsmrTagRendering
 				ElementLayout element;
 				element.text = sourceElement.text;
 				element.action = sourceElement.action;
-				element.bold = sourceElement.bold;
+				element.bold = sourceElement.hasRuleBold ? sourceElement.ruleBold : sourceElement.bold;
 				element.color = sourceElement.effectiveColor;
+				element.hasRuleBackground = sourceElement.hasRuleBackground;
+				element.ruleBackground = sourceElement.ruleBackground;
+				element.ruleBlink = sourceElement.ruleBlink;
 				const Gdiplus::Size measured = fonts.Measure(element.text, element.bold);
 				element.width = measured.Width;
 				element.height = measured.Height;
@@ -531,9 +534,18 @@ namespace VsmrTagRendering
 			{
 				if (!element.text.empty())
 				{
+					if (element.hasRuleBackground)
+					{
+						Gdiplus::SolidBrush& fieldBrush = fonts.Brush(ToGdiColor(element.ruleBackground));
+						graphics.FillRectangle(&fieldBrush, Gdiplus::Rect(x, textTop,
+							element.width, fonts.LineHeight()));
+					}
 					const int y = textTop + (std::max)(0, fonts.LineHeight() - element.height + 1) / 2;
 					const std::wstring& text = fonts.Utf16Text(element.text);
-					Gdiplus::SolidBrush& textBrush = fonts.Brush(ToGdiColor(element.color));
+					// Dim rather than erase blinking fields: keep text and hit targets
+					// readable, and synchronize main/inset views on one clock phase.
+					const bool dimField = element.ruleBlink && ((::GetTickCount64() / 1000ULL) % 2ULL != 0);
+					Gdiplus::SolidBrush& textBrush = fonts.Brush(ScaleAlpha(ToGdiColor(element.color), dimField ? 100 : 255));
 					graphics.DrawString(
 						text.c_str(),
 						static_cast<INT>(text.size()),

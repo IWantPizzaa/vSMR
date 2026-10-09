@@ -1,5 +1,18 @@
 /* Responsive adaptations only; base component rules live with their owners. */
 
+@container rules (max-width: 480px) {
+  .rule-editor-summary-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@container rules (max-width: 380px) {
+  .criterion-row:not(.rule-legacy-condition) { grid-template-columns: minmax(0, 1fr) minmax(0, .8fr) 22px; }
+  .criterion-row > .criterion-delete { grid-column: 3; grid-row: 1; }
+  .rule-condition-value { grid-column: 1 / -1; grid-row: 2; }
+  .rule-effect-row { grid-template-columns: minmax(0, 1fr) minmax(0, .8fr) 22px; }
+  .rule-effect-row > :is(.rule-effect-color, .check-field) { grid-column: 1 / 3; grid-row: 2; }
+  .rule-effect-row > button { grid-column: 3; grid-row: 1; }
+}
+
 @media (max-width: 790px) {
   .control-window { min-width: 0; width: calc(100vw - 10px); height: calc(100vh - 10px); }
   .three-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }

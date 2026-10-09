@@ -1,5 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "tags/TagTokenValues.hpp"
+#include "tags/TagColorRules.hpp"
 #include "radar/RadarScreen.hpp"
 #include "config/ProfileNormalization.hpp"
 #include "tags/TagDefinitionUtils.hpp"
@@ -1035,6 +1036,13 @@ namespace
 
 	bool StructuredRulesEqual(const StructuredTagColorRule& a, const StructuredTagColorRule& b)
 	{
+		if (a.usesStructuredCondition || b.usesStructuredCondition)
+		{
+			if (a.usesStructuredCondition != b.usesStructuredCondition) return false;
+			rapidjson::Document left, right;
+			return VsmrTagColorRules::WriteStructuredRuleV2(a, left, left.GetAllocator()) &&
+				VsmrTagColorRules::WriteStructuredRuleV2(b, right, right.GetAllocator()) && left == right;
+		}
 		if (a.criteria.size() != b.criteria.size())
 			return false;
 		for (size_t i = 0; i < a.criteria.size(); ++i)
@@ -1047,7 +1055,7 @@ namespace
 			}
 		}
 
-		return a.source == b.source &&
+		return a.enabled == b.enabled && a.stopProcessing == b.stopProcessing && a.source == b.source &&
 			a.token == b.token &&
 			a.condition == b.condition &&
 			a.name == b.name &&
@@ -1146,13 +1154,26 @@ const std::vector<StructuredTagColorRule>& CSMRRadar::GetStructuredTagColorRules
 	}
 
 	const rapidjson::Value& items = (*rulesObject)["items"];
-	for (rapidjson::SizeType i = 0; i < items.Size(); ++i)
+	if (items.Size() > 256)
+		Logger::info("Rules: profile exceeds the 256-rule limit; excess rules are ignored.");
+	for (rapidjson::SizeType i = 0; i < items.Size() && i < 256; ++i)
 	{
 		if (!items[i].IsObject())
 			continue;
 
 		const rapidjson::Value& item = items[i];
 		StructuredTagColorRule rule;
+		if (item.HasMember("when"))
+		{
+			std::string error;
+			if (VsmrTagColorRules::TryParseStructuredRuleV2(item, rule, &error))
+				StructuredTagRulesCache.push_back(std::move(rule));
+			else
+				Logger::info("Rules: ignored invalid rule " + std::to_string(i + 1) + ": " + error);
+			continue;
+		}
+		if (item.HasMember("enabled") && item["enabled"].IsBool()) rule.enabled = item["enabled"].GetBool();
+		if (item.HasMember("stop_processing") && item["stop_processing"].IsBool()) rule.stopProcessing = item["stop_processing"].GetBool();
 
 		auto appendCriterion = [&](const std::string& rawSource, const std::string& rawToken, const std::string& rawCondition) {
 			const std::string normalizedSource = NormalizeStructuredRuleSource(rawSource);
@@ -1286,14 +1307,20 @@ const std::vector<StructuredTagColorRule>& CSMRRadar::GetStructuredTagColorRules
 
 bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorRule>& rules, bool persistToDisk)
 {
-	if (!CurrentConfig)
+	if (!CurrentConfig || rules.size() > 256)
 		return false;
 
-	rapidjson::Value& profile = CurrentConfig->getMutableActiveProfile();
-	if (!profile.IsObject())
+	rapidjson::Value& activeProfile = CurrentConfig->getMutableActiveProfile();
+	if (!activeProfile.IsObject())
 		return false;
 
 	auto& allocator = CurrentConfig->document.GetAllocator();
+	// Stage all normalization and serialization before touching live settings.
+	// Rejecting a malformed rule must not remove the previous legacy rules or
+	// leave only a partially updated rules section in the active profile.
+	rapidjson::Value stagedProfile;
+	stagedProfile.CopyFrom(activeProfile, allocator);
+	rapidjson::Value& profile = stagedProfile;
 	bool changed = false;
 
 	auto ensureObjectMember = [&](rapidjson::Value& parent, const char* key) -> rapidjson::Value&
@@ -1321,14 +1348,14 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 
 	rapidjson::Value& rulesObject = ensureObjectMember(profile, "rules");
 
-	if (!rulesObject.HasMember("version") || !rulesObject["version"].IsInt() || rulesObject["version"].GetInt() != 1)
+	if (!rulesObject.HasMember("version") || !rulesObject["version"].IsInt() || rulesObject["version"].GetInt() != 2)
 	{
 		if (rulesObject.HasMember("version"))
 			rulesObject.RemoveMember("version");
 		rapidjson::Value keyValue;
 		keyValue.SetString("version", allocator);
 		rapidjson::Value versionValue;
-		versionValue.SetInt(1);
+		versionValue.SetInt(2);
 		rulesObject.AddMember(keyValue, versionValue, allocator);
 		changed = true;
 	}
@@ -1338,6 +1365,15 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 	normalizedRules.reserve(rules.size());
 	for (const StructuredTagColorRule& rawRule : rules)
 	{
+		if (rawRule.usesStructuredCondition)
+		{
+			rapidjson::Value serialized;
+			StructuredTagColorRule checked;
+			if (!VsmrTagColorRules::WriteStructuredRuleV2(rawRule, serialized, allocator) ||
+				!VsmrTagColorRules::TryParseStructuredRuleV2(serialized, checked)) return false;
+			normalizedRules.push_back(std::move(checked));
+			continue;
+		}
 		StructuredTagColorRule normalizedRule = rawRule;
 		normalizedRule.criteria.clear();
 		auto appendNormalizedCriterion = [&](const std::string& rawSource, const std::string& rawToken, const std::string& rawCondition) {
@@ -1443,8 +1479,16 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 		for (const StructuredTagColorRule& rule : normalizedRules)
 		{
 			rapidjson::Value ruleObject(rapidjson::kObjectType);
+			if (rule.usesStructuredCondition)
+			{
+				if (!VsmrTagColorRules::WriteStructuredRuleV2(rule, ruleObject, allocator)) return false;
+				rulesArray.PushBack(ruleObject, allocator);
+				continue;
+			}
 
 			rapidjson::Value sourceKey;
+			ruleObject.AddMember("enabled", rule.enabled, allocator);
+			ruleObject.AddMember("stop_processing", rule.stopProcessing, allocator);
 			sourceKey.SetString("source", allocator);
 			rapidjson::Value sourceValue;
 			sourceValue.SetString(rule.source.c_str(), static_cast<rapidjson::SizeType>(rule.source.size()), allocator);
@@ -1555,6 +1599,7 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 		return true;
 	}
 
+	activeProfile = std::move(stagedProfile);
 	StructuredTagRulesCache = normalizedRules;
 	StructuredTagRulesCacheValid = true;
 

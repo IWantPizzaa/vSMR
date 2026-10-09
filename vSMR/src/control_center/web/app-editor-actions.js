@@ -23,7 +23,7 @@
   const RESET_SECTION_LABELS = {
     colors: "selected profile colors", icons: "icon appearance and trails",
     tags: "selected tag definitions", "tag-options": "tag font and layout options",
-    rules: "this profile's color rules", alerts: "alert options (keeping runway states)",
+    rules: "this profile's rules", alerts: "alert options (keeping runway states)",
     geometry: "selected AVISO geometry styles in this palette",
     text: "selected AVISO text styles in this palette"
   };
