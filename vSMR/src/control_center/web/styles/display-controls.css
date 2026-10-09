@@ -57,28 +57,6 @@
   text-transform: uppercase;
 }
 
-.rule-color-grid {
-  display: grid;
-  gap: 4px;
-}
-
-.rule-color-row {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 68px minmax(0, 1fr) 22px;
-  gap: 5px;
-  align-items: center;
-  padding: 4px;
-  border: 1px solid var(--ui-inner-border);
-  border-radius: var(--ui-control-radius);
-  background: var(--ui-card-bg);
-}
-
-.rule-color-row > input[type="text"] {
-  font-family: var(--mono);
-  text-transform: uppercase;
-}
-
 .mini-color-swatch {
   width: 22px;
   height: 22px;
