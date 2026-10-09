@@ -1129,8 +1129,8 @@ bool CSMRRadar::PrepareRefreshPhase(HDC hDC, int phase)
 			Logger::info("CoFrance inset host received refresh phase=" + std::to_string(phase));
 		InsetHostRefreshPhasesSeen |= phaseBit;
 	}
-	const int renderPhase = VsmrRadar::UsesAfterListsPhase(IsInsetsOnly(), HostNeedsRadarContent)
-		? REFRESH_PHASE_AFTER_LISTS : REFRESH_PHASE_BEFORE_TAGS;
+	const int renderPhase = VsmrRadar::ResolveRefreshPhase(
+		IsInsetsOnly(), HostNeedsRadarContent, InsetHostRefreshPhasesSeen);
 	if (phase != renderPhase)
 		return false;
 	if (Logger::is_verbose_mode())
