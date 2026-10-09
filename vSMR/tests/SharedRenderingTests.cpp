@@ -731,6 +731,120 @@ namespace
 			failures);
 	}
 
+	void TestRuleFieldRendering(std::vector<std::string>& failures)
+	{
+		Gdiplus::Bitmap canvas(320, 120, PixelFormat32bppARGB);
+		Gdiplus::Graphics graphics(&canvas);
+		Gdiplus::Font font(Gdiplus::FontFamily::GenericSansSerif(), 12.0f,
+			Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+		VsmrTagRendering::FontContext fonts(graphics, &font, 2);
+		Check(fonts.IsValid(), "field rule renderer test font is available", failures);
+		if (!fonts.IsValid()) return;
+
+		VsmrScene::TagVariant variant;
+		variant.lines.emplace_back();
+		for (int index = 0; index < 4; ++index)
+		{
+			VsmrScene::TagElement element;
+			element.token = "sid";
+			element.text = "WIDE";
+			element.action = 30 + index;
+			element.bold = index == 1 || index == 3;
+			element.hasRuleBold = index >= 2;
+			element.ruleBold = index == 0 || index == 2;
+			element.effectiveColor = { 255, 225, 225, 225 };
+			variant.lines.back().elements.push_back(element);
+		}
+
+		VsmrTagRendering::Layout baseline;
+		Check(VsmrTagRendering::MeasureLayout(fonts, variant, baseline),
+			"field rule layouts measure inherited and overridden font weights", failures);
+		if (baseline.lines.size() != 1 || baseline.lines[0].elements.size() != 4)
+		{
+			failures.emplace_back("field rule layout retains all four source cells");
+			return;
+		}
+		const bool expectedBold[] = { false, true, true, false };
+		for (std::size_t index = 0; index < 4; ++index)
+		{
+			const auto& measured = baseline.lines[0].elements[index];
+			const auto& source = variant.lines[0].elements[index];
+			Check(measured.bold == expectedBold[index] &&
+				measured.width == fonts.Measure(source.text, expectedBold[index]).Width,
+				"field bold rules override true/false while absent overrides inherit definition weight", failures);
+			Check(source.bold == (index == 1 || index == 3),
+				"measuring rule-weighted fields never mutates the original definition bold flag", failures);
+		}
+
+		auto& styled = variant.lines[0].elements[0];
+		styled.hasRuleBackground = true;
+		styled.ruleBackground = { 255, 17, 63, 91 };
+		styled.ruleBlink = true;
+		variant.lines[0].elements[2].ruleBlink = true;
+		VsmrTagRendering::Layout effected;
+		Check(VsmrTagRendering::MeasureLayout(fonts, variant, effected),
+			"field backgrounds and blinking retain a measurable tag", failures);
+		if (effected.lines.size() != 1 || effected.lines[0].elements.size() != 4)
+		{
+			failures.emplace_back("field effects preserve all measured tag cells");
+			return;
+		}
+		const auto& measuredStyle = effected.lines[0].elements[0];
+		Check(measuredStyle.hasRuleBackground && measuredStyle.ruleBackground.alpha == 255 &&
+			measuredStyle.ruleBackground.red == 17 && measuredStyle.ruleBackground.green == 63 &&
+			measuredStyle.ruleBackground.blue == 91 && measuredStyle.ruleBlink &&
+			effected.lines[0].elements[2].ruleBlink && !effected.lines[0].elements[1].ruleBlink,
+			"field rule background RGBA and per-cell blink flags survive layout measurement", failures);
+		Check(effected.width == baseline.width && effected.height == baseline.height,
+			"field backgrounds and blinking do not change tag dimensions", failures);
+
+		VsmrTagRendering::PaintOptions options;
+		options.tagCenter = { 160, 60 };
+		options.drawLeader = false;
+		options.background = Gdiplus::Color(255, 8, 12, 16);
+		graphics.Clear(Gdiplus::Color(255, 0, 0, 0));
+		const auto basePaint = VsmrTagRendering::Paint(graphics, fonts, baseline, options);
+		graphics.Clear(Gdiplus::Color(255, 0, 0, 0));
+		const auto effectPaint = VsmrTagRendering::Paint(graphics, fonts, effected, options);
+		Check(effectPaint.bounds == basePaint.bounds && effectPaint.hitRegions.size() == 4 &&
+			effectPaint.hitRegions.size() == basePaint.hitRegions.size(),
+			"rule-driven field painting preserves tag bounds and actionable cell count", failures);
+		for (std::size_t index = 0; index < (std::min)(effectPaint.hitRegions.size(), basePaint.hitRegions.size()); ++index)
+		{
+			Check(effectPaint.hitRegions[index].action == basePaint.hitRegions[index].action &&
+				effectPaint.hitRegions[index].area == basePaint.hitRegions[index].area,
+				"field blink and background effects cannot change left/right-click cell geometry", failures);
+		}
+		if (!effectPaint.hitRegions.empty())
+		{
+			graphics.Flush(Gdiplus::FlushIntentionSync);
+			const CRect fieldBounds = effectPaint.hitRegions[0].area;
+			Gdiplus::Color fieldPixel;
+			canvas.GetPixel(fieldBounds.left + 1, fieldBounds.bottom - 1, &fieldPixel);
+			Check(fieldPixel.GetValue() == Gdiplus::Color(255, 17, 63, 91).GetValue(),
+				"rule background fills the selected field cell rather than only a text glyph", failures);
+		}
+
+		// A reused measured layout must lose effects as soon as the next scene's
+		// rule does not match, while still inheriting the original bold definition.
+		for (auto& element : variant.lines[0].elements)
+		{
+			element.hasRuleBackground = false;
+			element.ruleBlink = false;
+			element.hasRuleBold = false;
+		}
+		const bool resetMeasured = VsmrTagRendering::MeasureLayout(fonts, variant, effected);
+		Check(resetMeasured && effected.lines.size() == 1 && effected.lines[0].elements.size() == 4,
+			"field effect layouts can be reused after rules stop matching", failures);
+		if (!resetMeasured || effected.lines.size() != 1) return;
+		for (std::size_t index = 0; index < effected.lines[0].elements.size(); ++index)
+		{
+			const auto& element = effected.lines[0].elements[index];
+			Check(!element.hasRuleBackground && !element.ruleBlink && element.bold == (index == 1 || index == 3),
+				"reused layout drops stale field effects and restores source font-weight inheritance", failures);
+		}
+	}
+
 	void TestSharedTagGeometry(
 		Gdiplus::Graphics& graphics,
 		std::vector<std::string>& failures)
@@ -946,6 +1060,7 @@ std::vector<std::string> RunSharedRenderingBehaviorTests()
 		TestAvisoRasterBlending(failures);
 		TestResolutionScaling(failures);
 		TestTagBackgroundFitsLines(failures);
+		TestRuleFieldRendering(failures);
 		Gdiplus::Bitmap canvas(96, 72, PixelFormat32bppARGB);
 		Gdiplus::Graphics graphics(&canvas);
 		graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);

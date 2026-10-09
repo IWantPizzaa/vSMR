@@ -107,6 +107,7 @@ public:
 		const char* inset = nullptr) const noexcept;
 
 	bool ReloadConfig();
+	bool HasClockSensitiveTagRules() const;
 	bool SetProfilesConfigPath(
 		const std::string& path,
 		std::string* errorText = nullptr,

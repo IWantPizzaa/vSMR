@@ -209,51 +209,163 @@
       "editing cannot trap navigation when no rule exists");
     rulesTab?.click();
     document.querySelector('#ruleEditorEmpty [data-action="new-rule"]')?.click();
-    const createdRuleName = document.querySelector("#ruleName");
-    expect(Boolean(createdRuleName) && !createdRuleName.disabled && !ruleEditorForm?.hidden &&
-      document.querySelectorAll("#criteriaList .criterion-row").length === 1,
-      "creating a rule enables a complete editor with one condition");
-    expect(document.querySelectorAll(".rule-editor-summary-grid > fieldset").length === 2 &&
-      document.querySelectorAll(".rule-color-grid > .rule-color-row").length === 3,
-      "Rules use dedicated identity, scope, condition, and color-override sections");
-    const firstCriterion = document.querySelector("#criteriaList .criterion-row");
-    const vSidSource = firstCriterion?.querySelector('[data-field="source"]');
-    if (vSidSource) {
-      vSidSource.value = "cdm";
-      vSidSource.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-    expect(Array.from(firstCriterion?.querySelectorAll('[data-field="token"] option') || [])
-      .map(option => option.value).join(",") === "tobt,tsat,ttot,ctot,tsac,asrt,asat",
-      "Rules expose the selected CDM bridge fields through one dedicated source");
-    if (vSidSource) {
-      vSidSource.value = "vsid";
-      vSidSource.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-    expect(Array.from(firstCriterion?.querySelectorAll('[data-field="token"] option') || [])
-      .map(option => option.value).join(",") === "vsid_sid,vsid_rwy,vsid_cfl",
-      "Rules expose the vSID bridge fields through one dedicated source");
-    expect(Boolean(document.querySelector('[data-action="copy-rule"]')) &&
-      Boolean(document.querySelector('[data-action="paste-rule"]')),
-      "Rules expose shared copy and paste actions");
-    if (createdRuleName) {
-      createdRuleName.value = "Browser rule";
-      createdRuleName.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-    await waitFor(
-      () => outbound.some(message => message.type === "state.save" &&
-        JSON.stringify(message.payload?.profiles || []).includes("Browser rule")),
-      "a newly created rule can be edited and saved"
-    );
+    const ruleProfile = () => api.getState().profiles.find(profile => profile?.name === hostileProfileName);
+    const currentRule = () => ruleProfile()?.rules?.items[Number(document.querySelector('#ruleList [aria-selected="true"]')?.dataset.ruleIndex || 0)];
+    const changeRuleControl = (selector, value, eventType = "change") => {
+      const control = document.querySelector(selector);
+      expect(Boolean(control), `Rule control exists: ${selector}`);
+      if (!control) return;
+      if (control.type === "checkbox") control.checked = Boolean(value); else control.value = value;
+      control.dispatchEvent(new Event(eventType, { bubbles: true }));
+    };
+    const rootGroupAction = action => document.querySelector(`#criteriaList > .rule-condition-group > .rule-group-tools [data-action="${action}"]`)?.click();
+    const template = name => { document.querySelector("#ruleTemplate").value = name; document.querySelector('[data-action="apply-rule-template"]')?.click(); };
+    expect(!document.querySelector("#ruleName")?.disabled && !ruleEditorForm?.hidden &&
+      document.querySelectorAll("#criteriaList .criterion-row").length === 1, "creating a rule enables a complete condition editor");
+    expect(ruleProfile()?.rules?.version === 2 && document.querySelectorAll(".rule-editor-summary-grid > fieldset").length === 2 &&
+      document.querySelectorAll("#ruleEffectsList .rule-effect-row").length === 1, "new rules use v2 condition trees and an effects list");
+    const availableRuleFields = Array.from(document.querySelectorAll('#criteriaList [data-field="field"] option')).map(option => option.value);
+    expect(["cdm.tobt", "cdm.tobt_state", "flight.sid", "flight.deprwy", "flight.scratchpad", "flight.holdingpoint", "vsid.sid", "vsid.rwy", "vsid.cfl"]
+      .every(field => availableRuleFields.includes(field)), "Rules expose CDM offsets, flight fields and vSID data");
+    changeRuleControl("#ruleName", "Browser rule", "input");
+    await waitFor(() => outbound.some(message => message.type === "state.save" &&
+      JSON.stringify(message.payload?.profiles || []).includes("Browser rule")), "new v2 rules can be edited and saved");
+    template("tobt");
+    expect(currentRule()?.when?.all?.[0]?.min === -5 && currentRule()?.when?.all?.[0]?.max === 5, "TOBT template uses signed -5 to +5 minute bounds");
+    changeRuleControl('#criteriaList [data-field="min"]', 6, "input");
+    expect(currentRule()?.when?.all?.[0]?.min === -5 && !document.querySelector("#ruleValidationMessage")?.hidden, "an inverted range preserves the last valid rule");
+    changeRuleControl('#criteriaList [data-field="min"]', -4, "input");
+    expect(currentRule()?.when?.all?.[0]?.min === -4 && document.querySelector("#ruleValidationMessage")?.hidden, "repairing a numeric draft saves without repainting the input");
+    template("sid-runway");
+    expect(currentRule()?.when?.all?.[0]?.field === "flight.sid" && currentRule()?.when?.all?.[1]?.field === "flight.deprwy", "SID/runway templates combine independent lists");
+    changeRuleControl('#criteriaList .criterion-row:nth-child(1) [data-field="values"]', "OPALE6B, LGL7A", "input");
+    expect(currentRule()?.when?.all?.[0]?.values?.join(",") === "OPALE6B,LGL7A", "SID lists persist as structured values");
+    changeRuleControl('#criteriaList .criterion-row:nth-child(1) [data-field="values"]', "", "input");
+    expect(currentRule()?.when?.all?.[0]?.values?.length === 2 && !document.querySelector("#ruleValidationMessage")?.hidden, "empty lists cannot broaden a saved rule");
+    changeRuleControl('#criteriaList .criterion-row:nth-child(1) [data-field="values"]', "OPALE6B, LGL7A", "input");
+    rootGroupAction("add-condition-group");
+    changeRuleControl('#criteriaList .rule-condition-group[data-node-path="/all/2"] > .rule-group-tools [data-field="group"]', "not");
+    rootGroupAction("add-condition-group");
+    changeRuleControl('#criteriaList .criterion-row[data-node-path="/all/3/any/0"] [data-field="field"]', "flight.scratchpad");
+    changeRuleControl('#criteriaList .criterion-row[data-node-path="/all/3/any/0"] [data-field="op"]', "equals");
+    changeRuleControl('#criteriaList .criterion-row[data-node-path="/all/3/any/0"] [data-field="value"]', "READY", "input");
+    expect(Boolean(currentRule()?.when?.all?.[2]?.not) && currentRule()?.when?.all?.[3]?.any?.[0]?.value === "READY", "nested ALL/ANY/NOT groups retain exact scratchpad conditions");
+    rootGroupAction("add-condition");
+    changeRuleControl('#criteriaList .criterion-row[data-node-path="/all/4"] [data-field="field"]', "flight.holdingpoint");
+    changeRuleControl('#criteriaList .criterion-row[data-node-path="/all/4"] [data-field="op"]', "equals");
+    changeRuleControl('#criteriaList .criterion-row[data-node-path="/all/4"] [data-field="value"]', "N4", "input");
+    expect(currentRule()?.when?.all?.[4]?.value === "N4", "holding-point and runway conditions combine in one tree");
+    document.querySelector('[data-action="add-rule-effect"]')?.click();
+    changeRuleControl('#ruleEffectsList [data-effect-index="1"] [data-field="effect-type"]', "field_color");
+    changeRuleControl('#ruleEffectsList [data-effect-index="1"] [data-field="effect-field"]', "scratchpad");
+    changeRuleControl('#ruleEffectsList [data-effect-index="1"] [data-field="effect-color"]', "#00FF00", "input");
+    changeRuleControl('#ruleEffectsList [data-effect-index="1"] [data-field="effect-alpha"]', 128, "input");
+    document.querySelector('[data-action="add-rule-effect"]')?.click();
+    changeRuleControl('#ruleEffectsList [data-effect-index="2"] [data-field="effect-type"]', "field_blink");
+    changeRuleControl('#ruleEffectsList [data-effect-index="2"] [data-field="effect-field"]', "holdingpoint");
+    document.querySelector('[data-action="add-rule-effect"]')?.click();
+    changeRuleControl('#ruleEffectsList [data-effect-index="3"] [data-field="effect-type"]', "field_bold");
+    changeRuleControl('#ruleEffectsList [data-effect-index="3"] [data-field="effect-value"]', false);
+    expect(currentRule()?.effects?.length === 4 && currentRule()?.effects?.[1]?.color?.a === 128 &&
+      currentRule()?.effects?.[2]?.value === true && currentRule()?.effects?.[3]?.value === false, "multiple color, opacity, blink and explicit bold-off effects save independently");
+    changeRuleControl("#ruleEnabled", false); changeRuleControl("#ruleStopProcessing", true);
+    expect(currentRule()?.enabled === false && currentRule()?.stop_processing === true, "enabled and stop-processing options save independently");
+    const copiedRule = JSON.stringify(currentRule());
     document.querySelector('[data-action="copy-rule"]')?.click();
     await new Promise(resolve => setTimeout(resolve, 30));
-    const changedRuleName = document.querySelector("#ruleName");
-    if (changedRuleName) {
-	  changedRuleName.value = "Temporary rule name";
-	  changedRuleName.dispatchEvent(new Event("input", { bubbles: true }));
-	}
+    changeRuleControl("#ruleName", "Temporary rule name", "input");
     document.querySelector('[data-action="paste-rule"]')?.click();
-    await waitFor(() => document.querySelector("#ruleName")?.value === "Browser rule",
-	  "Rule Copy/Paste round-trips validated rule data");
+    await waitFor(() => document.querySelector("#ruleName")?.value === "Browser rule", "v2 Rule Copy/Paste restores the rule");
+    expect(JSON.stringify(currentRule()) === copiedRule, "copy/paste preserves nested groups, effects and rule flags");
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    let injectedRuleClipboard = "";
+    try {
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { readText: async () => injectedRuleClipboard, writeText: async () => {} } });
+      const invalidRules = [
+        { ...currentRule(), when: { all: [] } },
+        { ...currentRule(), when: { field: "flight.scratchpad", op: "set", value: "extra" } },
+        { ...currentRule(), when: { field: "flight.scratchpad", op: "equals", value: "x".repeat(513) } },
+        { ...currentRule(), when: { field: "flight.scratchpad", op: "equals", value: "bad\nvalue" } },
+        { ...currentRule(), statuses: ["unsupported"] }, { ...currentRule(), enabled: "false" },
+        { ...currentRule(), effects: [{ type: "text_color", field: "callsign", color: { r: 0, g: 0, b: 0, a: 255 } }] },
+        { ...currentRule(), effects: [{ type: "field_blink", field: "callsign", value: true, color: { r: 0, g: 0, b: 0 } }] }
+      ];
+      for (const invalid of invalidRules) {
+        injectedRuleClipboard = JSON.stringify({ vsmr: "rule", version: 2, rule: invalid });
+        document.querySelector('[data-action="paste-rule"]')?.click();
+        await new Promise(resolve => setTimeout(resolve, 25));
+        expect(JSON.stringify(currentRule()) === copiedRule, "invalid clipboard data cannot replace or broaden the saved rule");
+      }
+      injectedRuleClipboard = JSON.stringify({ vsmr: "rule", version: 1, rule: { name: "Legacy rule",
+        criteria: [{ source: "custom", token: "asid", condition: "in: OPALE*, LGL" }, { source: "vacdm", token: "CDM_TOBT", condition: "future" }],
+        tag_type: "departure", status: "nsts", detail: "normal", text_color: { r: 255, g: 0, b: 0 } } });
+      document.querySelector('[data-action="paste-rule"]')?.click();
+      await waitFor(() => document.querySelector("#ruleName")?.value === "Legacy rule", "legacy clipboard rules migrate into v2");
+      expect(currentRule()?.when?.all?.[0]?.condition === "in: OPALE*, LGL" && currentRule()?.when?.all?.[1]?.source === "cdm" &&
+        currentRule()?.when?.all?.[1]?.token === "tobt" && currentRule()?.statuses?.join(",") === "default" &&
+        currentRule()?.effects?.[0]?.color?.a === 255 && document.querySelectorAll(".rule-legacy-condition").length === 2,
+        "legacy aliases migrate without changing prefix/list conditions or original status behavior");
+      injectedRuleClipboard = JSON.stringify({ when: { field: "flight.scratchpad", op: "equals", value: "READY" }, effects: [{ type: "field_blink", field: "callsign" }] });
+      document.querySelector('[data-action="paste-rule"]')?.click();
+      await waitFor(() => currentRule()?.when?.field === "flight.scratchpad", "native-compatible optional v2 defaults are accepted");
+      expect(currentRule()?.enabled === true && currentRule()?.stop_processing === false && currentRule()?.effects?.[0]?.value === true, "omitted v2 options use native defaults");
+      injectedRuleClipboard = JSON.stringify({ name: "Any status list", statuses: ["any", "taxi"],
+        when: { field: "flight.scratchpad", op: "equals", value: "READY" }, effects: [{ type: "field_blink", field: "callsign" }] });
+      document.querySelector('[data-action="paste-rule"]')?.click();
+      await waitFor(() => currentRule()?.name === "Any status list", "v2 any-containing status lists are imported");
+      expect(currentRule()?.statuses?.join(",") === "any" && document.querySelector("#ruleStatusAll")?.checked,
+        "an any-containing v2 status list keeps its wildcard scope instead of narrowing to the other status");
+      injectedRuleClipboard = JSON.stringify(currentRule());
+      document.querySelector('[data-action="copy-rule"]')?.click();
+      await new Promise(resolve => setTimeout(resolve, 20));
+      document.querySelector('[data-action="paste-rule"]')?.click();
+      await new Promise(resolve => setTimeout(resolve, 25));
+      expect(currentRule()?.statuses?.join(",") === "any", "wildcard status scope survives rule copy/paste");
+      changeRuleControl("#ruleStatusAll", false);
+      changeRuleControl('#ruleStatusOptions [data-rule-status="taxi"]', true);
+      expect(currentRule()?.statuses?.join(",") === "taxi", "choosing one status retains an ordinary narrow scope");
+      changeRuleControl("#ruleStatusAll", true);
+      expect(currentRule()?.statuses?.join(",") === "any", "selecting all statuses saves the native wildcard scope");
+      injectedRuleClipboard = JSON.stringify({ name: "Legacy any status list", source: "cdm", token: "tobt", condition: "set",
+        status: "taxi | any", text_color: { r: 255, g: 255, b: 255 } });
+      document.querySelector('[data-action="paste-rule"]')?.click();
+      await waitFor(() => currentRule()?.name === "Legacy any status list", "legacy scalar status lists are imported");
+      expect(currentRule()?.statuses?.join(",") === "any" && !Object.hasOwn(currentRule() || {}, "status") && document.querySelector("#ruleStatusAll")?.checked,
+        "an any-containing legacy scalar list keeps all-status behavior");
+      injectedRuleClipboard = JSON.stringify({ when: { field: "flight.scratchpad", op: "equals", value: "READY" },
+        effects: [{ type: "field_blink", field: "callsign" }] });
+      await new Promise(resolve => setTimeout(resolve, 200));
+      const malformedProfiles = structuredClone(api.getState().profiles);
+      const malformedRule = { name: "Malformed imported rule", enabled: "false", statuses: ["unsupported"],
+        when: { field: "unsupported.field", op: "set" }, effects: { invalid: true }, unknown: "preserve" };
+      malformedProfiles.find(profile => profile?.name === hostileProfileName).rules = { version: 2, items: [malformedRule] };
+      api.receive({ version: 1, id: "malformed-v2-rule-test", type: "state.authoritative", payload: {
+        profiles: malformedProfiles, activeProfile: hostileProfileName, reason: "reload", avisoFollows: false
+      } });
+      expect(document.querySelector("#ruleName")?.disabled && !document.querySelector("#ruleValidationMessage")?.hidden &&
+        JSON.stringify(currentRule()) === JSON.stringify(malformedRule),
+        "malformed saved v2 rules show a disabled editor without coercing flags, scopes, fields or effects");
+      const savesBeforeInvalidFocus = outbound.filter(message => message.type === "state.save").length;
+      changeRuleControl("#ruleName", "Do not silently repair", "input");
+      await new Promise(resolve => setTimeout(resolve, 80));
+      expect(JSON.stringify(currentRule()) === JSON.stringify(malformedRule) &&
+        outbound.filter(message => message.type === "state.save").length === savesBeforeInvalidFocus,
+        "focusing or programmatically editing a malformed rule cannot autosave a broader replacement");
+      document.querySelector('[data-action="paste-rule"]')?.click();
+      await waitFor(() => currentRule()?.when?.field === "flight.scratchpad" && !document.querySelector("#ruleName")?.disabled,
+        "an explicit valid paste recovers a malformed saved rule without trapping navigation");
+    } finally { if (clipboardDescriptor) Object.defineProperty(navigator, "clipboard", clipboardDescriptor); else delete navigator.clipboard; }
+    changeRuleControl("#ruleName", "Browser rule", "input");
+    const importedRootLeaf = structuredClone(currentRule()?.when);
+    document.querySelector('#criteriaList > .rule-group-tools [data-action="add-condition"]')?.click();
+    expect(currentRule()?.when?.all?.length === 2 && JSON.stringify(currentRule()?.when?.all?.[0]) === JSON.stringify(importedRootLeaf),
+      "explicitly adding to an imported root leaf wraps it in ALL without changing its original condition");
+    document.querySelector('[data-action="duplicate-rule"]')?.click();
+    expect(ruleProfile()?.rules?.items?.length === 2 && currentRule()?.name === "Browser rule copy", "v2 rules duplicate without flattening conditions");
+    document.querySelector('[data-action="move-rule-up"]')?.click();
+    expect(ruleProfile()?.rules?.items?.[0]?.name === "Browser rule copy", "moving a rule up changes evaluation precedence");
+    document.querySelector('[data-action="move-rule-down"]')?.click();
+    expect(ruleProfile()?.rules?.items?.[1]?.name === "Browser rule copy", "moving a rule down restores chosen precedence");
     await new Promise(resolve => setTimeout(resolve, 100));
 
     document.querySelector('.rail-button[data-page="profiles"]')?.click();
