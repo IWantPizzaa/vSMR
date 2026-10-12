@@ -2,6 +2,11 @@
 
 ## [2.0.1] - 2026-10-12
 
+- Added same-computer Proxy synchronization for timer start/reset/deadlines with one expiration alarm, shared RDF pending/reset indications and a single TrackAudio receiver with owner recovery. Missing radar data in one view no longer acknowledges a call in another instance; blinking follows the machine clock.
+- Added a local, bounded, read-only relay of vSID/CDM/Ramp Agent fields when companion plugins and EuroScopeBridge are loaded only in the primary. Validated vSID UI actions are routed to the primary once, with failure reporting and no automatic retry; stale/dead-owner snapshots are rejected.
+- Shared primary PDC/CPDLC connection and aircraft-status indications with Proxy clients. Hoppie connection/polling/sending and credentials remain primary-only; a per-logon process lease prevents competing consumers and stays held while requests drain. Secondary controls identify the primary and do not save stale credentials at shutdown.
+- Serialized configuration/custom-map saves and log rotation across processes, rejected stale configuration revisions, and refreshed shared configuration changes in other open instances without synchronizing their ASR/window layouts. Copied borrowed SDK strings before further holding-point/runway calls.
+
 - Fixed missing runtime-menu button backgrounds/borders in the CoFrance final paint pass by keeping GDI, GDI+ and clipping regions in the same bitmap coordinate system; retained atomic presentation.
 
 - Preserved the requested AVISO palette while switching ICAO in the same view: Real falls back to Light on unsupported airports and returns to Real on supported airports, including ASR persistence.
