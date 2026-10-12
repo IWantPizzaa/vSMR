@@ -1057,6 +1057,9 @@
       mapFixture.airport = initial.aviso.metadata?.airport || "LFPG";
       mapFixture.settings.avisoColorPalette = "dark";
       mapFixture.aviso.styles["surface.taxiway"].paint.fill = "#123456";
+      mapFixture.aviso.styles["surface.taxiway"].paint["fill-opacity"] = 0.25;
+      mapFixture.aviso.features.filter(feature => feature.properties?.style_id === "surface.taxiway")
+        .forEach(feature => { feature.properties["fill-opacity"] = 0.15; });
       mapFixture.aviso.styles["surface.taxiway"].paint["palette-overrides"].real.fill = "#654321";
       mapFixture.aviso.styles["custom.test"] = { name: "Custom", object_type: "Area", paint: { fill: "#987654" } };
       api.receive({ version: 1, id: "map-reset-baseline", type: "state.authoritative",
@@ -1079,6 +1082,11 @@
         initial.aviso.styles["surface.taxiway"].paint.fill, "geometry reset restores the selected palette");
       await waitFor(() => outbound.slice(mapResetStart).some(message => message.type === "state.save"), "map reset is saved");
       const afterMapReset = api.getState();
+      expect(afterMapReset.aviso.styles["surface.taxiway"].paint["fill-opacity"] ===
+        (initial.aviso.styles["surface.taxiway"].paint["fill-opacity"] ?? 1), "geometry reset restores default opacity, including implicit opaque defaults");
+      expect(afterMapReset.aviso.features.filter(feature => feature.properties?.style_id === "surface.taxiway")
+        .every(feature => feature.properties["fill-opacity"] === (initial.aviso.styles["surface.taxiway"].paint["fill-opacity"] ?? 1)),
+        "geometry reset replaces feature-level opacity overrides too");
       expect(afterMapReset.aviso.styles["surface.taxiway"].paint["palette-overrides"].real.fill === "#654321",
         "geometry reset preserves other palettes");
       expect(afterMapReset.aviso.styles["custom.test"].paint.fill === "#987654", "geometry reset preserves custom styles");
