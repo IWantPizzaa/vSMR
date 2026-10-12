@@ -2,6 +2,8 @@
 
 ## [2.0.1] - 2026-10-12
 
+- Revised Apply to all terrains into an explicit Geometry action storing only differences from airport defaults in one shared user-config entry. Ordinary local edits/palette switches no longer broadcast to other views. Matching settings follow last-edit precedence; unrelated local customizations remain intact. Real uses each airport's own Real theme, falling back to Light, without copying its colors.
+
 - Reduced CoFrance v2 runtime-menu hover flicker by protecting the existing menu during host painting and composing its final rail/popups offscreen before a single blit. Native AVISO painting is unchanged.
 
 - Included the maintainer's updated AVISO maps for LFBF, LFKS, LFLU, LFMC, LFMH and LFTW, with refreshed release inventory and migration fingerprints.

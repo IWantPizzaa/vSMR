@@ -1116,12 +1116,26 @@
       await waitFor(() => outbound.slice(globalStart).some(message => message.payload?.applyAvisoToAll), "Apply to all terrains sends a native command");
       const globalCommand = outbound.slice(globalStart).find(message => message.payload?.applyAvisoToAll);
       const appearance = globalCommand?.payload?.applyAvisoToAll;
-      expect(globalCommand?.payload?.replaceLocalAppearance === false, "Global defaults preserve existing local customizations");
+      expect(globalCommand?.payload?.replaceLocalAppearance === true, "Explicit global application supersedes older local edits on matching fields");
+      expect(document.querySelector('[data-action="apply-aviso-all"]')?.closest('#avisoPanelGeometry'),
+        "Apply to all terrains belongs to the Geometry view only");
       expect(appearance?.palette === "dark" && appearance?.metadata?.background_opacities?.dark === 1 &&
         appearance?.styles?.["surface.taxiway"]?.paint && !Object.hasOwn(appearance || {}, "features") && !Object.hasOwn(appearance || {}, "vsmr_groups"),
         "Global transfer contains visual settings only, never geometry or group visibility");
       expect(JSON.stringify(api.getState().aviso.features) === beforeGlobal, "Applying global settings does not mutate browser geometry");
       if (globalCommand) api.receive({ version: 1, id: globalCommand.id, type: "state.ack", payload: { action: "settings.update", message: "Settings applied" } });
+      const realFixture = structuredClone(mapFixture);
+      realFixture.settings.avisoColorPalette = "real";
+      realFixture.aviso.metadata.color_palettes = ["dark", "light", "real"];
+      api.receive({ version: 1, id: globalCommand?.id || "global-real-fixture", type: "state.authoritative", payload: { ...realFixture, reason: "reload" } });
+      const realGlobalStart = outbound.length;
+      document.querySelector('[data-action="apply-aviso-all"]').click();
+      await waitFor(() => outbound.slice(realGlobalStart).some(message => message.payload?.applyAvisoToAll), "Real global application sends a command");
+      const realCommand = outbound.slice(realGlobalStart).find(message => message.payload?.applyAvisoToAll);
+      expect(realCommand?.payload?.applyAvisoToAll?.palette === "real" && Object.keys(realCommand.payload.applyAvisoToAll).length === 1,
+        "Real applies a palette only, without copying background or airport-specific style colors");
+      if (realCommand) api.receive({ version: 1, id: realCommand.id, type: "state.ack", payload: { action: "settings.update", message: "Settings applied" } });
+      if (realCommand) api.receive({ version: 1, id: realCommand.id, type: "state.authoritative", payload: { ...realFixture, reason: "reload" } });
     } finally { window.confirm = oldConfirm; }
   } catch (error) {
     failures.push(`unexpected browser exception: ${error?.stack || error}`);
