@@ -242,6 +242,20 @@ namespace
 
 	void TestAviso(const std::filesystem::path& repositoryRoot)
 	{
+		rapidjson::Document backgroundMetadata;
+		backgroundMetadata.Parse(R"({"background_opacities":{"dark":0.25,"real":0}})");
+		Expect(AvisoDocumentModel::BackgroundOpacity(&backgroundMetadata, "dark") == 0.25 &&
+			AvisoDocumentModel::BackgroundOpacity(&backgroundMetadata, "real") == 0 &&
+			AvisoDocumentModel::BackgroundOpacity(&backgroundMetadata, "light") == 1,
+			"Background opacity is palette-specific, including zero and opaque legacy defaults");
+		for (const char* invalid : { R"({"dark":-0.1})", R"({"real":1.1})", R"({"light":"0.5"})", R"({"unknown":0.5})" })
+		{
+			AvisoDocumentModel invalidBackground;
+			const std::string json = std::string(R"({"type":"FeatureCollection","features":[],"metadata":{"background_opacities":)") + invalid + "}}";
+			invalidBackground.MutableDocument().Parse(json.c_str());
+			std::string error;
+			Expect(!invalidBackground.ValidateLoadedFeatureCollection(error), "Malformed background opacity is rejected before rendering");
+		}
 		rapidjson::Document outlineStyle;
 		outlineStyle.Parse<0>(R"json({"paint":{"fill":"#434C51","palette-overrides":{"real":{"polygon-outline":true,"stroke":"#727C82"}}},"feature":{"polygon-outline":false},"invalid":{"polygon-outline":"true"}})json");
 		const auto* outlinePaint = &outlineStyle["paint"];

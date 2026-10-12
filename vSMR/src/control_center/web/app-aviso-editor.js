@@ -143,7 +143,7 @@
       name: "Background",
       layer: "AVISO",
       objectType: "Background",
-      paint: { fill: color },
+      paint: { fill: color, "fill-opacity": state.aviso?.metadata?.background_opacities?.[palette] ?? 1 },
       indices: [],
       isText: false,
       isBackground: true
@@ -708,7 +708,7 @@
     const paletteLabel = `${activeAvisoColorPalette()[0].toUpperCase()}${activeAvisoColorPalette().slice(1)}`;
     const colorKind = backgroundOnly ? "Background" : types.length > 1 ? "Primary" : types[0] === "Line" ? "Line" : "Fill";
     $("#avisoGeometryColorLabel").textContent = `${colorKind} color · ${paletteLabel}`;
-    $("#avisoGeometryColorOpacity")?.closest(".opacity-channel")?.toggleAttribute("hidden", backgroundOnly);
+    $("#avisoGeometryColorOpacity")?.closest(".opacity-channel")?.removeAttribute("hidden");
 
     const colorResult = commonValue(
       entries.map(entry => entry.objectType === "Line" ? (entry.paint.stroke || entry.paint.fill || "#000000") : (entry.paint.fill || entry.paint.stroke || "#000000")),
@@ -764,6 +764,10 @@
       if (entry.isBackground) {
         if (colorTouched && changes.fill) {
           state.aviso.metadata.background_colors[activeAvisoColorPalette()] = changes.fill;
+          updatedCount += 1;
+        }
+        if (opacityTouched && changes["fill-opacity"] != null) {
+          state.aviso.metadata.background_opacities[activeAvisoColorPalette()] = changes["fill-opacity"];
           updatedCount += 1;
         }
         return;

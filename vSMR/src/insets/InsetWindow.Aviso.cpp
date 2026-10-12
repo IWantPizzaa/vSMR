@@ -1130,7 +1130,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		renderWindow = ::GetActiveWindow();
 	UpdateAvisoScreenArea(renderWindow);
 
-	dc.FillSolidRect(viewportRect, radar_screen->GetAvisoBackgroundColor());
 	radar_screen->AddScreenObject(m_Id, "window", viewportRect, false, "");
 	radar_screen->AddScreenObject(m_Id, "viewport", viewportRect, false, "");
 
@@ -1171,12 +1170,13 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		!radar_screen->EnsureAvisoGeoJsonLoaded(path) ||
 		(radar_screen->AvisoGeoJsonFeatures.empty() && radar_screen->AvisoGeoJsonLabels.empty()))
 	{
+		radar_screen->DrawAvisoBackground(*gdi, viewportRect);
 		drawCenteredMessage("AVISO unavailable");
 		drawChrome();
 		dc.Detach();
 		return;
 	}
-	dc.FillSolidRect(viewportRect, radar_screen->GetAvisoBackgroundColor());
+	radar_screen->DrawAvisoBackground(*gdi, viewportRect);
 	std::shared_ptr<const std::vector<CSMRRadar::AvisoFeature>> featureSnapshot;
 	std::shared_ptr<const std::vector<CSMRRadar::AvisoLabel>> labelSnapshot;
 	std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;

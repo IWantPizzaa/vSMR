@@ -1227,6 +1227,9 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	AvisoDarkBackgroundColor = parsedDarkBackgroundColor;
 	AvisoLightBackgroundColor = parsedLightBackgroundColor;
 	AvisoRealBackgroundColor = parsedRealBackgroundColor;
+	const Value* backgroundMetadata = document.HasMember("metadata") ? &document["metadata"] : nullptr;
+	AvisoBackgroundOpacities = { AvisoDocumentModel::BackgroundOpacity(backgroundMetadata, "dark"),
+		AvisoDocumentModel::BackgroundOpacity(backgroundMetadata, "light"), AvisoDocumentModel::BackgroundOpacity(backgroundMetadata, "real") };
 	if (AvisoGeoJsonRenderPipeline != nullptr)
 		AvisoGeoJsonRenderPipeline->InvalidateRequests();
 	if (loadedPathChanged)

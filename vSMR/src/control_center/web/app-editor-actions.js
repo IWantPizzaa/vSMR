@@ -131,6 +131,7 @@
         const color = colors?.[request.palette];
         if (!color) return;
         state.aviso.metadata.background_colors[request.palette] = color;
+        state.aviso.metadata.background_opacities[request.palette] = baseline.metadata?.background_opacities?.[request.palette] ?? 1;
         ++count;
         return;
       }

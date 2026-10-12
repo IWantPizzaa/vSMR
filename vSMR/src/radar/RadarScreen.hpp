@@ -297,6 +297,7 @@ private:
 	COLORREF AvisoDarkBackgroundColor = RGB(67, 74, 79);
 	COLORREF AvisoLightBackgroundColor = RGB(67, 74, 79);
 	COLORREF AvisoRealBackgroundColor = RGB(67, 74, 79);
+	std::array<double, 3> AvisoBackgroundOpacities{ 1.0, 1.0, 1.0 };
 	CFont RuntimeOverlayFont;
 	CFont RuntimeMenuActionFont;
 	bool AirportPositionsCacheValid = false;
@@ -582,6 +583,7 @@ public:
 	bool SetAvisoGroupVisibilities(const std::vector<std::pair<std::string, bool>>& visibility);
 	bool UpdateAvisoGroups(const std::vector<AvisoGroup>& groups);
 	std::string GetAvisoColorPalette() const;
+	void DrawAvisoBackground(Gdiplus::Graphics& graphics, const RECT& area) const;
 	std::vector<std::string> GetAvailableAvisoColorPalettes(const std::string& airport) const;
 	bool EnsureAvisoColorPaletteAvailable(bool persistToAsr = true);
 	bool SetAvisoColorPalette(const std::string& palette, bool persistToAsr = true);

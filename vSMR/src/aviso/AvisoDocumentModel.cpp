@@ -401,6 +401,19 @@ bool AvisoDocumentModel::ValidateFeatureCollectionSchema(
 			errorText = "AVISO metadata must be an object.";
 			return false;
 		}
+		if (metadata.HasMember("background_opacities"))
+		{
+			const auto& values = metadata["background_opacities"];
+			if (!values.IsObject() || values.MemberCount() > 5)
+			{ errorText = "Invalid AVISO background_opacities."; return false; }
+			for (auto it = values.MemberBegin(); it != values.MemberEnd(); ++it)
+			{
+				const std::string key = it->name.GetString();
+				if ((key != "dark" && key != "light" && key != "real" && key != "night" && key != "day") ||
+					!it->value.IsNumber() || !std::isfinite(it->value.GetDouble()) || it->value.GetDouble() < 0 || it->value.GetDouble() > 1)
+				{ errorText = "AVISO background opacity must be between 0 and 1 for a supported palette."; return false; }
+			}
+		}
 		if (metadata.HasMember("schema_version"))
 		{
 			const rapidjson::Value& schemaVersion = metadata["schema_version"];
@@ -1610,6 +1623,17 @@ void AvisoDocumentModel::NormalizeSharedGeometry()
 		metadata.AddMember("geometry_mode", "shared", Document.GetAllocator());
 	}
 	MarkIndexesDirty();
+}
+
+double AvisoDocumentModel::BackgroundOpacity(const rapidjson::Value* metadata, const std::string& palette)
+{
+	if (!metadata || !metadata->IsObject() || !metadata->HasMember("background_opacities")) return 1;
+	const auto& values = (*metadata)["background_opacities"];
+	if (!values.IsObject()) return 1;
+	const char* key = values.HasMember(palette.c_str()) ? palette.c_str() : palette == "dark" ? "night" : palette == "light" ? "day" : "real";
+	if (!values.HasMember(key) || !values[key].IsNumber()) return 1;
+	const double value = values[key].GetDouble();
+	return std::isfinite(value) ? (std::max)(0.0, (std::min)(1.0, value)) : 1;
 }
 
 void AvisoDocumentModel::CaptureOriginalCoordinatesJson(const std::string& sourceJson)
