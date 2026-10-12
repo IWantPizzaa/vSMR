@@ -102,6 +102,7 @@ VsmrAviso::AvisoRasterPipeline::QueueStatus VsmrAviso::AvisoRasterPipeline::Queu
 			const bool viewOnlyChange = lastRequestKey_.has_value() &&
 				lastRequestKey_->path == request.path &&
 				lastRequestKey_->colorPalette == request.colorPalette &&
+				lastRequestKey_->backgroundColor == request.backgroundColor.GetValue() &&
 				lastRequestKey_->groupGeneration == request.groupGeneration &&
 				lastRequestKey_->displayScale == request.displayScale;
 			if (request.debounceMilliseconds == 0 && cacheAvailable && !viewOnlyChange)
@@ -468,6 +469,8 @@ VsmrAviso::AvisoRasterPipeline::MakeRequestKey(const Request& request)
 	RequestKey key;
 	key.path = request.path;
 	key.colorPalette = request.colorPalette;
+	key.backgroundColor = request.backgroundColor.GetValue();
+	key.viewportZoomLevel = request.viewportZoomLevel;
 	key.groupGeneration = request.groupGeneration;
 	key.displayScale = request.displayScale;
 	key.labelZoomLevel = request.labelZoomLevel;
@@ -499,6 +502,8 @@ bool VsmrAviso::AvisoRasterPipeline::RequestsMatch(
 
 	return previous.path == request.path &&
 		previous.colorPalette == request.colorPalette &&
+		previous.backgroundColor == request.backgroundColor.GetValue() &&
+		previous.viewportZoomLevel == request.viewportZoomLevel &&
 		previous.groupGeneration == request.groupGeneration &&
 		previous.displayScale == request.displayScale &&
 		previous.labelZoomLevel == request.labelZoomLevel &&

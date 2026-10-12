@@ -43,7 +43,8 @@ namespace VsmrAviso
 			HBITMAP sourceBitmap,
 			const RECT& source,
 			const RECT& destination,
-			const RECT& clip) noexcept;
+			const RECT& clip,
+			bool opaque = false) noexcept;
 
 	private:
 		bool EnsureSourceDc(HDC destinationDc) noexcept;

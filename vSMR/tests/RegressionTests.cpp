@@ -38,6 +38,8 @@
 #include "LayeredConfigTests.hpp"
 #include "ConfigurationRegressionTests.hpp"
 #include "SharedRenderingTests.hpp"
+#include "PerformanceDiagnosticsTests.hpp"
+#include "AvisoRasterRendererTests.hpp"
 #include "AuditRegressionTests.hpp"
 #include "PluginBridgeTests.hpp"
 #include "TagColorRuleTests.hpp"
@@ -2019,6 +2021,10 @@ int wmain(int argc, wchar_t** argv)
 	TestWeatherInsetLayout();
 	TestRunwayVisibilityRules(repositoryRoot);
 	TestZoomDiagnostics();
+	for (const std::string& failure : RunPerformanceDiagnosticsTests())
+		Expect(false, failure);
+	for (const std::string& failure : RunAvisoRasterRendererTests())
+		Expect(false, failure);
 	TestSharedGroundState();
 	TestRapidJsonUtilities();
 	TestJsonInputLimitBoundaries();

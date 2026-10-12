@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <functional>
 #include <iomanip>
 #include <locale>
 #include <numeric>
@@ -90,6 +91,9 @@ namespace
 			static_cast<std::size_t>(1),
 			static_cast<std::size_t>(std::ceil(0.95 * static_cast<double>(values.size()))));
 		result.p95 = values[(std::min)(p95Rank - 1, values.size() - 1)];
+		const std::size_t p99Rank = static_cast<std::size_t>(
+			std::ceil(0.99 * static_cast<double>(values.size())));
+		result.p99 = values[(std::min)((std::max)(p99Rank, std::size_t{ 1 }) - 1, values.size() - 1)];
 		result.maximum = values.back();
 		return result;
 	}
@@ -153,12 +157,13 @@ namespace
 		output << "{\"sampleCount\":" << distribution.sampleCount;
 		if (distribution.sampleCount == 0)
 		{
-			output << ",\"average\":null,\"median\":null,\"p95\":null,\"maximum\":null}";
+			output << ",\"average\":null,\"median\":null,\"p95\":null,\"p99\":null,\"maximum\":null}";
 			return;
 		}
 		output << ",\"average\":" << distribution.average
 			<< ",\"median\":" << distribution.median
 			<< ",\"p95\":" << distribution.p95
+			<< ",\"p99\":" << distribution.p99
 			<< ",\"maximum\":" << distribution.maximum << '}';
 	}
 
@@ -195,6 +200,7 @@ namespace
 	{
 		output << "{\"frameId\":" << frame.frameId
 			<< ",\"timestampMilliseconds\":" << frame.timestampMilliseconds
+			<< ",\"callbackIntervalMilliseconds\":" << frame.callbackIntervalMilliseconds
 			<< ",\"frame\":" << frame.frameMilliseconds
 			<< ",\"scene\":" << frame.sceneMilliseconds
 			<< ",\"aviso\":" << frame.avisoMilliseconds
@@ -293,6 +299,12 @@ std::uint64_t VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds() n
 		std::chrono::steady_clock::now().time_since_epoch()).count());
 }
 
+double VsmrPerformance::PerformanceDiagnostics::HighResolutionMonotonicMilliseconds() noexcept
+{
+	return std::chrono::duration<double, std::milli>(
+		std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
 std::uint64_t VsmrPerformance::PerformanceDiagnostics::UtcMilliseconds() noexcept
 {
 	return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -302,10 +314,13 @@ std::uint64_t VsmrPerformance::PerformanceDiagnostics::UtcMilliseconds() noexcep
 void VsmrPerformance::PerformanceDiagnostics::Reset()
 {
 	std::lock_guard<std::mutex> guard(Mutex);
-	FrameSamples = {};
+	// Reset in place: an aggregate-assignment temporary is hundreds of KB and
+	// can exhaust EuroScope's 32-bit UI-thread stack beneath this callback.
+	FrameSamples.fill(FrameSample{});
 	NextFrameSample = 0;
 	FrameSampleCount = 0;
 	TotalFrames = 0;
+	PreviousCallbackStartMilliseconds = 0.0;
 	++Generation;
 	CollectionStartedUtcMilliseconds = UtcMilliseconds();
 	CollectionStartedMonotonicMilliseconds = MonotonicMilliseconds();
@@ -347,6 +362,15 @@ void VsmrPerformance::PerformanceDiagnostics::RecordFrame(FrameSample sample) no
 		if (sample.timestampMilliseconds == 0)
 			sample.timestampMilliseconds = MonotonicMilliseconds();
 		std::lock_guard<std::mutex> guard(Mutex);
+		sample.callbackIntervalMilliseconds = 0.0;
+		if (std::isfinite(sample.callbackStartMilliseconds) && sample.callbackStartMilliseconds > 0.0)
+		{
+			sample.callbackIntervalMilliseconds = PreviousCallbackStartMilliseconds > 0.0 &&
+				sample.callbackStartMilliseconds > PreviousCallbackStartMilliseconds
+				? sample.callbackStartMilliseconds - PreviousCallbackStartMilliseconds
+				: 0.0;
+			PreviousCallbackStartMilliseconds = sample.callbackStartMilliseconds;
+		}
 		if (CurrentFrameAvisoDelayed)
 			++AvisoDelayedFrames;
 		if (CurrentFrameAvisoFallback)
@@ -628,6 +652,28 @@ VsmrPerformance::Snapshot VsmrPerformance::PerformanceDiagnostics::GetSnapshot(
 
 	// Calculating timings and refresh spikes over the same frame population
 	result.frame = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.frameMilliseconds; });
+	std::vector<double> callbackIntervals;
+	callbackIntervals.reserve(frames.size());
+	for (const FrameSample& sample : frames)
+	{
+		// Exclude the first observation, missing timestamps, and intervals that
+		// begin outside the requested window. Idle intervals are retained.
+		if (std::isfinite(sample.callbackIntervalMilliseconds) && sample.callbackIntervalMilliseconds > 0.0 &&
+			(windowSeconds == 0 || sample.callbackStartMilliseconds - sample.callbackIntervalMilliseconds >=
+				static_cast<double>(result.windowStartMilliseconds)))
+			callbackIntervals.push_back(sample.callbackIntervalMilliseconds);
+	}
+	result.callbackInterval = CalculateDistribution(callbackIntervals);
+	if (!callbackIntervals.empty())
+	{
+		result.callbackCadenceHz = 1000.0 / result.callbackInterval.average;
+		std::sort(callbackIntervals.begin(), callbackIntervals.end(), std::greater<double>());
+		const std::size_t lowCount = (std::max)(std::size_t{ 1 },
+			static_cast<std::size_t>(std::ceil(static_cast<double>(callbackIntervals.size()) * 0.01)));
+		const double lowMean = std::accumulate(callbackIntervals.begin(), callbackIntervals.begin() + lowCount, 0.0) /
+			static_cast<double>(lowCount);
+		result.callbackCadenceOnePercentLowHz = 1000.0 / lowMean;
+	}
 	result.scene = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.sceneMilliseconds; });
 	result.aviso = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.avisoMilliseconds; });
 	result.targets = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.targetsMilliseconds; });
@@ -773,7 +819,10 @@ std::string VsmrPerformance::BuildJsonReport(
 		<< "\n  \"version\": \"" << EscapeJson(version) << "\","
 		<< "\n  \"airport\": \"" << EscapeJson(airport) << "\","
 		<< "\n  \"profile\": \"" << EscapeJson(profile) << "\","
-		<< "\n  \"frameDefinition\": \"vSMR measured render-pipeline interval within REFRESH_PHASE_BEFORE_TAGS\","
+		<< "\n  \"frameDefinition\": \"vSMR selected render callback entry through graphics teardown; excludes diagnostics reporting and host presentation\","
+		<< "\n  \"callbackCadenceDefinition\": \"Selected render callback entry intervals, including host idle and UI scheduling; not display FPS. 1% low is 1000 / mean slowest ceil(N * 0.01) intervals in ms\","
+		<< "\n  \"callbackCadenceHz\": " << snapshot.callbackCadenceHz << ','
+		<< "\n  \"callbackCadenceOnePercentLowHz\": " << snapshot.callbackCadenceOnePercentLowHz << ','
 		<< "\n  \"gdiScope\": \"process-wide GetGuiResources count\","
 		<< "\n  \"generation\": " << snapshot.generation << ','
 		<< "\n  \"collectionStartedUtcMilliseconds\": " << snapshot.collectionStartedUtcMilliseconds << ','
@@ -797,6 +846,7 @@ std::string VsmrPerformance::BuildJsonReport(
 		<< "\n  \"timings\": {";
 	const std::pair<const char*, const Distribution*> timingValues[] = {
 		{ "frame", &snapshot.frame },
+		{ "callbackInterval", &snapshot.callbackInterval },
 		{ "scene", &snapshot.scene },
 		{ "aviso", &snapshot.aviso },
 		{ "targets", &snapshot.targets },

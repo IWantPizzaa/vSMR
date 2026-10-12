@@ -1,0 +1,76 @@
+{
+    "date":  "2026-10-12",
+    "timezone":  "Europe/Paris",
+    "baseline_commit":  "e774ac5",
+    "optimized_branch":  "FPS-Killer",
+    "compiler":  "MSVC 19.51.36256.0 (v145), Win32 Release, /O2 /Qspectre /guard:cf",
+    "cpu":  "AMD Ryzen 7 9800X3D (8 cores / 16 threads)",
+    "physical_memory_bytes":  33410101248,
+    "operating_system":  "Windows 11 Home 10.0.26200",
+    "graphics_adapters":  [
+                              "NVIDIA GeForce RTX 5070 driver 32.0.16.1088",
+                              "AMD Radeon(TM) Graphics driver 32.0.21042.62",
+                              "Parsec Virtual Display Adapter driver 0.45.0.0"
+                          ],
+    "standard_raster":  "1920x1080",
+    "oversampled_raster":  "3840x2160 (LFPG Dark whole/detail, rasterScale=2)",
+    "rebuild_samples":  40,
+    "presentation_samples":  160,
+    "pan_zoom_replay_requests":  12,
+    "warmup_pairs":  3,
+    "build_and_host_tests_during_timed_run":  false,
+    "euroscope_running":  false,
+    "results_are":  "Offscreen renderer and presentation component timings, not host FPS",
+    "fixture_sha256":  [
+                           {
+                               "file":  "vSMR/data/AVISO/LFPG.geojson",
+                               "sha256":  "D58276D983154AE1853E7A4EBA845B6B8285AE003F8FC29C618F7AB10D4AE436"
+                           },
+                           {
+                               "file":  "vSMR/data/AVISO/LFPO.geojson",
+                               "sha256":  "44B681A05676741E53486B119F466DF671D8FFA201AB7B0E2F4EA7EC8D32B08E"
+                           },
+                           {
+                               "file":  "vSMR/data/AVISO/LFML.geojson",
+                               "sha256":  "66A181B0F48465696B457AB241238EF5898E84B94F9050C01733AFB1EFC3BCD8"
+                           }
+                       ],
+    "optimized_and_harness_source_sha256":  [
+                                                {
+                                                    "file":  "vSMR/src/aviso/AvisoRasterRenderer.cpp",
+                                                    "sha256":  "04E84B7E4F347C3E57FFBED1E02DC1F3621E1ADACE29FDCC2B9B4004BCCE6F78"
+                                                },
+                                                {
+                                                    "file":  "vSMR/src/aviso/AvisoRenderScene.cpp",
+                                                    "sha256":  "3EBA8D8E1AD8C778AB8143FBB94835BE337F383CADDCECF05FC4A67B8E74EC03"
+                                                },
+                                                {
+                                                    "file":  "vSMR/src/aviso/AvisoRasterBlitter.cpp",
+                                                    "sha256":  "ECB4A92A1247C60B3407DECF90664A75867F607F9BAADBC8CAE73FC1A400FFD0"
+                                                },
+                                                {
+                                                    "file":  "vSMR/tests/aviso_benchmark/AvisoBenchmark.cpp",
+                                                    "sha256":  "54B9651BBF4972E2BC1FB87F48E8AAB858A55A24DEB29E7F10D4DC92805786E5"
+                                                },
+                                                {
+                                                    "file":  "vSMR/tests/aviso_benchmark/BaselineRenderer.cpp",
+                                                    "sha256":  "1A09C773E909106D7CB30C295282021EB26FD9284D8D3587EF05F1F932F37BAA"
+                                                },
+                                                {
+                                                    "file":  "vSMR/tests/aviso_benchmark/BenchmarkFixture.cpp",
+                                                    "sha256":  "0526330EA69F96F437B4680640327E10E43690EA00A6E917B31DB49140C0B6CE"
+                                                }
+                                            ],
+    "post_measurement_whitespace_cleanup":  [
+                                                {
+                                                    "file":  "vSMR/tests/aviso_benchmark/BaselineRenderer.cpp",
+                                                    "final_sha256":  "C42949D1085FD22A9E673C8D38823921AA082ADEA8782D1A0DC8589B47F031D5",
+                                                    "change":  "Removed extra blank lines at EOF after measurement; executable statements unchanged. Measured hashes above are retained."
+                                                },
+                                                {
+                                                    "file":  "vSMR/tests/aviso_benchmark/BenchmarkFixture.cpp",
+                                                    "final_sha256":  "26F9D5B90FE06BAE8DD8BB7FBD06AA83A1F524A54E81ED48066F5C003B8EA127",
+                                                    "change":  "Removed extra blank lines at EOF after measurement; executable statements unchanged. Measured hashes above are retained."
+                                                }
+                                            ]
+}

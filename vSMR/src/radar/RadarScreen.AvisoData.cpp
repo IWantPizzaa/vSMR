@@ -3,6 +3,7 @@
 #include "aviso/AvisoFeatureMetadata.hpp"
 #include "aviso/AvisoPolygonOutline.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
+#include "aviso/AvisoRenderScene.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.AvisoSupport.hpp"
 #include "radar/RadarScreenSupport.hpp"
@@ -1190,9 +1191,10 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	// Apply live runway rules before publishing the first render snapshot.
 	ApplyRunwayGroupVisibility(parsedGroups);
 	auto featureSnapshot =
-		std::make_shared<const std::vector<AvisoFeature>>(parsedFeatures);
+		std::make_shared<const std::vector<AvisoFeature>>(std::move(parsedFeatures));
 	auto labelSnapshot =
-		std::make_shared<const std::vector<AvisoLabel>>(parsedLabels);
+		std::make_shared<const std::vector<AvisoLabel>>(std::move(parsedLabels));
+	auto renderScene = VsmrAviso::AvisoRenderScene::Build(*featureSnapshot, *labelSnapshot);
 	auto visibility =
 		std::make_shared<std::unordered_map<std::string, bool>>();
 	visibility->reserve(parsedGroups.size());
@@ -1202,8 +1204,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	// Commit only after the replacement document has been fully read and parsed.
 	// A malformed on-disk update must never clear the last known-good overlay.
 	const bool loadedPathChanged = AvisoGeoJsonLoadedPath != path;
-	AvisoGeoJsonFeatures = std::move(parsedFeatures);
-	AvisoGeoJsonLabels = std::move(parsedLabels);
+	AvisoGeoJsonFeatureCount = featureSnapshot->size();
+	AvisoGeoJsonLabelCount = labelSnapshot->size();
 	AvisoGeoJsonLoadedPath = path;
 	AvisoGeoJsonViewInitializedPath.clear();
 	AvisoGeoJsonLoadedWriteTime = writeTime;
@@ -1238,6 +1240,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		std::lock_guard<std::mutex> groupGuard(AvisoGroupMutex);
 		AvisoGeoJsonFeatureSnapshot = std::move(featureSnapshot);
 		AvisoGeoJsonLabelSnapshot = std::move(labelSnapshot);
+		AvisoRenderSceneSnapshot = std::move(renderScene);
 		AvisoGeoJsonSourceFeatureCount = static_cast<size_t>(features.Size());
 		AvisoRuntimeGroups = parsedGroups;
 		AvisoGroupVisibilitySnapshot = visibility;
@@ -1259,7 +1262,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	loadPerformance.success = true;
 	Logger::info(
 		"AVISO GeoJSON loaded path=" + path +
-		" features=" + std::to_string(AvisoGeoJsonFeatures.size()) +
+		" features=" + std::to_string(AvisoGeoJsonFeatureCount) +
 		" polygons=" + std::to_string(polygonCount) +
 		" multilines=" + std::to_string(multiLineCount) +
 		" labels=" + std::to_string(labelCount) +

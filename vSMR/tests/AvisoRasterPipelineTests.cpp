@@ -286,6 +286,19 @@ namespace
 		Check(visibilityResult && visibilityResult->labelZoomLevel == 10 &&
 			pipeline.Queue(resizedLabels, false) == Pipeline::QueueStatus::Coalesced,
 			"matching visibility reuses the completed raster", failures);
+		Pipeline::Request changedBackground = resizedLabels;
+		changedBackground.backgroundColor = Gdiplus::Color(255, 30, 40, 50);
+		Check(pipeline.Queue(changedBackground, false) == Pipeline::QueueStatus::Queued,
+			"opaque background color changes cannot reuse a differently composed raster", failures);
+		Check(completed.Wait([&]() { return refreshCalls.load(std::memory_order_relaxed) == 5; }),
+			"background-specific AVISO raster completes", failures);
+		pipeline.TakeCompleted();
+		changedBackground.viewportZoomLevel = 12;
+		Check(pipeline.Queue(changedBackground, false) == Pipeline::QueueStatus::Queued,
+			"geometry visibility threshold changes cannot coalesce with an older zoom level", failures);
+		Check(completed.Wait([&]() { return refreshCalls.load(std::memory_order_relaxed) == 6; }),
+			"geometry-visibility-specific AVISO raster completes", failures);
+		pipeline.TakeCompleted();
 		pipeline.Stop();
 	}
 

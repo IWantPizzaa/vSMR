@@ -48,6 +48,8 @@ struct AvisoViewportState
 		}
 
 		cachePath.clear();
+		cacheBackgroundColor = Gdiplus::Color(0, 0, 0, 0);
+		cachePalette.clear();
 		cacheGroupGeneration = 0;
 		cacheWidth = 0;
 		cacheHeight = 0;
@@ -222,10 +224,14 @@ struct AvisoViewportState
 
 	HBITMAP cacheBitmap = nullptr;
 	std::string cachePath;
+	std::string cachePalette;
+	Gdiplus::Color cacheBackgroundColor = Gdiplus::Color(0, 0, 0, 0);
 	unsigned long long cacheGroupGeneration = 0;
 	int cacheWidth = 0;
 	int cacheHeight = 0;
 	int cacheLabelZoomLevel = -1;
+	int cacheViewportZoomLevel = 0;
+	double cacheDisplayScale = 1.0;
 	double displayMinLongitude = 0.0;
 	double displayMinLatitude = 0.0;
 	double displayMaxLongitude = 0.0;
@@ -312,6 +318,7 @@ struct CInsetWindow::InsetAvisoCacheView
 {
 	// The viewport function owns these values and the lifetime of its GDI state.
 	CInsetWindow& inset;
+	CSMRRadar* radarScreen;
 	HDC hDC;
 	Gdiplus::Graphics* gdi;
 	const CRect& viewportRect;
@@ -328,6 +335,28 @@ struct CInsetWindow::InsetAvisoCacheView
 	const Gdiplus::PointF& projectedBottomLeft;
 	const Gdiplus::PointF& projectedBottomRight;
 	int labelZoomLevel;
+	int viewportZoomLevel;
+	bool& backgroundSatisfied;
+
+	bool blendCache(const RECT& source, const RECT& destination)
+	{
+		VsmrAviso::RasterBlitPlan plan;
+		if (!VsmrAviso::TryBuildRasterBlitPlan(source, destination, viewportRect, plan))
+			return false;
+		const bool opaque = inset.m_AvisoState->cacheBackgroundColor.GetAlpha() == 255;
+		const bool coversBackground = opaque && plan.destination.left <= viewportRect.left &&
+			plan.destination.top <= viewportRect.top && plan.destination.right >= viewportRect.right &&
+			plan.destination.bottom >= viewportRect.bottom;
+		if (!coversBackground && !backgroundSatisfied)
+		{
+			radarScreen->DrawAvisoBackground(*gdi, viewportRect);
+			backgroundSatisfied = true;
+		}
+		const bool drawn = inset.m_AvisoState->rasterBlitter.Blend(*gdi, hDC,
+			inset.m_AvisoState->cacheBitmap, source, destination, viewportRect, opaque);
+		backgroundSatisfied = backgroundSatisfied || (drawn && coversBackground);
+		return drawn;
+	}
 
 	Gdiplus::PointF projectPoint(double longitude, double latitude) const
 	{
@@ -344,6 +373,11 @@ struct CInsetWindow::InsetAvisoCacheView
 
 	bool cacheTransformMatchesCurrentView()
 	{
+		if (inset.m_AvisoState->cacheDisplayScale != radarScreen->GetDisplayScale())
+			return false;
+		if (inset.m_AvisoState->cachePalette != radarScreen->AvisoColorPalette ||
+			inset.m_AvisoState->cacheBackgroundColor.GetValue() != radarScreen->GetAvisoRasterBackgroundColor().GetValue())
+			return false;
 		if (inset.m_AvisoState->cacheBitmap == nullptr || !inset.m_AvisoState->anchorValid)
 			return false;
 		if (inset.m_AvisoState->cacheGroupGeneration != groupGeneration)
@@ -374,7 +408,10 @@ struct CInsetWindow::InsetAvisoCacheView
 	{
 		if (result.bitmap == nullptr ||
 			result.labelZoomLevel != labelZoomLevel ||
+			result.displayScale != radarScreen->GetDisplayScale() ||
 			result.path != path ||
+			result.colorPalette != radarScreen->AvisoColorPalette ||
+			result.backgroundColor.GetValue() != radarScreen->GetAvisoRasterBackgroundColor().GetValue() ||
 			result.groupGeneration != groupGeneration ||
 			result.rasterWidth <= 0 ||
 			result.rasterHeight <= 0)
@@ -494,13 +531,7 @@ struct CInsetWindow::InsetAvisoCacheView
 			destRightInt,
 			destBottomInt
 		};
-		return inset.m_AvisoState->rasterBlitter.Blend(
-			*gdi,
-			hDC,
-			inset.m_AvisoState->cacheBitmap,
-			sourceRect,
-			destinationRect,
-			viewportRect);
+		return blendCache(sourceRect, destinationRect);
 	}
 
 	bool drawPreviousCacheViewportAligned()
@@ -512,6 +543,9 @@ struct CInsetWindow::InsetAvisoCacheView
 			return false;
 		if (inset.m_AvisoState->cacheBitmap == nullptr ||
 			inset.m_AvisoState->cachePath != path ||
+			inset.m_AvisoState->cachePalette != radarScreen->AvisoColorPalette ||
+			inset.m_AvisoState->cacheDisplayScale != radarScreen->GetDisplayScale() ||
+			inset.m_AvisoState->cacheBackgroundColor.GetValue() != radarScreen->GetAvisoRasterBackgroundColor().GetValue() ||
 			inset.m_AvisoState->cacheWidth <= 0 ||
 			inset.m_AvisoState->cacheHeight <= 0 ||
 			!inset.m_AvisoState->anchorValid)
@@ -599,18 +633,13 @@ struct CInsetWindow::InsetAvisoCacheView
 			viewportRect.right,
 			viewportRect.bottom
 		};
-		return inset.m_AvisoState->rasterBlitter.Blend(
-			*gdi,
-			hDC,
-			inset.m_AvisoState->cacheBitmap,
-			sourceRect,
-			destinationRect,
-			viewportRect);
+		return blendCache(sourceRect, destinationRect);
 	}
 
 	bool cacheHasWorkingMargin()
 	{
 		if (inset.m_AvisoState->cacheBitmap == nullptr ||
+			inset.m_AvisoState->cacheViewportZoomLevel != viewportZoomLevel ||
 			inset.m_AvisoState->cachePath != path ||
 			inset.m_AvisoState->cacheGroupGeneration != groupGeneration ||
 			!inset.m_AvisoState->anchorValid)
@@ -1168,7 +1197,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	const std::string path = radar_screen->ResolveAvisoGeoJsonPathForAirport(airport);
 	if (path.empty() ||
 		!radar_screen->EnsureAvisoGeoJsonLoaded(path) ||
-		(radar_screen->AvisoGeoJsonFeatures.empty() && radar_screen->AvisoGeoJsonLabels.empty()))
+		(radar_screen->AvisoGeoJsonFeatureCount == 0 && radar_screen->AvisoGeoJsonLabelCount == 0))
 	{
 		radar_screen->DrawAvisoBackground(*gdi, viewportRect);
 		drawCenteredMessage("AVISO unavailable");
@@ -1176,17 +1205,19 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		dc.Detach();
 		return;
 	}
-	radar_screen->DrawAvisoBackground(*gdi, viewportRect);
 	std::shared_ptr<const std::vector<CSMRRadar::AvisoFeature>> featureSnapshot;
 	std::shared_ptr<const std::vector<CSMRRadar::AvisoLabel>> labelSnapshot;
+	std::shared_ptr<const VsmrAviso::AvisoRenderScene> renderScene;
 	std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
 	unsigned long long groupGeneration = 0;
 	if (!radar_screen->GetAvisoRenderSnapshots(
 		featureSnapshot,
 		labelSnapshot,
 		groupVisibility,
-		groupGeneration))
+		groupGeneration,
+		&renderScene))
 	{
+		radar_screen->DrawAvisoBackground(*gdi, viewportRect);
 		drawCenteredMessage("AVISO unavailable");
 		drawChrome();
 		dc.Detach();
@@ -1251,6 +1282,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	const double latSpan = displayMaxLat - displayMinLat;
 	if (lonSpan <= 0.0 || latSpan <= 0.0)
 	{
+		radar_screen->DrawAvisoBackground(*gdi, viewportRect);
 		drawCenteredMessage("AVISO unavailable");
 		drawChrome();
 		dc.Detach();
@@ -1284,7 +1316,9 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	// Normalize the visible ground distance to the current host dimensions.
 	// A small inset must not reveal dense text merely because its diagonal is shorter.
 	const int labelZoomLevel = SMRGeometry::ZoomLevelFromCrossDistance(crossDistance / labelVisibilityRatio);
-	InsetAvisoCacheView cacheView{ *this, hDC, gdi, viewportRect, path, groupGeneration, displayMinLon, displayMaxLon, displayMinLat, displayMaxLat, lonSpan, latSpan, projectedTopLeft, projectedTopRight, projectedBottomLeft, projectedBottomRight, labelZoomLevel };
+	const int viewportZoomLevel = SMRGeometry::ZoomLevelFromCrossDistance(crossDistance);
+	bool backgroundSatisfied = false;
+	InsetAvisoCacheView cacheView{ *this, radar_screen, hDC, gdi, viewportRect, path, groupGeneration, displayMinLon, displayMaxLon, displayMinLat, displayMaxLat, lonSpan, latSpan, projectedTopLeft, projectedTopRight, projectedBottomLeft, projectedBottomRight, labelZoomLevel, viewportZoomLevel, backgroundSatisfied };
 
 
 	bool completedResultApplied = false;
@@ -1298,10 +1332,14 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			m_AvisoState->cacheBitmap = completedRenderResult->bitmap;
 			completedRenderResult->bitmap = nullptr;
 			m_AvisoState->cachePath = completedRenderResult->path;
+			m_AvisoState->cachePalette = completedRenderResult->colorPalette;
+			m_AvisoState->cacheBackgroundColor = completedRenderResult->backgroundColor;
 			m_AvisoState->cacheGroupGeneration = completedRenderResult->groupGeneration;
 			m_AvisoState->cacheWidth = completedRenderResult->rasterWidth;
 			m_AvisoState->cacheHeight = completedRenderResult->rasterHeight;
 			m_AvisoState->cacheLabelZoomLevel = completedRenderResult->labelZoomLevel;
+			m_AvisoState->cacheViewportZoomLevel = completedRenderResult->viewportZoomLevel;
+			m_AvisoState->cacheDisplayScale = completedRenderResult->displayScale;
 			m_AvisoState->displayMinLongitude = completedRenderResult->displayMinLongitude;
 			m_AvisoState->displayMinLatitude = completedRenderResult->displayMinLatitude;
 			m_AvisoState->displayMaxLongitude = completedRenderResult->displayMaxLongitude;
@@ -1375,8 +1413,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			request.path = path;
 			request.features = featureSnapshot;
 			request.labels = labelSnapshot;
+			request.scene = renderScene;
 			request.groupVisibility = groupVisibility;
 			request.colorPalette = radar_screen->AvisoColorPalette;
+			request.backgroundColor = radar_screen->GetAvisoRasterBackgroundColor();
 			request.rasterWidth = (std::max)(1, static_cast<int>(std::floor(renderPixelWidth * rasterScale)));
 			request.rasterHeight = (std::max)(1, static_cast<int>(std::floor(renderPixelHeight * rasterScale)));
 			request.rasterScale = rasterScale;
@@ -1394,7 +1434,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			request.renderScreenTop = renderScreenTop;
 			request.scaleX = scaleX;
 			request.scaleY = scaleY;
-			request.viewportZoomLevel = SMRGeometry::ZoomLevelFromCrossDistance(crossDistance);
+			request.viewportZoomLevel = viewportZoomLevel;
 			request.projectedTopLeft = projectedTopLeft;
 			request.projectedTopRight = projectedTopRight;
 			request.projectedBottomLeft = projectedBottomLeft;
@@ -1416,6 +1456,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		delayedByAvisoUpdate,
 		!cacheDrawn);
 
+	if (!backgroundSatisfied)
+		radar_screen->DrawAvisoBackground(*gdi, viewportRect);
 	if (!cacheDrawn)
 		drawCenteredMessage(m_AvisoState->HasPendingRender() ? "Rendering AVISO" : "AVISO unavailable");
 

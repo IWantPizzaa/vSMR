@@ -56,6 +56,7 @@ namespace VsmrPerformance
 		double average = 0.0;
 		double median = 0.0;
 		double p95 = 0.0;
+		double p99 = 0.0;
 		double maximum = 0.0;
 	};
 
@@ -63,6 +64,10 @@ namespace VsmrPerformance
 	{
 		std::uint64_t frameId = 0;
 		std::uint64_t timestampMilliseconds = 0;
+		// High-resolution monotonic callback entry. Cadence includes host idle and
+		// UI scheduling time; it is not the display's presentation rate.
+		double callbackStartMilliseconds = 0.0;
+		double callbackIntervalMilliseconds = 0.0;
 		double frameMilliseconds = 0.0;
 		double sceneMilliseconds = 0.0;
 		double avisoMilliseconds = 0.0;
@@ -178,6 +183,9 @@ namespace VsmrPerformance
 		bool hasLatestFrame = false;
 		std::vector<FrameSample> series;
 		Distribution frame;
+		Distribution callbackInterval;
+		double callbackCadenceHz = 0.0;
+		double callbackCadenceOnePercentLowHz = 0.0;
 		Distribution scene;
 		Distribution aviso;
 		Distribution targets;
@@ -244,6 +252,7 @@ namespace VsmrPerformance
 			std::size_t realisticRotatedEntries) const;
 
 		static std::uint64_t MonotonicMilliseconds() noexcept;
+		static double HighResolutionMonotonicMilliseconds() noexcept;
 		static std::uint64_t UtcMilliseconds() noexcept;
 
 	private:
@@ -294,6 +303,7 @@ namespace VsmrPerformance
 		std::size_t NextFrameSample = 0;
 		std::size_t FrameSampleCount = 0;
 		std::uint64_t TotalFrames = 0;
+		double PreviousCallbackStartMilliseconds = 0.0;
 		std::uint64_t Generation = 1;
 		std::uint64_t CollectionStartedUtcMilliseconds = 0;
 		std::uint64_t CollectionStartedMonotonicMilliseconds = 0;

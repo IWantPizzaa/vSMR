@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|Win32"><Configuration>Release</Configuration><Platform>Win32</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{94382153-E170-4415-8ED9-7D035B32E45D}</ProjectGuid>
+    <RootNamespace>vSMRAvisoBenchmark</RootNamespace><Keyword>Win32Proj</Keyword><WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType><UseDebugLibraries>false</UseDebugLibraries><PlatformToolset>v145</PlatformToolset><CharacterSet>MultiByte</CharacterSet><UseOfMfc>Dynamic</UseOfMfc>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup><OutDir>$(ProjectDir)bin\Release\</OutDir><IntDir>$(ProjectDir)obj\Release\</IntDir><TargetName>vSMR.AvisoBenchmark</TargetName><LinkIncremental>false</LinkIncremental><ExternalIncludePath>$(ProjectDir)..\..\..\lib\include;$(ExternalIncludePath)</ExternalIncludePath></PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile><PrecompiledHeader>NotUsing</PrecompiledHeader><Optimization>MaxSpeed</Optimization><PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions><AdditionalIncludeDirectories>$(ProjectDir)..\..\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel><RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary><LanguageStandard>stdcpp17</LanguageStandard><TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType></ClCompile>
+    <Link><SubSystem>Console</SubSystem><AdditionalDependencies>gdiplus.lib;msimg32.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="AvisoBenchmark.cpp" /><ClCompile Include="BaselineRenderer.cpp" /><ClCompile Include="BenchmarkFixture.cpp" />
+    <ClCompile Include="..\..\src\aviso\AvisoFeatureMetadata.cpp" /><ClCompile Include="..\..\src\aviso\AvisoRasterRenderer.cpp" /><ClCompile Include="..\..\src\aviso\AvisoRenderScene.cpp" /><ClCompile Include="..\..\src\aviso\AvisoRasterBlitter.cpp" />
+  </ItemGroup>
+  <Import Project="..\..\BuildHardening.props" />
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

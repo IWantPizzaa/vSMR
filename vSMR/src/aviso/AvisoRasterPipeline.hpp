@@ -83,7 +83,9 @@ namespace VsmrAviso
 		{
 			std::string path;
 			std::string colorPalette = "dark";
+			Gdiplus::ARGB backgroundColor = 0;
 			std::uint64_t groupGeneration = 0;
+			int viewportZoomLevel = 0;
 			double displayScale = 1.0;
 			int labelZoomLevel = -1;
 			int rasterWidth = 0;
