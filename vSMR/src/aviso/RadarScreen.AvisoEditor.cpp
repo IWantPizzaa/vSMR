@@ -65,7 +65,7 @@ bool CSMRRadar::ApplyAvisoUserOverrides(const std::string& path,
 	if (!appearanceConfig.error.empty()) { error = appearanceConfig.error; return false; }
 	const auto* appearance = appearanceConfig.document ? VsmrLayeredConfig::Member(*appearanceConfig.document, "aviso_display_defaults") : nullptr;
 	const bool managed = VsmrAvisoOverrides::IsManagedSource(std::filesystem::u8path(DataPath), std::filesystem::u8path(path));
-	if (!managed) return true; // Complete custom files own their appearance.
+	if (!managed) return VsmrAvisoOverrides::ApplyAppearance(document, appearance, error);
 	if (CurrentConfig == nullptr) return true;
 	if (!CurrentConfig->isLayeredConfig())
 	{

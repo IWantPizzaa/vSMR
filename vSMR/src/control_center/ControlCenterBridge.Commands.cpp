@@ -328,10 +328,20 @@ bool VsmrControlCenterBridgeImpl::HandleSettings(
 			ReadString(*payload, "airport") != Owner->getActiveAirport() ||
 			ReadString(*payload, "configRevision") != Owner->CurrentConfig->getConfigRevision())
 		{ error = "The editing context changed. Reload before applying to all terrains."; return false; }
-		const auto& incoming = (*payload)["applyAvisoToAll"];
+		const auto& requested = (*payload)["applyAvisoToAll"];
 		if (payload->HasMember("replaceLocalAppearance") && !(*payload)["replaceLocalAppearance"].IsBool())
 		{ error = "The replacement choice must be boolean."; return false; }
-		if (!VsmrAvisoOverrides::ValidateAppearance(incoming, error)) return false;
+		if (!VsmrAvisoOverrides::ValidateAppearance(requested, error)) return false;
+		const auto editorPath = Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport());
+		const auto dataRoot = std::filesystem::u8path(Owner->DataPath);
+		const auto officialPath = dataRoot / "AVISO" / (Owner->getActiveAirport() + ".geojson");
+		const auto defaultPath = Owner->GetAvisoDefaultSource(
+			!VsmrAvisoOverrides::IsManagedSource(dataRoot, std::filesystem::u8path(editorPath)) && std::filesystem::exists(officialPath)
+				? officialPath.u8string() : editorPath, error);
+		AvisoDocumentModel sourceDefaults;
+		rapidjson::Document incoming;
+		if (defaultPath.empty() || !sourceDefaults.LoadFromFile(defaultPath, error) ||
+			!VsmrAvisoOverrides::BuildAppearanceChanges(requested, sourceDefaults.GetDocument(), incoming, error)) return false;
 		CConfig canonical((std::filesystem::u8path(Owner->DataPath) / "config.json").u8string(), "");
 		if (!canonical.isLayeredConfig() || !canonical.isConfigHealthy())
 		{ error = "Canonical configuration is unavailable; no global changes were made."; return false; }
@@ -340,7 +350,7 @@ bool VsmrControlCenterBridgeImpl::HandleSettings(
 		rapidjson::Document appearance(rapidjson::kObjectType), sections(rapidjson::kObjectType);
 		if (const auto* previous = canonical.getUserConfigSection("aviso_display_defaults"))
 			appearance.CopyFrom(*previous, appearance.GetAllocator());
-		VsmrLayeredConfig::Merge(appearance, incoming, appearance.GetAllocator());
+		VsmrAvisoOverrides::MergeAppearanceChanges(appearance, incoming);
 		FILETIME time{}; ::GetSystemTimeAsFileTime(&time);
 		const std::string generation = std::to_string((static_cast<unsigned long long>(time.dwHighDateTime) << 32) | time.dwLowDateTime);
 		rapidjson::Value revision; revision.SetString(generation.c_str(), appearance.GetAllocator());
@@ -410,17 +420,6 @@ bool VsmrControlCenterBridgeImpl::HandleSettings(
 		{
 			error = "AVISO color palette must be dark, light, or real.";
 			return false;
-		}
-		for (CSMRRadar* radar : RadarScreensOpened)
-		{
-			if (radar == nullptr || radar == Owner || radar->CurrentConfig == nullptr ||
-				Owner->CurrentConfig == nullptr ||
-				!radar->CurrentConfig->sharesConfigFileWith(*Owner->CurrentConfig))
-			{
-				continue;
-			}
-			if (!radar->SetAvisoColorPalette((*payload)["avisoColorPalette"].GetString(), false))
-				radar->EnsureAvisoColorPaletteAvailable(false);
 		}
 	}
 

@@ -303,6 +303,17 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 				incomingAviso);
 		}
 		avisoModel->MarkIndexesDirty();
+		if (!persistAvisoOverrides)
+		{
+			const auto generation = Owner->GetGlobalAvisoPalette().second;
+			if (!generation.empty())
+			{
+				auto& doc = avisoModel->MutableDocument();
+				if (!doc.HasMember("metadata")) doc.AddMember("metadata", rapidjson::Value(rapidjson::kObjectType), doc.GetAllocator());
+				rapidjson::Value value; value.SetString(generation.c_str(), doc.GetAllocator());
+				VsmrLayeredConfig::Put(doc["metadata"], "appearance_generation", value, doc.GetAllocator());
+			}
+		}
 		if (!avisoModel->ValidateLoadedFeatureCollection(error))
 			return false;
 		if (persistAvisoOverrides)

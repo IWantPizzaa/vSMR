@@ -378,11 +378,141 @@ namespace VsmrAvisoOverrides
         return true;
     }
 
+    bool BuildAppearanceChanges(const Value& requested, const Value& defaults, Document& result, std::string& error)
+    {
+        if (!ValidateAppearance(requested, error)) return false;
+        result.SetObject();
+        auto& a = result.GetAllocator();
+        Put(result, "palette", requested["palette"], a);
+        const std::string palette = requested["palette"].GetString();
+        // Real palettes belong to their airport, never to another airport's colors.
+        if (palette == "real") return true;
+        const auto equal = [](const Value& left, const Value* right) {
+            if (!right) return false;
+            if (left.IsString() && right->IsString() && left.GetString()[0] == '#')
+                return Upper(left.GetString()) == Upper(right->GetString());
+            return left == *right;
+        };
+        const auto effective = [](const Value* paint, const char* key, const std::string& p) -> const Value* {
+            if (!paint) return nullptr;
+            const auto* all = Member(*paint, "palette-overrides");
+            if (all && p != "dark") {
+                const auto* own = Member(*all, p.c_str());
+                if (!own) own = Member(*all, "day");
+                if (own) if (const auto* value = Member(*own, key)) return value;
+            }
+            return Member(*paint, key);
+        };
+        Value styles(rapidjson::kObjectType);
+        const auto* originalStyles = Member(defaults, "styles");
+        if (const auto* requestedStyles = Member(requested, "styles"))
+            for (auto style = requestedStyles->MemberBegin(); style != requestedStyles->MemberEnd(); ++style)
+            {
+                const auto* original = originalStyles ? Member(*originalStyles, style->name.GetString()) : nullptr;
+                const auto* baseline = original ? Member(*original, "paint") : nullptr;
+                if (!baseline) continue;
+                Value paint(rapidjson::kObjectType);
+                for (auto field = style->value["paint"].MemberBegin(); field != style->value["paint"].MemberEnd(); ++field)
+                {
+                    const std::string key = field->name.GetString();
+                    if (key == "palette-overrides") {
+                        Value palettes(rapidjson::kObjectType);
+                        for (auto p = field->value.MemberBegin(); p != field->value.MemberEnd(); ++p) {
+                            Value colors(rapidjson::kObjectType);
+                            for (auto color = p->value.MemberBegin(); color != p->value.MemberEnd(); ++color)
+                                if (!equal(color->value, effective(baseline, color->name.GetString(), p->name.GetString())))
+                                    Put(colors, color->name.GetString(), color->value, a);
+                            if (!colors.ObjectEmpty()) Put(palettes, p->name.GetString(), colors, a);
+                        }
+                        if (!palettes.ObjectEmpty()) Put(paint, "palette-overrides", palettes, a);
+                    }
+                    else {
+                        const auto* old = Member(*baseline, key.c_str());
+                        const bool implicitOpaque = !old && (key == "fill-opacity" || key == "stroke-opacity") &&
+                            field->value.IsNumber() && field->value.GetDouble() == 1;
+                        if (!implicitOpaque && !equal(field->value, old)) Put(paint, key.c_str(), field->value, a);
+                    }
+                }
+                if (!paint.ObjectEmpty()) {
+                    Value entry(rapidjson::kObjectType); Put(entry, "paint", paint, a);
+                    Put(styles, style->name.GetString(), entry, a);
+                }
+            }
+        if (!styles.ObjectEmpty()) Put(result, "styles", styles, a);
+        Value metadata(rapidjson::kObjectType);
+        const auto* originalMetadata = Member(defaults, "metadata");
+        if (const auto* requestedMetadata = Member(requested, "metadata"))
+            for (auto group = requestedMetadata->MemberBegin(); group != requestedMetadata->MemberEnd(); ++group) {
+                Value values(rapidjson::kObjectType);
+                const auto* original = originalMetadata ? Member(*originalMetadata, group->name.GetString()) : nullptr;
+                for (auto p = group->value.MemberBegin(); p != group->value.MemberEnd(); ++p) {
+                    Value fallback;
+                    const Value* old = original ? Member(*original, p->name.GetString()) : nullptr;
+                    if (std::string(group->name.GetString()) == "background_opacities") {
+                        fallback.SetDouble(AvisoDocumentModel::BackgroundOpacity(originalMetadata, p->name.GetString()));
+                        old = &fallback;
+                    } else if (!old) {
+                        if (original) old = Member(*original, std::string(p->name.GetString()) == "dark" ? "night" : "day");
+                        if (!old && original) old = Member(*original, "dark");
+                        if (!old && original) old = Member(*original, "night");
+                        if (!old) { fallback.SetString("#434A4F"); old = &fallback; }
+                    }
+                    if (!equal(p->value, old)) Put(values, p->name.GetString(), p->value, a);
+                }
+                if (!values.ObjectEmpty()) Put(metadata, group->name.GetString(), values, a);
+            }
+        if (!metadata.ObjectEmpty()) Put(result, "metadata", metadata, a);
+        return true;
+    }
+
+    void MergeAppearanceChanges(Document& shared, const Value& changes)
+    {
+        const std::string palette = changes["palette"].GetString();
+        if (palette != "real") {
+            if (auto* styles = Member(shared, "styles")) {
+                for (auto style = styles->MemberBegin(); style != styles->MemberEnd();) {
+                    auto* paint = Member(style->value, "paint");
+                    if (paint) {
+                        for (auto field = paint->MemberBegin(); field != paint->MemberEnd();) {
+                            const std::string key = field->name.GetString();
+                            if (key == "palette-overrides") {
+                                field->value.RemoveMember(palette.c_str());
+                                if (field->value.ObjectEmpty()) field = paint->EraseMember(field);
+                                else ++field;
+                            } else {
+                                const bool color = key == "fill" || key == "stroke" || key == "text-color" || key == "text-halo-color";
+                                if (!color || palette == "dark") field = paint->EraseMember(field);
+                                else ++field;
+                            }
+                        }
+                    }
+                    if (!paint || paint->ObjectEmpty()) style = styles->EraseMember(style);
+                    else ++style;
+                }
+                if (styles->ObjectEmpty()) shared.RemoveMember("styles");
+            }
+            if (auto* metadata = Member(shared, "metadata")) {
+                for (auto group = metadata->MemberBegin(); group != metadata->MemberEnd();) {
+                    group->value.RemoveMember(palette.c_str());
+                    if (group->value.ObjectEmpty()) group = metadata->EraseMember(group);
+                    else ++group;
+                }
+                if (metadata->ObjectEmpty()) shared.RemoveMember("metadata");
+            }
+        }
+        VsmrLayeredConfig::Merge(shared, changes, shared.GetAllocator());
+    }
+
     bool ApplyAppearance(Document& source, const Value* appearance, std::string& error, const Value* localOverrides)
     {
         if (appearance && !ValidateAppearance(*appearance, error)) return false;
         if (!Apply(source, localOverrides, error)) return false;
         if (!appearance) return true;
+        const auto* generationMetadata = Member(source, "metadata");
+        const auto* savedGeneration = generationMetadata ? Member(*generationMetadata, "appearance_generation") : nullptr;
+        const auto* globalGeneration = Member(*appearance, "generation");
+        if (savedGeneration && globalGeneration && *savedGeneration == *globalGeneration) return true;
+        if (std::string((*appearance)["palette"].GetString()) == "real") return true;
         auto& a = source.GetAllocator();
         const auto withoutLocal = [&](const Value& settings, const Value* local) {
             Value result(settings, a);
@@ -400,7 +530,8 @@ namespace VsmrAvisoOverrides
                 else
                 {
                     result.RemoveMember(key.c_str());
-                    if (auto* palettes = Member(result, "palette-overrides"))
+                    const bool color = key == "fill" || key == "stroke" || key == "text-color" || key == "text-halo-color";
+                    if (auto* palettes = color ? nullptr : Member(result, "palette-overrides"))
                         for (auto p = palettes->MemberBegin(); p != palettes->MemberEnd(); ++p)
                             if (p->value.IsObject()) p->value.RemoveMember(key.c_str());
                 }
@@ -520,9 +651,8 @@ namespace VsmrAvisoOverrides
         auto* document = patch ? Member(*patch, "document") : nullptr;
         if (const auto* metadata = Member(appearance, "metadata")) erase(document ? Member(*document, "metadata") : nullptr, *metadata, "/document/metadata", erase);
         const auto* styles = Member(appearance, "styles");
-        if (!styles) return;
         auto* patchedStyles = document ? Member(*document, "styles") : nullptr;
-        for (auto it = styles->MemberBegin(); it != styles->MemberEnd(); ++it)
+        if (styles) for (auto it = styles->MemberBegin(); it != styles->MemberEnd(); ++it)
             erase(patchedStyles ? Member(*patchedStyles, it->name.GetString()) : nullptr, it->value, "/document/styles/" + escaped(it->name.GetString()), erase);
         auto* patchedFeatures = patch ? Member(*patch, "features") : nullptr;
         const auto* features = Member(baseline, "features");
@@ -530,7 +660,7 @@ namespace VsmrAvisoOverrides
         {
             const auto* props = Member(feature, "properties");
             const auto* styleId = props ? Member(*props, "style_id") : nullptr;
-            const auto* style = styleId && styleId->IsString() ? Member(*styles, styleId->GetString()) : nullptr;
+            const auto* style = styles && styleId && styleId->IsString() ? Member(*styles, styleId->GetString()) : nullptr;
             const std::string id = Identity(feature, true);
             auto* patchedFeature = patchedFeatures ? Member(*patchedFeatures, id.c_str()) : nullptr;
             if (style) erase(patchedFeature ? Member(*patchedFeature, "properties") : nullptr, (*style)["paint"], "/features/" + escaped(id) + "/properties", erase);

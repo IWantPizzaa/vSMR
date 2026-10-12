@@ -11,6 +11,9 @@ class CConfig;
 namespace VsmrAvisoOverrides
 {
     bool ValidateAppearance(const rapidjson::Value& appearance, std::string& error);
+    bool BuildAppearanceChanges(const rapidjson::Value& requested, const rapidjson::Value& defaults,
+        rapidjson::Document& result, std::string& error);
+    void MergeAppearanceChanges(rapidjson::Document& shared, const rapidjson::Value& changes);
     bool ApplyAppearance(rapidjson::Document& source, const rapidjson::Value* appearance, std::string& error,
         const rapidjson::Value* localOverrides = nullptr);
     void ClearAppearanceOverrides(rapidjson::Value& record, const rapidjson::Value& appearance,
