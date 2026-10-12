@@ -165,6 +165,8 @@
     <ClCompile Include="src\aviso\AvisoFeatureMetadata.cpp" />
     <ClCompile Include="src\aviso\AvisoRasterBlitter.cpp" />
     <ClCompile Include="src\aviso\AvisoRasterPipeline.cpp" />
+    <ClCompile Include="src\aviso\AvisoRenderScene.cpp" />
+    <ClCompile Include="src\aviso\AvisoRasterRenderer.cpp" />
     <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp" />
     <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp" />
     <ClCompile Include="src\config\RuntimeConfig.cpp" />
@@ -285,6 +287,8 @@
     <ClInclude Include="src\aviso\AvisoFeatureMetadata.hpp" />
     <ClInclude Include="src\aviso\AvisoRasterBlitter.hpp" />
     <ClInclude Include="src\aviso\AvisoRasterPipeline.hpp" />
+    <ClInclude Include="src\aviso\AvisoRenderScene.hpp" />
+    <ClInclude Include="src\aviso\AvisoRasterRenderer.hpp" />
     <ClInclude Include="src\aviso\AvisoRasterSizing.hpp" />
     <ClInclude Include="src\aviso\AvisoRasterGeometry.hpp" />
     <ClInclude Include="src\aviso\AvisoPolygonOutline.hpp" />

@@ -37,14 +37,7 @@ namespace
 
     double RefreshPerfNowMs()
     {
-        static LARGE_INTEGER frequency = {};
-        if (frequency.QuadPart == 0)
-            ::QueryPerformanceFrequency(&frequency);
-
-        LARGE_INTEGER counter = {};
-        ::QueryPerformanceCounter(&counter);
-        return (static_cast<double>(counter.QuadPart) * 1000.0) /
-            static_cast<double>(frequency.QuadPart);
+        return VsmrPerformance::PerformanceDiagnostics::HighResolutionMonotonicMilliseconds();
     }
 
     void OutputVsmrDebugLine(const std::string& message)
@@ -1049,6 +1042,7 @@ void CSMRRadar::RecordRefreshPerformance(
 	PerfLastInsetChromeMs = performance.insetChromeMilliseconds;
 	VsmrPerformance::FrameSample performanceFrame;
 	performanceFrame.frameId = frameScene != nullptr ? frameScene->frameId : RadarSceneFrameId;
+	performanceFrame.callbackStartMilliseconds = performance.frameStartMilliseconds;
 	performanceFrame.timestampMilliseconds =
 		VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
 	performanceFrame.frameMilliseconds = PerfLastFrameMs;
@@ -1267,6 +1261,7 @@ void CSMRRadar::RenderRefreshTagsAndRdf(
 
 void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 {
+	const double callbackStartMilliseconds = RefreshPerfNowMs();
 	ScopedHostDcState hostDcState(hDC, IsInsetsOnly());
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnRefresh",
@@ -1302,7 +1297,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		if (!PrepareRefreshPhase(hDC, Phase))
 			return;
 		RefreshPerformance performance;
-		performance.frameStartMilliseconds = RefreshPerfNowMs();
+		performance.frameStartMilliseconds = callbackStartMilliseconds;
+		std::shared_ptr<const VsmrScene::RadarScene> frameSceneOwner;
 		PerformanceDiagnostics.BeginFrame();
 		performance.refreshReasonMask =
 			PendingPerformanceRefreshReasonMask.exchange(0, std::memory_order_acq_rel);
@@ -1338,6 +1334,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		VsmrRefreshLog("Graphics set up");
 		setRefreshStage("graphics setup");
+		{
 		CDC dc;
 		dc.Attach(hDC);
 		ScopedCdcDetach dcDetach(dc);
@@ -1357,7 +1354,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		insetLayoutBounds.NormalizeRect();
 		PrepareRefreshInsetLayout(insetLayoutBounds);
 
-		const std::shared_ptr<const VsmrScene::RadarScene> frameSceneOwner =
+		frameSceneOwner =
 			BuildRefreshSceneAndRenderAviso(
 				hDC,
 				graphics,
@@ -1427,9 +1424,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		setRefreshStage("runtime menu");
 		RenderRuntimeMenu(hDC, graphics);
-		RecordRefreshPerformance(frameScene, performance);
-
 		dcDetach.Detach();
+		} // Include graphics/DC teardown without adding a profiling-only flush.
+		RecordRefreshPerformance(frameSceneOwner.get(), performance);
 		setRefreshStage("complete");
 		VsmrRefreshLog("END " + std::string(__FUNCSIG__));
 	}

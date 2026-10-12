@@ -55,6 +55,8 @@
     <ClCompile Include="src\aviso\AvisoFeatureMetadata.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\aviso\AvisoRasterBlitter.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\aviso\AvisoRasterPipeline.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\aviso\AvisoRenderScene.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\aviso\AvisoRasterRenderer.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\config\RuntimeConfig.cpp"><Filter>Source</Filter></ClCompile>
@@ -158,6 +160,8 @@
     <ClInclude Include="src\aviso\AvisoFeatureMetadata.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoRasterBlitter.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoRasterPipeline.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\AvisoRenderScene.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\AvisoRasterRenderer.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoRasterSizing.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoRasterGeometry.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoPolygonOutline.hpp"><Filter>Headers</Filter></ClInclude>

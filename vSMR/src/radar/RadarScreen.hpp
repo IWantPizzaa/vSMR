@@ -151,10 +151,11 @@ private:
 	VsmrTagRendering::TextCache TagTextCache;
 	mutable bool StructuredTagRulesCacheValid = false;
 	mutable std::vector<StructuredTagColorRule> StructuredTagRulesCache;
-	std::vector<AvisoFeature> AvisoGeoJsonFeatures;
-	std::vector<AvisoLabel> AvisoGeoJsonLabels;
+	size_t AvisoGeoJsonFeatureCount = 0;
+	size_t AvisoGeoJsonLabelCount = 0;
 	std::shared_ptr<const std::vector<AvisoFeature>> AvisoGeoJsonFeatureSnapshot;
 	std::shared_ptr<const std::vector<AvisoLabel>> AvisoGeoJsonLabelSnapshot;
+	std::shared_ptr<const VsmrAviso::AvisoRenderScene> AvisoRenderSceneSnapshot;
 	size_t AvisoGeoJsonSourceFeatureCount = 0;
 	std::vector<AvisoGroup> AvisoRuntimeGroups;
 	std::shared_ptr<const std::unordered_map<std::string, bool>> AvisoGroupVisibilitySnapshot;
@@ -181,6 +182,9 @@ private:
 	std::string AvisoGeoJsonRasterCachePath;
 	unsigned long long AvisoGeoJsonRasterGroupGeneration = 0;
 	std::string AvisoGeoJsonRasterColorPalette = "dark";
+	Gdiplus::Color AvisoGeoJsonRasterBackgroundColor = Gdiplus::Color(0, 0, 0, 0);
+	int AvisoGeoJsonRasterViewportZoomLevel = 0;
+	double AvisoGeoJsonRasterDisplayScale = 1.0;
 	double AvisoGeoJsonRasterMinLongitude = 0.0;
 	double AvisoGeoJsonRasterMinLatitude = 0.0;
 	double AvisoGeoJsonRasterMaxLongitude = 0.0;
@@ -580,7 +584,8 @@ public:
 		std::shared_ptr<const std::vector<AvisoFeature>>& outFeatures,
 		std::shared_ptr<const std::vector<AvisoLabel>>& outLabels,
 		std::shared_ptr<const std::unordered_map<std::string, bool>>& outGroupVisibility,
-		unsigned long long& outGeneration) const;
+		unsigned long long& outGeneration,
+		std::shared_ptr<const VsmrAviso::AvisoRenderScene>* outScene = nullptr) const;
 	bool ApplyAvisoGroupMembershipSnapshot(
 		const rapidjson::Value& aviso,
 		std::string* outError = nullptr);
@@ -600,6 +605,7 @@ public:
 	void ClearAvisoGeoJsonRasterCache();
 	CRect ResolveMainAvisoRenderArea();
 	COLORREF GetAvisoBackgroundColor() const noexcept;
+	Gdiplus::Color GetAvisoRasterBackgroundColor() const noexcept;
 	struct MainAvisoCacheView;
 	void RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics);
 	void BeginShutdown();

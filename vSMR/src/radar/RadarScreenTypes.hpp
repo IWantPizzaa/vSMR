@@ -14,6 +14,8 @@
 #include <unordered_map>
 #include <vector>
 
+namespace VsmrAviso { class AvisoRenderScene; }
+
 namespace VsmrRadarTypes
 {
 	struct Point2
@@ -162,8 +164,12 @@ namespace VsmrRadarTypes
 		std::string path;
 		std::shared_ptr<const std::vector<AvisoFeature>> features;
 		std::shared_ptr<const std::vector<AvisoLabel>> labels;
+		std::shared_ptr<const VsmrAviso::AvisoRenderScene> scene;
 		std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
 		std::string colorPalette = "dark";
+		// Only fully opaque backgrounds are baked in; translucent viewports keep
+		// their transparent overlay and composite over EuroScope on the UI thread.
+		Gdiplus::Color backgroundColor = Gdiplus::Color(0, 0, 0, 0);
 		int rasterWidth = 0;
 		int rasterHeight = 0;
 		double rasterScale = 1.0;
@@ -199,7 +205,10 @@ namespace VsmrRadarTypes
 		unsigned long long requestId = 0;
 		unsigned long long groupGeneration = 0;
 		std::string colorPalette = "dark";
+		Gdiplus::Color backgroundColor = Gdiplus::Color(0, 0, 0, 0);
 		HBITMAP bitmap = nullptr;
+		double displayScale = 1.0;
+		int viewportZoomLevel = 0;
 		int labelZoomLevel = -1;
 		std::string path;
 		int rasterWidth = 0;

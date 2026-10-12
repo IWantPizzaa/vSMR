@@ -51,11 +51,14 @@ bool CSMRRadar::GetAvisoRenderSnapshots(
 	std::shared_ptr<const std::vector<AvisoFeature>>& outFeatures,
 	std::shared_ptr<const std::vector<AvisoLabel>>& outLabels,
 	std::shared_ptr<const std::unordered_map<std::string, bool>>& outGroupVisibility,
-	unsigned long long& outGeneration) const
+	unsigned long long& outGeneration,
+	std::shared_ptr<const VsmrAviso::AvisoRenderScene>* outScene) const
 {
 	std::lock_guard<std::mutex> guard(AvisoGroupMutex);
 	outFeatures = AvisoGeoJsonFeatureSnapshot;
 	outLabels = AvisoGeoJsonLabelSnapshot;
+	if (outScene != nullptr)
+		*outScene = AvisoRenderSceneSnapshot;
 	outGroupVisibility = AvisoGroupVisibilitySnapshot;
 	outGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
 	return outFeatures != nullptr && outLabels != nullptr &&
