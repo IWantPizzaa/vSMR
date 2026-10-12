@@ -60,6 +60,7 @@ namespace VsmrPluginBridge
 		std::uint32_t SchemaMajor() const noexcept { return m_schemaMajor; }
 		std::uint32_t SchemaMinor() const noexcept { return m_schemaMinor; }
 		ProviderState State() const noexcept { return m_state; }
+		bool SourceChanged() const noexcept { return m_sourceChanged; }
 		std::size_t FieldCount() const noexcept { return m_fieldCount; }
 		const FieldSpec& Spec(std::size_t index) const noexcept { return m_fields[index]; }
 		ESB_FieldId Field(std::size_t index) const noexcept { return m_fieldIds[index]; }
@@ -77,6 +78,8 @@ namespace VsmrPluginBridge
 		std::vector<ESB_Status> m_resolveStatuses;
 		std::uint32_t m_schemaMinor = 0U;
 		ProviderState m_state = ProviderState::Absent;
+		const ESB_Api_v1* m_apiIdentity = nullptr; // compare only; never dereference after a tick
+		bool m_sourceChanged = false;
 	};
 
 	// Aircraft handles come from the callsign on every scan and never outlive a tick.

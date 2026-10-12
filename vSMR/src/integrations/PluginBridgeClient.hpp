@@ -36,6 +36,11 @@ namespace VsmrPluginBridge
 	// EuroScope OnTimer only. Attaches lazily through ESB_Attach() instead of at
 	// construction, because EuroScope may load the bridge after vSMR (A4).
 	Tick BeginTick(EuroScopePlugIn::CPlugIn& plugin);
+	void ConfigureProxy(const std::wstring& identity);
+	void EndTick(EuroScopePlugIn::CPlugIn& plugin);
+	bool IsProxyBridge() noexcept;
+	bool ProxyCommandPending() noexcept;
+	bool SubmitProxyVsid(int action, const std::string& airport, std::string& error);
 
 	// UI thread only: validate the bridge without scanning flight plans. The
 	// returned API is used within this callback only, never retained by callers.
