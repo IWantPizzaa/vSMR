@@ -566,6 +566,11 @@
       real: normalizeHex(sourceBackgroundColors?.real, lightBackground).toUpperCase()
     };
     aviso.metadata.default_color_palette = normalizeAvisoColorPalette(aviso.metadata.default_color_palette);
+    const opacities = aviso.metadata.background_opacities || {};
+    aviso.metadata.background_opacities = Object.fromEntries(["dark", "light", "real"].map(palette => {
+      const value = Number(opacities[palette] ?? (palette === "dark" ? opacities.night : palette === "light" ? opacities.day : undefined) ?? 1);
+      return [palette, Number.isFinite(value) ? clamp(value, 0, 1) : 1];
+    }));
     aviso.metadata.color_palettes = avisoColorPalettes(aviso);
     if (!Array.isArray(aviso.vsmr_groups)) aviso.vsmr_groups = [];
 
