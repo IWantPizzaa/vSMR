@@ -3555,13 +3555,14 @@
       showToast("Wait until the current changes are saved before applying them to all terrains.", "error");
       return;
     }
-    if (!window.confirm("Apply geometry settings changed from this airport's defaults to all terrains? Only this button updates the shared settings. Real selects each airport's own Real theme, or Light when unavailable; it never copies Real colors. Coordinates and groups are unchanged.")) return;
+    if (!window.confirm("Apply geometry, text and palette settings changed from this airport's defaults to all terrains? Only this button updates the shared settings. Real preserves each airport's own colors, or falls back to Light. Coordinates and groups are unchanged.")) return;
     const palette = activeAvisoColorPalette();
     const styles = {};
     const colorKeys = AVISO_PALETTE_COLOR_KEYS;
-    for (const [id, style] of palette === "real" ? [] : Object.entries(state.aviso.styles || {})) {
+    for (const [id, style] of Object.entries(state.aviso.styles || {})) {
       const paint = {}, colors = {};
-      for (const key of AVISO_GEOMETRY_PAINT_KEYS) {
+      for (const key of [...AVISO_GEOMETRY_PAINT_KEYS, ...AVISO_TEXT_PAINT_KEYS]) {
+        if (palette === "real" && colorKeys.has(key)) continue;
         const value = effectiveAvisoPaintValue(style.paint, null, key, undefined, palette);
         if (value == null) continue;
         if (colorKeys.has(key) && palette !== "dark") colors[key] = value;
@@ -3572,10 +3573,10 @@
     }
     postRuntimeCommand("settings.update", {
       airport: state.airport, configRevision: state.configRevision,
-      applyAvisoToAll: { palette, ...(palette === "real" ? {} : { styles, metadata: {
-        background_colors: { [palette]: state.aviso.metadata.background_colors[palette] },
+      applyAvisoToAll: { palette, styles, metadata: {
+        ...(palette === "real" ? {} : { background_colors: { [palette]: state.aviso.metadata.background_colors[palette] } }),
         background_opacities: { [palette]: state.aviso.metadata.background_opacities[palette] }
-      } }) }, replaceLocalAppearance: true
+      } }, replaceLocalAppearance: true
     }, null);
   }
 

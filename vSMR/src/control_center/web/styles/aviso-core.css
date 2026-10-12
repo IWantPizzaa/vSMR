@@ -262,7 +262,7 @@
 }
 
 .aviso-toolbar {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 .aviso-toolbar-palette {

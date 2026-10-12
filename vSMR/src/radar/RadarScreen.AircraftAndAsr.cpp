@@ -1254,6 +1254,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 		ShowFps = atoi(p_value) != 0;
 
 	AvisoColorPalette = "light";
+	AvisoPreferredColorPalette = "light";
 	const auto globalPalette = GetGlobalAvisoPalette();
 	const char* savedGeneration = GetDataFromAsr("AvisoAppearanceGeneration");
 	if (!globalPalette.first.empty() && (savedGeneration == nullptr || globalPalette.second != savedGeneration))
@@ -1326,7 +1327,7 @@ void CSMRRadar::OnAsrContentToBeSaved()
 	SaveDataToAsr(
 		"AvisoColorPalette",
 		"AVISO day/night color palette",
-		GetAvisoColorPalette().c_str());
+		AvisoPreferredColorPalette.c_str());
 	SaveDataToAsr(
 		"UiColorTheme",
 		"Control Center and inset UI theme",

@@ -294,6 +294,7 @@ private:
 	void SaveNorthIndicatorStateToAsr();
 	bool UiUseDayColorTheme = false;
 	std::string AvisoColorPalette = "light";
+	std::string AvisoPreferredColorPalette = "light";
 	COLORREF AvisoDarkBackgroundColor = RGB(67, 74, 79);
 	COLORREF AvisoLightBackgroundColor = RGB(67, 74, 79);
 	COLORREF AvisoRealBackgroundColor = RGB(67, 74, 79);
