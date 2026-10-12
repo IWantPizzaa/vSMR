@@ -587,6 +587,7 @@ public:
 	bool SetAvisoGroupVisibilities(const std::vector<std::pair<std::string, bool>>& visibility);
 	bool UpdateAvisoGroups(const std::vector<AvisoGroup>& groups);
 	std::string GetAvisoColorPalette() const;
+	std::pair<std::string, std::string> GetGlobalAvisoPalette() const;
 	void DrawAvisoBackground(Gdiplus::Graphics& graphics, const RECT& area) const;
 	std::vector<std::string> GetAvailableAvisoColorPalettes(const std::string& airport) const;
 	bool EnsureAvisoColorPaletteAvailable(bool persistToAsr = true);

@@ -10,6 +10,11 @@ class CConfig;
 // stable feature/group IDs; complete imported maps remain user-owned files.
 namespace VsmrAvisoOverrides
 {
+    bool ValidateAppearance(const rapidjson::Value& appearance, std::string& error);
+    bool ApplyAppearance(rapidjson::Document& source, const rapidjson::Value* appearance, std::string& error,
+        const rapidjson::Value* localOverrides = nullptr);
+    void ClearAppearanceOverrides(rapidjson::Value& record, const rapidjson::Value& appearance,
+        const rapidjson::Value& baseline);
     bool IsManagedSource(const std::filesystem::path& dataRoot,
         const std::filesystem::path& source);
     std::string AirportKey(const std::filesystem::path& source);
