@@ -1,13 +1,13 @@
 {
     "schema":  1,
-    "version":  "2.0.0",
-    "content_commit":  "639cd352bdeafa51e2867838770331e031889068",
+    "version":  "2.0.1",
+    "content_commit":  "224b554f97ebf2b36af75bd28072c2814e176127",
     "minimum_loader_version":  "1.3.0",
     "runtime_abi":  1,
     "files":  {
                   "vSMR.dll":  {
-                                   "sha256":  "7ada0cc387d28d611157c5ee2a225d8e22221a94e60f31ac7a8819e3f7f09e16",
-                                   "size":  732672
+                                   "sha256":  "12d8977d5c0e57455275c31719462ed033e3b71423e641f97a8b3aee481e4de9",
+                                   "size":  733184
                                },
                   "vSMR_Data/aircraft_icons/a10.png":  {
                                                            "sha256":  "833807ee9d9c842d6a4b45d16198c1fa635905974be0f3a0723a49eaaf875834",
@@ -1130,8 +1130,8 @@
                                                        "size":  21949
                                                    },
                   "vSMR_Data/AVISO/LFBF.geojson":  {
-                                                       "sha256":  "53c788fc81f7d1287984be360847b8fd76fca45aa197e83d1275f6f10ad9352c",
-                                                       "size":  13828
+                                                       "sha256":  "b83327a7a6ecb0d6a12dbc395c19cc5ec077b56586785fa120fdc40019439a25",
+                                                       "size":  124788
                                                    },
                   "vSMR_Data/AVISO/LFBG.geojson":  {
                                                        "sha256":  "2dcff57f0994272519511bc42ac6d198252d092b5a125b1de8bf9dbac3fda7dc",
@@ -1298,8 +1298,8 @@
                                                        "size":  64977
                                                    },
                   "vSMR_Data/AVISO/LFKS.geojson":  {
-                                                       "sha256":  "b57a73a4f44d2aff933b5adf569baf501c24de7d87cb9b01a9d8104e66d7dad3",
-                                                       "size":  50900
+                                                       "sha256":  "ccee284db5dba66e179535201f74221305809d5e5bee0863678b5bb17b8897ec",
+                                                       "size":  82903
                                                    },
                   "vSMR_Data/AVISO/LFLA.geojson":  {
                                                        "sha256":  "885b680815723f199f1627b96ae5924a18d1423d94fe6ae753d863f35ea0dd44",
@@ -1350,8 +1350,8 @@
                                                        "size":  74924
                                                    },
                   "vSMR_Data/AVISO/LFLU.geojson":  {
-                                                       "sha256":  "9c6fd24eb1b8ad1786093683dc8e5b7283251ee92d018e34d124df8ff4b8f0ec",
-                                                       "size":  21796
+                                                       "sha256":  "558f981e56bc9d988b33783b0c3c25ea27e336cdf8884d4ec3ad469011f50c07",
+                                                       "size":  90514
                                                    },
                   "vSMR_Data/AVISO/LFLV.geojson":  {
                                                        "sha256":  "44f6862b255b69d54577637d9c86ec5ce74c28e0dac5ab56c168ff782c3b69a7",
@@ -1374,16 +1374,16 @@
                                                        "size":  44837
                                                    },
                   "vSMR_Data/AVISO/LFMC.geojson":  {
-                                                       "sha256":  "bbcfe3094717444514fcb4c2b3e3398fc837605a80d2fdab3c96377679f094d0",
-                                                       "size":  23622
+                                                       "sha256":  "2f41baaad77739e0e25664b9a67b49db11b09c115e78c4f0a53e07f7db71b1c7",
+                                                       "size":  97028
                                                    },
                   "vSMR_Data/AVISO/LFMD.geojson":  {
                                                        "sha256":  "515d153c84c5525f17d92b060fcc0a49a8b60fafffa39bfe711df618e76a33c6",
                                                        "size":  160430
                                                    },
                   "vSMR_Data/AVISO/LFMH.geojson":  {
-                                                       "sha256":  "f9fb1a9112538c8f217a3a928ef8276a29ffc410219cca178e4796570f25343e",
-                                                       "size":  23009
+                                                       "sha256":  "0cb7f6909360c5eb7014bf71e2e7a190cdef3c020afb11e72aec6747f0edc019",
+                                                       "size":  67549
                                                    },
                   "vSMR_Data/AVISO/LFMI.geojson":  {
                                                        "sha256":  "d03b72e26fb4c827646b8a4acd438ab760a9526ce4e061168aebbcb4a1b3239c",
@@ -1726,8 +1726,8 @@
                                                        "size":  66971
                                                    },
                   "vSMR_Data/AVISO/LFTW.geojson":  {
-                                                       "sha256":  "60c5744102c85c4229943be3df9dfcd19fb7691d48587fd66c266f7ce6ec8aed",
-                                                       "size":  52407
+                                                       "sha256":  "6c5cc4a51c2691e359554a5f86704eac13ba2c4fcad7e85cd30fc9ca7d9ac97a",
+                                                       "size":  176095
                                                    },
                   "vSMR_Data/AVISO/LFTZ.geojson":  {
                                                        "sha256":  "6376beb3a1ca3006eb1d790d52dbb653e3c13d47901c7a129a9b78e4598a71f7",
@@ -1738,15 +1738,15 @@
                                                        "size":  2243
                                                    },
                   "vSMR_Data/AVISO-UPDATE-POLICY.json":  {
-                                                             "sha256":  "6d4be711cf8369427312e948a4b4489f27a485c476fb7cab3793b7f139b13f8b",
+                                                             "sha256":  "8071b42b9ac4f16d1dd01277f6b07fe51cbedd2db354e67a21d6bdcfa59ab5b6",
                                                              "size":  5641
                                                          },
                   "vSMR_Data/CrashReporter/vSMRCrashHandler.dll":  {
-                                                                       "sha256":  "417e8a8c80d8377f80c40a69f8c086330ec71984db7442c8246252b104455567",
+                                                                       "sha256":  "81eeba516de3a61cb658ba332aec28508babbf5e270ac81f3470c079c1b4acf0",
                                                                        "size":  158208
                                                                    },
                   "vSMR_Data/default.json":  {
-                                                 "sha256":  "bd53839b08e25c0f57222afef8270e168f71b54515cd256db5528cbc315f9c19",
+                                                 "sha256":  "9def81387adb75c652dfa308d7df8293cce119e798fa9c74c55d3ee4cd9a0bea",
                                                  "size":  65783
                                              },
                   "vSMR_Data/ICAO_Aircraft.json":  {
@@ -1782,8 +1782,8 @@
                                                       "size":  35823
                                                   },
                   "vSMR_Data/Runtime/vSMR.Runtime.dll":  {
-                                                             "sha256":  "60bb63b0326ecfa21046b36074ba0582684267b76ec45ef66316eeef47e3195a",
-                                                             "size":  2199552
+                                                             "sha256":  "475f5e1676b985eaa31398803eb60d75d532fc0952d5c5dc0c4a533434e83b35",
+                                                             "size":  2358784
                                                          },
                   "vSMR_Data/Tools/install_vsmr.ps1":  {
                                                            "sha256":  "9cd040d62242ec0247df98bbd7387525a06a4cb371ad86d8288a740ae14875d5",
@@ -1806,24 +1806,24 @@
                                                                   "size":  18268
                                                               },
                   "vSMR_Data/Tools/vSMR.ApplyUpdate.exe":  {
-                                                               "sha256":  "e9d945f9831ff3d8fe771c8133a973ab298d8206bbf4d07f85a2eb5843022e21",
+                                                               "sha256":  "4473f905b2a4d622a5b6ddea1f85045270bf00c2f31868c7259f86eafb047006",
                                                                "size":  464384
                                                            },
                   "vSMR_Data/vSMR_webUI/app-bundle.js":  {
-                                                             "sha256":  "0ede78b806bf93b625288289f085b6791d522a231ffea4397c9d634131b949c3",
-                                                             "size":  341988
+                                                             "sha256":  "135fc346cd0fd328aae173bcd3f6f2ec918ca3830498712f4182624f6ab2ae47",
+                                                             "size":  368187
                                                          },
                   "vSMR_Data/vSMR_webUI/data.js":  {
-                                                       "sha256":  "de685794276bc6540b7e6b56562de52857ca801359a58a61a781aa9b726d2478",
-                                                       "size":  10344
+                                                       "sha256":  "cc1598da56ee05566f6cc6371e026dc2b922ab2152c31c92c52aeb5cf26c7c19",
+                                                       "size":  10345
                                                    },
                   "vSMR_Data/vSMR_webUI/index.html":  {
-                                                          "sha256":  "3649cf462f5ce1165fee905425471c38c6dd41cd9c0bdafe5c3db86cd206891e",
-                                                          "size":  50299
+                                                          "sha256":  "7989434836b3103fe880ae9759427e90d97dbd94475d4fd5297ba05b6d006091",
+                                                          "size":  51139
                                                       },
                   "vSMR_Data/vSMR_webUI/styles.css":  {
-                                                          "sha256":  "728ec68465b9fbd2d7a3c68c354f49067a02a75e169d168f4606232379cd962f",
-                                                          "size":  89257
+                                                          "sha256":  "120595a218deb30b1c851eed3103f8ffb46a0f03d07fcedefd1485c90d37b1f6",
+                                                          "size":  91383
                                                       }
               }
 }
