@@ -298,6 +298,8 @@ private:
 	COLORREF AvisoLightBackgroundColor = RGB(67, 74, 79);
 	COLORREF AvisoRealBackgroundColor = RGB(67, 74, 79);
 	std::array<double, 3> AvisoBackgroundOpacities{ 1.0, 1.0, 1.0 };
+	bool RuntimeMenuPaintOnly = false;
+	POINT RuntimeMenuDcOrigin{};
 	CFont RuntimeOverlayFont;
 	CFont RuntimeMenuActionFont;
 	bool AirportPositionsCacheValid = false;
@@ -550,6 +552,8 @@ public:
 	bool HandleRuntimePresetClick(const char* id, RECT area);
 	struct RuntimeMenuPopupRenderer;
 	void RenderRuntimeMenu(HDC hDC, Gdiplus::Graphics& graphics);
+	void RepaintRuntimeMenuAfterHost(HWND window) noexcept;
+	void AddRuntimeMenuObject(int type, const char* id, RECT area, bool movable, const char* message);
 	bool HandleRuntimeMenuClick(int objectType, const char* objectId, POINT point, RECT area, int button);
 	bool HandleRuntimeMenuMove(int objectType, const char* objectId, POINT point, RECT area, bool released);
 	void CloseRuntimeMenuPopup();

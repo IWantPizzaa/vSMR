@@ -450,7 +450,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 	{
 		CRect clippedArea;
 		if (::IntersectRect(&clippedArea, &area, &radar.RuntimeMenuPopupArea) && !clippedArea.IsRectEmpty())
-			radar.AddScreenObject(RUNTIME_MENU_POPUP, id, clippedArea, false, tooltip);
+			radar.AddRuntimeMenuObject(RUNTIME_MENU_POPUP, id, clippedArea, false, tooltip);
 	}
 
 	int beginRoundedClip(const CRect& area)
@@ -1105,7 +1105,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		radar.RuntimeMenuPopupArea = CRect(popupLeft, popupTop, popupLeft + popupWidth, popupTop + popupHeight);
 
 		DrawRoundedRect(hdc, radar.RuntimeMenuPopupArea, palette.popupBackground, palette.outerBorder, kPanelCornerDiameter);
-		radar.AddScreenObject(RUNTIME_MENU_POPUP, cpdlcPanel ? "runtime.popup.cpdlc" : "runtime.popup", radar.RuntimeMenuPopupArea, false, title.c_str());
+		radar.AddRuntimeMenuObject(RUNTIME_MENU_POPUP, cpdlcPanel ? "runtime.popup.cpdlc" : "runtime.popup", radar.RuntimeMenuPopupArea, false, title.c_str());
 		const int popupClipDc = ::SaveDC(hdc);
 		HRGN popupClip = ::CreateRoundRectRgn(
 			radar.RuntimeMenuPopupArea.left,
@@ -1178,10 +1178,41 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 	}
 };
 
+void CSMRRadar::AddRuntimeMenuObject(int type, const char* id, RECT area, bool movable, const char* message)
+{
+	if (!RuntimeMenuPaintOnly) AddScreenObject(type, id, area, movable, message);
+}
+
+void CSMRRadar::RepaintRuntimeMenuAfterHost(HWND window) noexcept
+{
+	if (!IsInsetsOnly() || IsShutdownRequested() || RuntimeMenuPaintOnly || RuntimeMenuArea.IsRectEmpty() ||
+		window != AvisoRefreshHostWindow.load(std::memory_order_acquire)) return;
+	HDC dc = ::GetDC(window);
+	if (dc == nullptr) return;
+	const int saved = ::SaveDC(dc);
+	::SetViewportOrgEx(dc, RuntimeMenuDcOrigin.x, RuntimeMenuDcOrigin.y, nullptr);
+	RuntimeMenuPaintOnly = true;
+	try
+	{
+		Gdiplus::Graphics graphics(dc);
+		graphics.SetPageUnit(Gdiplus::UnitPixel);
+		RenderRuntimeMenu(dc, graphics);
+		graphics.Flush(Gdiplus::FlushIntentionSync);
+		::GdiFlush();
+	}
+	catch (...) { /* A cosmetic final pass must not disrupt the host. */ }
+	RuntimeMenuPaintOnly = false;
+	if (saved != 0) ::RestoreDC(dc, saved);
+	::ReleaseDC(window, dc);
+}
+
 void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 {
 	if (hdc == nullptr)
 		return;
+	graphics.Flush(Gdiplus::FlushIntentionSync);
+	::GdiFlush();
+	if (!RuntimeMenuPaintOnly) ::GetViewportOrgEx(hdc, &RuntimeMenuDcOrigin);
 
 	const bool dayTheme = GetUiColorTheme() == "day";
 	const RuntimeMenuPalette palette = ResolveRuntimeMenuPalette(dayTheme);
@@ -1275,7 +1306,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	}
 	::RestoreDC(hdc, dragClipDc);
 	DrawSquareBorder(hdc, RuntimeMenuArea, kOuterBorder);
-	AddScreenObject(
+	AddRuntimeMenuObject(
 		RUNTIME_MENU_RAIL,
 		"runtime.drag",
 		dragArea,
@@ -1310,7 +1341,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		kOuterBorder,
 		kControlCornerDiameter);
 	DrawTextEllipsis(hdc, airportArea, getActiveAirport(), kText, DT_CENTER);
-	AddScreenObject(
+	AddRuntimeMenuObject(
 		RUNTIME_MENU_RAIL,
 		"runtime.airport",
 		airportArea,
@@ -1419,7 +1450,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			tooltip += ": " + std::to_string(visibleGroupCount) + "/" + std::to_string(groups.size()) + " visible";
 		else if (button.popup == RuntimeMenuPopup::Profile && !activeProfile.empty())
 			tooltip += ": " + activeProfile;
-		AddScreenObject(RUNTIME_MENU_RAIL, button.id, buttonArea, false, tooltip.c_str());
+		AddRuntimeMenuObject(RUNTIME_MENU_RAIL, button.id, buttonArea, false, tooltip.c_str());
 		buttonTop += kButtonSize + kButtonGap;
 	}
 
