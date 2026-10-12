@@ -1048,6 +1048,7 @@
       const alertResetStart = outbound.length;
       document.querySelector('[data-editor="alerts"][data-action="reset-editor-section"]').click();
       await waitFor(() => outbound.slice(alertResetStart).some(message => message.type === "state.save"), "alert reset is saved");
+      await waitFor(() => !document.querySelector("#reloadButton")?.disabled, "alert reset save is acknowledged");
       const afterAlertReset = api.getState().profiles.find(profile => profile.name === defaultProfile.name).rimcas;
       expect(JSON.stringify(afterAlertReset.timer) === JSON.stringify(expectedDefault.rimcas.timer), "alert reset restores default timers");
       expect(JSON.stringify(afterAlertReset.runways) === JSON.stringify(beforeAlertReset.runways) &&
@@ -1081,6 +1082,7 @@
       await waitFor(() => api.getState().aviso.styles["surface.taxiway"].paint.fill ===
         initial.aviso.styles["surface.taxiway"].paint.fill, "geometry reset restores the selected palette");
       await waitFor(() => outbound.slice(mapResetStart).some(message => message.type === "state.save"), "map reset is saved");
+      await waitFor(() => !document.querySelector("#reloadButton")?.disabled, "map reset save is acknowledged");
       const afterMapReset = api.getState();
       expect(afterMapReset.aviso.styles["surface.taxiway"].paint["fill-opacity"] ===
         (initial.aviso.styles["surface.taxiway"].paint["fill-opacity"] ?? 1), "geometry reset restores default opacity, including implicit opaque defaults");
@@ -1097,12 +1099,17 @@
       const backgroundOpacity = document.querySelector("#avisoGeometryColorOpacity");
       expect(!backgroundOpacity?.closest(".opacity-channel")?.hidden, "Background exposes an opacity control");
       backgroundOpacity.value = "25";
+      const opacitySaveStart = outbound.length;
       backgroundOpacity.dispatchEvent(new Event("input", { bubbles: true }));
       await waitFor(() => api.getState().aviso.metadata.background_opacities.dark === 0.25, "Background opacity is saved");
+      await waitFor(() => outbound.slice(opacitySaveStart).some(message => message.type === "state.save"), "Background opacity emits its save request");
+      await waitFor(() => !document.querySelector("#reloadButton")?.disabled, "Background opacity save is acknowledged before Reset");
       expect(api.getState().aviso.metadata.background_opacities.light === 1, "Background opacity keeps other palettes unchanged");
+      const backgroundResetStart = outbound.length;
       document.querySelector('[data-editor="geometry"][data-action="reset-editor-section"]').click();
       await waitFor(() => api.getState().aviso.metadata.background_opacities.dark === 1, "Background Reset restores opaque default");
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await waitFor(() => outbound.slice(backgroundResetStart).some(message => message.type === "state.save"), "Background Reset emits its save request");
+      await waitFor(() => !document.querySelector("#reloadButton")?.disabled, "Background Reset save is acknowledged before global apply");
       const beforeGlobal = JSON.stringify(api.getState().aviso.features);
       const globalStart = outbound.length;
       document.querySelector('[data-action="apply-aviso-all"]')?.click();
