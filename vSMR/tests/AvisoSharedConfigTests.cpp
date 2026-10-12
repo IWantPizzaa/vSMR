@@ -51,6 +51,11 @@ std::vector<std::string> RunAvisoSharedConfigTests(const std::filesystem::path&)
 			(*updated.document)["aviso"]["LFPG"]["style"]["a"].GetInt() == 9, "forced concurrency read observes changes immediately");
 		expect(external.document != nullptr && (*external.document)["aviso"]["LFPG"]["style"]["a"].GetInt() == 7,
 			"previous shared snapshots keep valid immutable lifetime");
+		write("config.json", R"({"schema_version":1,"aviso_display_defaults":{"palette":"real","generation":"123","metadata":{"background_opacities":{"real":0.5}}}})");
+		const auto global = VsmrAvisoSharedConfig::Read(directory, true);
+		expect(global.document && global.document->HasMember("aviso_display_defaults") &&
+			std::string((*global.document)["aviso_display_defaults"]["palette"].GetString()) == "real",
+			"Global appearance persists in the shared canonical snapshot used by future airports and independent profiles");
 		write("config.json", R"({"schema_version":999})");
 		const auto future = VsmrAvisoSharedConfig::Read(directory, true);
 		expect(future.document == nullptr && !future.error.empty(), "future schema fails closed instead of silently dropping customizations");

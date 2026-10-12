@@ -2,6 +2,8 @@
 
 ## [2.0.1] - Unreleased
 
+- Added Apply to all terrains for AVISO palette, background and matching visual styles, persisted in user configuration for open and future airports without replacing geometry.
+
 - CoFrance runtime menus repaint after the host window completes painting, without re-registering hit targets; queued GDI/GDI+ drawing is synchronized before menus.
 
 - Added per-palette AVISO background opacity in main and inset views, with Reset restoring the opaque default.

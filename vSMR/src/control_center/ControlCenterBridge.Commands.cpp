@@ -9,6 +9,10 @@
 #include "control_center/ControlCenterDialog.hpp"
 
 #include "rapidjson/document.h"
+#include "aviso/AvisoOverrides.hpp"
+#include "aviso/AvisoDocumentModel.hpp"
+#include "aviso/AvisoSharedConfig.hpp"
+#include "config/LayeredConfig.hpp"
 
 #include <unordered_set>
 #include <utility>
@@ -318,6 +322,58 @@ bool VsmrControlCenterBridgeImpl::HandleSettings(
 	}
 
 	const std::string resolution = ReadString(*payload, "resolutionPreset");
+	if (payload->HasMember("applyAvisoToAll"))
+	{
+		if (Owner == nullptr || Owner->CurrentConfig == nullptr ||
+			ReadString(*payload, "airport") != Owner->getActiveAirport() ||
+			ReadString(*payload, "configRevision") != Owner->CurrentConfig->getConfigRevision())
+		{ error = "The editing context changed. Reload before applying to all terrains."; return false; }
+		const auto& incoming = (*payload)["applyAvisoToAll"];
+		if (payload->HasMember("replaceLocalAppearance") && !(*payload)["replaceLocalAppearance"].IsBool())
+		{ error = "The replacement choice must be boolean."; return false; }
+		if (!VsmrAvisoOverrides::ValidateAppearance(incoming, error)) return false;
+		CConfig canonical((std::filesystem::u8path(Owner->DataPath) / "config.json").u8string(), "");
+		if (!canonical.isLayeredConfig() || !canonical.isConfigHealthy())
+		{ error = "Canonical configuration is unavailable; no global changes were made."; return false; }
+		if (Owner->CurrentConfig->isLayeredConfig() && canonical.getConfigRevision() != ReadString(*payload, "configRevision"))
+		{ error = "Configuration changed on disk. Reload before applying to all terrains."; return false; }
+		rapidjson::Document appearance(rapidjson::kObjectType), sections(rapidjson::kObjectType);
+		if (const auto* previous = canonical.getUserConfigSection("aviso_display_defaults"))
+			appearance.CopyFrom(*previous, appearance.GetAllocator());
+		VsmrLayeredConfig::Merge(appearance, incoming, appearance.GetAllocator());
+		FILETIME time{}; ::GetSystemTimeAsFileTime(&time);
+		const std::string generation = std::to_string((static_cast<unsigned long long>(time.dwHighDateTime) << 32) | time.dwLowDateTime);
+		rapidjson::Value revision; revision.SetString(generation.c_str(), appearance.GetAllocator());
+		VsmrLayeredConfig::Put(appearance, "generation", revision, appearance.GetAllocator());
+		if (!VsmrAvisoOverrides::ValidateAppearance(appearance, error)) return false;
+		VsmrLayeredConfig::Put(sections, "aviso_display_defaults", appearance, sections.GetAllocator());
+		if (payload->HasMember("replaceLocalAppearance") && (*payload)["replaceLocalAppearance"].IsBool() && (*payload)["replaceLocalAppearance"].GetBool())
+		{
+			rapidjson::Value airports(rapidjson::kObjectType);
+			if (const auto* saved = canonical.getUserConfigSection("aviso")) airports.CopyFrom(*saved, sections.GetAllocator());
+			if (!airports.IsObject()) { error = "Invalid airport overrides; no changes were made."; return false; }
+			for (auto it = airports.MemberBegin(); it != airports.MemberEnd(); ++it)
+			{
+				const auto path = std::filesystem::u8path(Owner->DataPath) / "AVISO" / (std::string(it->name.GetString()) + ".geojson");
+				AvisoDocumentModel baseline;
+				std::string ignored;
+				if (baseline.LoadFromFile(path.u8string(), ignored))
+					VsmrAvisoOverrides::ClearAppearanceOverrides(it->value, incoming, baseline.GetDocument());
+			}
+			VsmrLayeredConfig::Put(sections, "aviso", airports, sections.GetAllocator());
+		}
+		if (!canonical.saveUserConfigSections(sections, canonical.getConfigRevision(), error)) return false;
+		VsmrAvisoSharedConfig::Read(std::filesystem::u8path(Owner->DataPath), true);
+		const std::string palette = ReadString(appearance, "palette");
+		for (auto* radar : RadarScreensOpened)
+		{
+			if (!radar || radar->IsShutdownRequested() || radar->DataPath != Owner->DataPath) continue;
+			if (radar->CurrentConfig && radar->CurrentConfig->isLayeredConfig()) radar->CurrentConfig->reload();
+			if (!radar->SetAvisoColorPalette(palette, true)) radar->SetAvisoColorPalette("light", true);
+			radar->RequestRefresh();
+		}
+		return true;
+	}
 	if (payload->HasMember("weatherAllAirports") && !(*payload)["weatherAllAirports"].IsBool())
 	{
 		error = "METAR airport grouping must be a boolean setting.";

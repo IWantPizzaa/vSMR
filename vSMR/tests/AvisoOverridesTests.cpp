@@ -49,6 +49,51 @@ std::vector<std::string> RunAvisoOverridesTests(const std::filesystem::path& rep
 {
     std::vector<std::string> failures;
     auto expect = [&](bool passed, const char* label) { if (!passed) failures.emplace_back(label); };
+    {
+        Document appearance, source, old;
+        source.Parse(R"({"type":"FeatureCollection","metadata":{"airport":"LFXX"},"styles":{"a":{"paint":{"fill":"#111111","palette-overrides":{"light":{"fill":"#222222"}}}}},"vsmr_groups":[{"id":"local","visible":false}],"features":[{"type":"Feature","id":"f1","properties":{"style_id":"a"},"geometry":{"type":"Point","coordinates":[1,2]}}]})");
+        old.CopyFrom(source, old.GetAllocator());
+        appearance.Parse(R"({"palette":"light","metadata":{"background_opacities":{"light":0.4}},"styles":{"a":{"paint":{"palette-overrides":{"light":{"fill":"#ABCDEF"}},"fill-opacity":0.5}},"unmatched":{"paint":{"fill":"#333333"}}}})");
+        std::string error;
+        expect(VsmrAvisoOverrides::ApplyAppearance(source, &appearance, error), "Global AVISO visual appearance applies");
+        expect(source["features"][0]["geometry"] == old["features"][0]["geometry"] && source["vsmr_groups"] == old["vsmr_groups"] &&
+            std::string(source["metadata"]["airport"].GetString()) == "LFXX", "Global appearance preserves geometry, groups and airport identity");
+        expect(!source["styles"].HasMember("unmatched") && source["features"].Size() == 1, "Global appearance never creates foreign styles or features");
+        expect(std::string(source["styles"]["a"]["paint"]["fill"].GetString()) == "#111111" &&
+            std::string(source["styles"]["a"]["paint"]["palette-overrides"]["real"]["fill"].GetString()) == "#222222",
+            "Applying Light preserves Dark and inherited Real colors");
+        expect(std::string(source["features"][0]["properties"]["palette-overrides"]["light"]["fill"].GetString()) == "#ABCDEF",
+            "Global appearance reaches feature-level colors rather than being masked by inline paints");
+        Document local, customized;
+        local.Parse(R"({"patch":{"document":{"metadata":{"background_opacities":{"light":0.8}},"styles":{"a":{"paint":{"palette-overrides":{"light":{"fill":"#987654"}},"fill-opacity":0.3}}}},"features":{"f1":{"properties":{"text-size":18}}}}})");
+        customized.CopyFrom(old, customized.GetAllocator());
+        expect(VsmrAvisoOverrides::ApplyAppearance(customized, &appearance, error, &local), "Global defaults apply with local appearance overrides");
+        expect(customized["metadata"]["background_opacities"]["light"].GetDouble() == 0.8 &&
+            customized["styles"]["a"]["paint"]["fill-opacity"].GetDouble() == 0.3 &&
+            std::string(customized["styles"]["a"]["paint"]["palette-overrides"]["light"]["fill"].GetString()) == "#987654" &&
+            customized["features"][0]["properties"]["text-size"].GetInt() == 18 &&
+            !customized["features"][0]["properties"].HasMember("palette-overrides"),
+            "Local palette, opacity and font edits remain authoritative without injected inline colors");
+        local.Parse(R"({"patch":{"features":{"f1":{"properties":{"fill":"#FEDCBA","fill-opacity":0.2}}}}})");
+        customized.CopyFrom(old, customized.GetAllocator());
+        expect(VsmrAvisoOverrides::ApplyAppearance(customized, &appearance, error, &local) &&
+            std::string(customized["features"][0]["properties"]["fill"].GetString()) == "#FEDCBA" &&
+            !customized["features"][0]["properties"].HasMember("palette-overrides") &&
+            customized["features"][0]["properties"]["fill-opacity"].GetDouble() == 0.2 &&
+            std::string(customized["styles"]["a"]["paint"]["palette-overrides"]["light"]["fill"].GetString()) == "#ABCDEF",
+            "Local inline paint survives while uncustomized catalog styles receive common defaults");
+        Document record;
+        record.Parse(R"({"patch":{"document":{"styles":{"a":{"paint":{"palette-overrides":{"light":{"fill":"#999999"}},"fill-opacity":0.3}}}},"features":{"f1":{"properties":{"fill-opacity":0.2,"visible":false},"geometry":{"coordinates":[8,9]}}}},"removed":{"/features/f1/properties/fill-opacity":true,"/features/f2":true}})");
+        VsmrAvisoOverrides::ClearAppearanceOverrides(record, appearance, old);
+        expect(!record["patch"]["features"]["f1"]["properties"].HasMember("fill-opacity") &&
+            !record["removed"].HasMember("/features/f1/properties/fill-opacity"), "Replacing global appearance removes matching local paint patches and tombstones");
+        expect(record["patch"]["features"]["f1"]["geometry"]["coordinates"][0].GetInt() == 8 &&
+            !record["patch"]["features"]["f1"]["properties"]["visible"].GetBool() && record["removed"].HasMember("/features/f2"),
+            "Appearance replacement preserves geometry edits, visibility and deleted features");
+        Document unsafe;
+        unsafe.Parse(R"({"palette":"light","features":[]})");
+        expect(!VsmrAvisoOverrides::ValidateAppearance(unsafe, error), "Global appearance rejects geometry payloads");
+    }
     Document defaults = Map(), edited = Map(), patch;
     std::string error;
     edited["features"][0]["properties"]["name"].SetString("Custom", edited.GetAllocator());
@@ -149,6 +194,21 @@ std::vector<std::string> RunAvisoOverridesTests(const std::filesystem::path& rep
             CConfig external(externalPath.u8string(), (dataRoot / "vSMR_Maps.json").u8string());
             expect(!external.isLayeredConfig(), "External profile fixture remains user-owned legacy format");
             if (mode == 0) expect(user == nullptr, "Clean new-install maps need no overrides or custom copies");
+            if (mode == 0)
+            {
+                Document profilesBefore;
+                profilesBefore.CopyFrom(config.document, profilesBefore.GetAllocator());
+                const std::string revision = config.getConfigRevision();
+                Document sections;
+                sections.Parse(R"({"aviso_display_defaults":{"palette":"light","styles":{}},"test_visual_section":{"unchanged_profiles":true}})");
+                expect(config.saveUserConfigSections(sections, revision, error), "Global visual sections save in one transaction");
+                expect(config.document == profilesBefore && config.getUserConfigSection("aviso_display_defaults") != nullptr,
+                    "Atomic global visual writes preserve profile content and selection metadata");
+                expect(!config.saveUserConfigSections(sections, revision, error), "Stale global writes cannot overwrite another configuration change");
+                Document protectedSection;
+                protectedSection.Parse(R"({"profiles":{}})");
+                expect(!config.saveUserConfigSections(protectedSection, config.getConfigRevision(), error), "Global visual writes cannot replace profile-owned sections");
+            }
             if (mode == 1) expect(user != nullptr && user->HasMember("patch") && !user->HasMember("custom_file"),
                 "Verified legacy baseline produces sparse map overrides");
             if (mode == 1)

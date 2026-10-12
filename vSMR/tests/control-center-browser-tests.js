@@ -1102,6 +1102,19 @@
       expect(api.getState().aviso.metadata.background_opacities.light === 1, "Background opacity keeps other palettes unchanged");
       document.querySelector('[data-editor="geometry"][data-action="reset-editor-section"]').click();
       await waitFor(() => api.getState().aviso.metadata.background_opacities.dark === 1, "Background Reset restores opaque default");
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const beforeGlobal = JSON.stringify(api.getState().aviso.features);
+      const globalStart = outbound.length;
+      document.querySelector('[data-action="apply-aviso-all"]')?.click();
+      await waitFor(() => outbound.slice(globalStart).some(message => message.payload?.applyAvisoToAll), "Apply to all terrains sends a native command");
+      const globalCommand = outbound.slice(globalStart).find(message => message.payload?.applyAvisoToAll);
+      const appearance = globalCommand?.payload?.applyAvisoToAll;
+      expect(globalCommand?.payload?.replaceLocalAppearance === false, "Global defaults preserve existing local customizations");
+      expect(appearance?.palette === "dark" && appearance?.metadata?.background_opacities?.dark === 1 &&
+        appearance?.styles?.["surface.taxiway"]?.paint && !Object.hasOwn(appearance || {}, "features") && !Object.hasOwn(appearance || {}, "vsmr_groups"),
+        "Global transfer contains visual settings only, never geometry or group visibility");
+      expect(JSON.stringify(api.getState().aviso.features) === beforeGlobal, "Applying global settings does not mutate browser geometry");
+      if (globalCommand) api.receive({ version: 1, id: globalCommand.id, type: "state.ack", payload: { action: "settings.update", message: "Settings applied" } });
     } finally { window.confirm = oldConfirm; }
   } catch (error) {
     failures.push(`unexpected browser exception: ${error?.stack || error}`);

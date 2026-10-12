@@ -115,7 +115,7 @@ namespace VsmrAvisoSharedConfig
 				return false;
 			}
 			relevant.SetObject();
-			for (const char* key : { "aviso", "_migration", "runway_group_visibility" })
+			for (const char* key : { "aviso", "_migration", "runway_group_visibility", "aviso_display_defaults" })
 			{
 				const auto* section = VsmrLayeredConfig::Member(parsed, key);
 				if (section == nullptr) continue;

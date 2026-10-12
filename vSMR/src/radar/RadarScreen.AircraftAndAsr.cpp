@@ -1254,7 +1254,13 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 		ShowFps = atoi(p_value) != 0;
 
 	AvisoColorPalette = "light";
-	if ((p_value = GetDataFromAsr("AvisoColorPalette")) != NULL)
+	const auto globalPalette = GetGlobalAvisoPalette();
+	const char* savedGeneration = GetDataFromAsr("AvisoAppearanceGeneration");
+	if (!globalPalette.first.empty() && (savedGeneration == nullptr || globalPalette.second != savedGeneration))
+	{
+		if (!SetAvisoColorPalette(globalPalette.first, false)) SetAvisoColorPalette("light", false);
+	}
+	else if ((p_value = GetDataFromAsr("AvisoColorPalette")) != NULL)
 		SetAvisoColorPalette(p_value, false);
 	EnsureAvisoColorPaletteAvailable(false);
 
@@ -1316,6 +1322,7 @@ void CSMRRadar::OnAsrContentToBeSaved()
 	SaveDataToAsr("FontSize", "vSMR font size", std::to_string(currentFontSize).c_str());
 
 	SaveDataToAsr("ShowFps", "Show FPS counter", ShowFps ? "1" : "0");
+	SaveDataToAsr("AvisoAppearanceGeneration", "Applied global AVISO appearance", GetGlobalAvisoPalette().second.c_str());
 	SaveDataToAsr(
 		"AvisoColorPalette",
 		"AVISO day/night color palette",

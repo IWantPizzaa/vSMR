@@ -84,6 +84,8 @@ public:
 	const rapidjson::Value* getEffectiveConfigSection(const char* key) const;
 	bool saveUserConfigSection(const char* key, const rapidjson::Value* value,
 		const std::string& expectedRevision, std::string& error);
+	bool saveUserConfigSections(const rapidjson::Value& sections,
+		const std::string& expectedRevision, std::string& error);
 	bool resetProfileOverrides(const std::string& expectedRevision, std::string& error);
 	bool getDefaultProfiles(rapidjson::Document& output, std::string& error) const;
 	bool resetUserOverride(const std::vector<std::string>& path,

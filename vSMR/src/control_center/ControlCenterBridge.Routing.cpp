@@ -153,6 +153,7 @@ bool VsmrControlCenterBridgeImpl::Dispatch(
 		if (!HandleSettings(envelope.payload, error))
 			return false;
 		SendAck(envelope.id, envelope.type, "Settings applied");
+		if (envelope.payload && envelope.payload->HasMember("applyAvisoToAll")) SendAuthoritativeState("runtime", envelope.id);
 		return true;
 	case VsmrBridgeAction::PerformanceStateRequest:
 	{

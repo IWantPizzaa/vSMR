@@ -795,6 +795,7 @@
 		markDirty(`AVISO ${palette} palette selected`, ["settings"]);
       }
     }
+    else if (action === "apply-aviso-all") applyAvisoToAllTerrains();
     else if (action === "dismiss-persistent-status") {
       if (persistentStatusState)
         dismissedPersistentStatusKey = `${persistentStatusState.type}|${persistentStatusState.message}`;
