@@ -336,7 +336,6 @@
 <button aria-controls="avisoPanelText" class="ui-button ui-button--tab active" data-aviso-view="text" role="tab" type="button">Text</button>
 </nav>
 <div aria-label="AVISO color palette" class="ui-toggle-group aviso-palette-control aviso-toolbar-palette" role="group"><button class="ui-button ui-button--toggle" data-action="set-aviso-palette" data-aviso-color-palette="dark" type="button">Dark</button><button class="ui-button ui-button--toggle" data-action="set-aviso-palette" data-aviso-color-palette="light" type="button">Light</button><button class="ui-button ui-button--toggle" data-action="set-aviso-palette" data-aviso-color-palette="real" type="button">Real</button></div>
-<button class="ui-button ui-button--compact aviso-apply-all" data-action="apply-aviso-all" type="button" title="Apply this palette and matching visual styles to open and future airports; never copy geometry">Apply to all terrains</button>
 </div>
 <div class="aviso-view-stack">
 <section class="aviso-view" data-aviso-view-panel="geometry" id="avisoPanelGeometry" role="tabpanel">
@@ -349,7 +348,7 @@
 <div aria-label="Geometry styles" class="ui-list ui-list--grouped ui-list--multiselect aviso-style-tree" id="avisoGeometryStyleList" role="region"></div>
 </aside>
 <section class="panel detail-panel aviso-category-editor">
-<div class="panel-title"><span id="avisoGeometryCaption">Geometry style</span><span class="mini-tools editor-copy-tools"><button class="ui-button ui-button--compact" data-action="reset-editor-section" data-editor="geometry" title="Reset only the selection to bundled defaults" type="button">Reset</button><button class="ui-button ui-button--compact ui-button--wide" data-action="copy-aviso-geometry" type="button">Copy</button><button class="ui-button ui-button--compact ui-button--wide" data-action="paste-aviso-geometry" type="button">Paste</button></span></div>
+<div class="panel-title"><span id="avisoGeometryCaption">Geometry style</span><span class="mini-tools editor-copy-tools"><button class="ui-button ui-button--compact" data-action="apply-aviso-all" type="button" title="Apply only geometry changes relative to defaults; Real uses each airport's own theme">Apply to all terrains</button><button class="ui-button ui-button--compact" data-action="reset-editor-section" data-editor="geometry" title="Reset only the selection to bundled defaults" type="button">Reset</button><button class="ui-button ui-button--compact ui-button--wide" data-action="copy-aviso-geometry" type="button">Copy</button><button class="ui-button ui-button--compact ui-button--wide" data-action="paste-aviso-geometry" type="button">Paste</button></span></div>
 <div class="detail-scroll aviso-editor-scroll aviso-geometry-editor-scroll">
 <div class="aviso-flat-style-editor aviso-geometry-properties">
 <div class="color-editor-body aviso-color-editor-body" id="avisoGeometryColorEditor">

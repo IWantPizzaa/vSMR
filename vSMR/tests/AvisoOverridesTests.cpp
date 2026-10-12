@@ -50,6 +50,33 @@ std::vector<std::string> RunAvisoOverridesTests(const std::filesystem::path& rep
     std::vector<std::string> failures;
     auto expect = [&](bool passed, const char* label) { if (!passed) failures.emplace_back(label); };
     {
+        Document baseline, requested, changes;
+        baseline.Parse(R"({"metadata":{"background_colors":{"dark":"#123456","light":"#abcdef"}},"styles":{"a":{"paint":{"fill":"#112233","stroke":"#222222","palette-overrides":{"light":{"fill":"#334455"}}}}}})");
+        requested.Parse(R"({"palette":"light","styles":{"a":{"paint":{"fill-opacity":1,"palette-overrides":{"light":{"fill":"#334455"}}}}},"metadata":{"background_colors":{"light":"#ABCDEF"},"background_opacities":{"light":1}}})");
+        std::string error;
+        expect(VsmrAvisoOverrides::BuildAppearanceChanges(requested, baseline, changes, error) && changes.MemberCount() == 1,
+            "Global appearance omits unchanged colors, case-only differences and implicit opaque defaults");
+        requested["styles"]["a"]["paint"]["fill-opacity"].SetDouble(0.4);
+        requested["styles"]["a"]["paint"]["palette-overrides"]["light"]["fill"].SetString("#654321");
+        expect(VsmrAvisoOverrides::BuildAppearanceChanges(requested, baseline, changes, error) &&
+            changes["styles"]["a"]["paint"].MemberCount() == 2 && !changes.HasMember("metadata"),
+            "Global appearance stores only edited fields rather than the whole airport theme");
+        Document shared;
+        shared.Parse(R"({"palette":"light","styles":{"a":{"paint":{"fill-opacity":0.2,"text-size":15,"palette-overrides":{"light":{"fill":"#999999","stroke":"#888888"},"real":{"fill":"#777777"}}}}},"metadata":{"background_opacities":{"light":0.5}}})");
+        VsmrAvisoOverrides::MergeAppearanceChanges(shared, changes);
+        expect(shared["styles"]["a"]["paint"]["fill-opacity"].GetDouble() == 0.4 &&
+            !shared["styles"]["a"]["paint"].HasMember("text-size") && !shared.HasMember("metadata") &&
+            !shared["styles"]["a"]["paint"]["palette-overrides"]["light"].HasMember("stroke") &&
+            shared["styles"]["a"]["paint"]["palette-overrides"].HasMember("real"),
+            "Applying a new sparse preset removes stale same-palette settings while preserving other palettes");
+        requested["palette"].SetString("real");
+        expect(VsmrAvisoOverrides::BuildAppearanceChanges(requested, baseline, changes, error) && changes.MemberCount() == 1,
+            "Real global application carries only palette selection, never foreign Real colors");
+        Document original = Map(), actual = Map();
+        expect(VsmrAvisoOverrides::ApplyAppearance(actual, &changes, error) && actual == original,
+            "Real global selection keeps each airport's geometry and native appearance");
+    }
+    {
         Document appearance, source, old;
         source.Parse(R"({"type":"FeatureCollection","metadata":{"airport":"LFXX"},"styles":{"a":{"paint":{"fill":"#111111","palette-overrides":{"light":{"fill":"#222222"}}}}},"vsmr_groups":[{"id":"local","visible":false}],"features":[{"type":"Feature","id":"f1","properties":{"style_id":"a"},"geometry":{"type":"Point","coordinates":[1,2]}}]})");
         old.CopyFrom(source, old.GetAllocator());
@@ -78,10 +105,43 @@ std::vector<std::string> RunAvisoOverridesTests(const std::filesystem::path& rep
         customized.CopyFrom(old, customized.GetAllocator());
         expect(VsmrAvisoOverrides::ApplyAppearance(customized, &appearance, error, &local) &&
             std::string(customized["features"][0]["properties"]["fill"].GetString()) == "#FEDCBA" &&
-            !customized["features"][0]["properties"].HasMember("palette-overrides") &&
+            std::string(customized["features"][0]["properties"]["palette-overrides"]["light"]["fill"].GetString()) == "#ABCDEF" &&
             customized["features"][0]["properties"]["fill-opacity"].GetDouble() == 0.2 &&
             std::string(customized["styles"]["a"]["paint"]["palette-overrides"]["light"]["fill"].GetString()) == "#ABCDEF",
-            "Local inline paint survives while uncustomized catalog styles receive common defaults");
+            "Local inline Dark paint survives without blocking a different palette's shared colors");
+        local.Parse(R"({"patch":{"document":{"styles":{"a":{"paint":{"palette-overrides":{"light":{"fill":"#999999"}},"fill-opacity":0.3}}}},"features":{"f1":{"properties":{"palette-overrides":{"light":{"fill":"#888888"}},"text-size":18}}}}})");
+        VsmrAvisoOverrides::ClearAppearanceOverrides(local, appearance, old);
+        customized.CopyFrom(old, customized.GetAllocator());
+        expect(VsmrAvisoOverrides::ApplyAppearance(customized, &appearance, error, &local) &&
+            std::string(customized["features"][0]["properties"]["palette-overrides"]["light"]["fill"].GetString()) == "#ABCDEF" &&
+            customized["styles"]["a"]["paint"]["fill-opacity"].GetDouble() == 0.5 &&
+            customized["features"][0]["properties"]["text-size"].GetInt() == 18,
+            "A newer global application supersedes matching local colors and opacity, preserving unrelated font edits");
+        local.Parse(R"({"patch":{"features":{"f1":{"properties":{"palette-overrides":{"light":{"fill":"#FEDCBA"}}}}}}})");
+        customized.CopyFrom(old, customized.GetAllocator());
+        expect(VsmrAvisoOverrides::ApplyAppearance(customized, &appearance, error, &local) &&
+            std::string(customized["features"][0]["properties"]["palette-overrides"]["light"]["fill"].GetString()) == "#FEDCBA",
+            "A later local edit takes precedence over the previously applied shared color");
+        appearance.AddMember("generation", "global-one", appearance.GetAllocator());
+        customized.CopyFrom(old, customized.GetAllocator());
+        customized["metadata"].AddMember("appearance_generation", "global-one", customized.GetAllocator());
+        customized["styles"]["a"]["paint"]["palette-overrides"]["light"]["fill"].SetString("#LOCAL");
+        expect(VsmrAvisoOverrides::ApplyAppearance(customized, &appearance, error) &&
+            std::string(customized["styles"]["a"]["paint"]["palette-overrides"]["light"]["fill"].GetString()) == "#LOCAL",
+            "A later custom-file save retains local appearance for the current shared generation");
+        appearance["generation"].SetString("global-two");
+        expect(VsmrAvisoOverrides::ApplyAppearance(customized, &appearance, error) &&
+            std::string(customized["styles"]["a"]["paint"]["palette-overrides"]["light"]["fill"].GetString()) == "#ABCDEF" &&
+            customized["features"][0]["geometry"] == old["features"][0]["geometry"],
+            "A newer shared application reaches custom-file styles without changing their geometry");
+        Document backgroundOnly, backgroundLocal;
+        backgroundOnly.Parse(R"({"palette":"light","metadata":{"background_opacities":{"light":0.4}}})");
+        backgroundLocal.Parse(R"({"patch":{"document":{"metadata":{"background_opacities":{"light":0.7,"dark":0.2}}}},"removed":{"/document/metadata/background_opacities/light":true}})");
+        VsmrAvisoOverrides::ClearAppearanceOverrides(backgroundLocal, backgroundOnly, old);
+        expect(!backgroundLocal["patch"]["document"]["metadata"]["background_opacities"].HasMember("light") &&
+            backgroundLocal["patch"]["document"]["metadata"]["background_opacities"].HasMember("dark") &&
+            !backgroundLocal["removed"].HasMember("/document/metadata/background_opacities/light"),
+            "A background-only global application clears matching old overrides and tombstones without touching other palettes");
         Document record;
         record.Parse(R"({"patch":{"document":{"styles":{"a":{"paint":{"palette-overrides":{"light":{"fill":"#999999"}},"fill-opacity":0.3}}}},"features":{"f1":{"properties":{"fill-opacity":0.2,"visible":false},"geometry":{"coordinates":[8,9]}}}},"removed":{"/features/f1/properties/fill-opacity":true,"/features/f2":true}})");
         VsmrAvisoOverrides::ClearAppearanceOverrides(record, appearance, old);
