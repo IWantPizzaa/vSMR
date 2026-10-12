@@ -1183,26 +1183,59 @@ void CSMRRadar::AddRuntimeMenuObject(int type, const char* id, RECT area, bool m
 	if (!RuntimeMenuPaintOnly) AddScreenObject(type, id, area, movable, message);
 }
 
+void CSMRRadar::ProtectRuntimeMenuDuringHostPaint(HWND window, HDC eraseDc) const noexcept
+{
+	if (!IsInsetsOnly() || IsShutdownRequested() ||
+		window != AvisoRefreshHostWindow.load(std::memory_order_acquire)) return;
+	if (RuntimeMenuArea.left != RuntimeMenuPosition.x || RuntimeMenuArea.top != RuntimeMenuPosition.y ||
+		RuntimeMenuArea.Height() != (RuntimeMenuMinimized ? kDragHeight : kRailHeight)) return;
+	// Keep the previous opaque menu visible while the host paints its targets.
+	// The final pass below replaces it in one blit, rather than erasing/rebuilding it.
+	const CRect popup = ActiveRuntimeMenuPopup == RuntimeMenuPopup::None ? CRect(0, 0, 0, 0) : RuntimeMenuPopupArea;
+	const CRect secondary = ActiveRuntimeMenuPopup == RuntimeMenuPopup::None ? CRect(0, 0, 0, 0) : RuntimeMenuSecondaryPopupArea;
+	for (CRect area : { RuntimeMenuArea, popup, secondary })
+	{
+		if (area.IsRectEmpty()) continue;
+		area.OffsetRect(RuntimeMenuDcOrigin);
+		if (eraseDc) {
+			POINT corners[] = { { area.left, area.top }, { area.right, area.bottom } };
+			::DPtoLP(eraseDc, corners, 2);
+			::ExcludeClipRect(eraseDc, corners[0].x, corners[0].y, corners[1].x, corners[1].y);
+		} else ::ValidateRect(window, &area);
+	}
+}
+
 void CSMRRadar::RepaintRuntimeMenuAfterHost(HWND window) noexcept
 {
 	if (!IsInsetsOnly() || IsShutdownRequested() || RuntimeMenuPaintOnly || RuntimeMenuArea.IsRectEmpty() ||
 		window != AvisoRefreshHostWindow.load(std::memory_order_acquire)) return;
 	HDC dc = ::GetDC(window);
 	if (dc == nullptr) return;
-	const int saved = ::SaveDC(dc);
-	::SetViewportOrgEx(dc, RuntimeMenuDcOrigin.x, RuntimeMenuDcOrigin.y, nullptr);
+	CRect area(RuntimeMenuArea);
+	for (const CRect popup : { RuntimeMenuPopupArea, RuntimeMenuSecondaryPopupArea })
+		if (!popup.IsRectEmpty()) area.UnionRect(area, popup);
+	HDC buffer = ::CreateCompatibleDC(dc);
+	HBITMAP bitmap = buffer ? ::CreateCompatibleBitmap(dc, area.Width(), area.Height()) : nullptr;
+	if (!bitmap) { if (buffer) ::DeleteDC(buffer); ::ReleaseDC(window, dc); return; }
+	const HGDIOBJ previous = ::SelectObject(buffer, bitmap);
+	const int left = area.left + RuntimeMenuDcOrigin.x, top = area.top + RuntimeMenuDcOrigin.y;
+	::BitBlt(buffer, 0, 0, area.Width(), area.Height(), dc, left, top, SRCCOPY);
+	::SetViewportOrgEx(buffer, -area.left, -area.top, nullptr);
 	RuntimeMenuPaintOnly = true;
 	try
 	{
-		Gdiplus::Graphics graphics(dc);
+		Gdiplus::Graphics graphics(buffer);
 		graphics.SetPageUnit(Gdiplus::UnitPixel);
-		RenderRuntimeMenu(dc, graphics);
+		RenderRuntimeMenu(buffer, graphics);
 		graphics.Flush(Gdiplus::FlushIntentionSync);
 		::GdiFlush();
+		::BitBlt(dc, left, top, area.Width(), area.Height(), buffer, area.left, area.top, SRCCOPY);
 	}
 	catch (...) { /* A cosmetic final pass must not disrupt the host. */ }
 	RuntimeMenuPaintOnly = false;
-	if (saved != 0) ::RestoreDC(dc, saved);
+	::SelectObject(buffer, previous);
+	::DeleteObject(bitmap);
+	::DeleteDC(buffer);
 	::ReleaseDC(window, dc);
 }
 

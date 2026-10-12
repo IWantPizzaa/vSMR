@@ -553,6 +553,7 @@ public:
 	struct RuntimeMenuPopupRenderer;
 	void RenderRuntimeMenu(HDC hDC, Gdiplus::Graphics& graphics);
 	void RepaintRuntimeMenuAfterHost(HWND window) noexcept;
+	void ProtectRuntimeMenuDuringHostPaint(HWND window, HDC eraseDc = nullptr) const noexcept;
 	void AddRuntimeMenuObject(int type, const char* id, RECT area, bool movable, const char* message);
 	bool HandleRuntimeMenuClick(int objectType, const char* objectId, POINT point, RECT area, int button);
 	bool HandleRuntimeMenuMove(int objectType, const char* objectId, POINT point, RECT area, bool released);

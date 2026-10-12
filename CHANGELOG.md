@@ -2,6 +2,8 @@
 
 ## [2.0.1] - 2026-10-12
 
+- Reduced CoFrance v2 runtime-menu hover flicker by protecting the existing menu during host painting and composing its final rail/popups offscreen before a single blit. Native AVISO painting is unchanged.
+
 - Included the maintainer's updated AVISO maps for LFBF, LFKS, LFLU, LFMC, LFMH and LFTW, with refreshed release inventory and migration fingerprints.
 
 - Added Apply to all terrains for AVISO palette, background and matching visual styles, persisted in user configuration for open and future airports without replacing geometry or existing local appearance customizations. Imported custom maps retain their own appearance.
