@@ -5377,7 +5377,7 @@
       const previous = clone(paint);
       const changesFor = properties => Object.fromEntries(keys.map(key => [key,
         effectiveAvisoPaintValue(defaultPaint, properties || {}, key, undefined, request.palette)
-          ?? (request.section === "text" ? AVISO_TEXT_DEFAULTS[key] : undefined)
+          ?? (request.section === "text" ? AVISO_TEXT_DEFAULTS[key] : key.endsWith("-opacity") ? 1 : undefined)
       ]).filter(([key, value]) => value !== undefined || !AVISO_PALETTE_COLOR_KEYS.has(key)));
       applyAvisoPaintChanges(paint, changesFor({}));
       entry.indices.forEach(index => {
@@ -5389,6 +5389,8 @@
     });
     if (!count) throw new Error("No bundled defaults match the selected styles; custom styles are unchanged");
     drafts.avisoGeometry = drafts.avisoTextStyle = null;
+    clearUnappliedEditorSection($("#avisoGeometryColorHex"));
+    clearUnappliedEditorSection($("#avisoTextFont"));
     markDirty("Selected AVISO styles restored to bundled defaults", ["aviso"]);
   }
 

@@ -2,6 +2,8 @@
 
 ## [2.0.1] - Unreleased
 
+- Fixed AVISO geometry Reset restoring implicit default opacity and clearing stale editor drafts.
+
 - New AVISO views default to the Light palette; saved ASR palette selections remain unchanged.
 
 - Rebuilt profile Rules with nested All/Any/Not conditions, exact/list/text/numeric comparisons, signed CDM time offsets (including TOBT +/-5 minutes), scratchpad/holding-point/SID/runway conditions, rule enable/reordering/stop controls and multiple visual effects. Effects can style aircraft, whole tags or individual fields with color, background, bold and synchronized dim blinking. Raw values distinguish missing data from display placeholders; legacy matching is preserved. Rules never modify flight plans. A recursive Control Center editor provides templates, validation and versioned copy/paste; clock-driven rules refresh even without bridge changes.
