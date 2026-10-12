@@ -68,7 +68,7 @@ try {
     Write-Fixture 'payload/vSMR_Data/default.json' $original
     foreach ($unsafe in @('vSMR_Data/config.json', 'vSMR_Data/CONFIG.JSON',
         'vSMR_Data/UserData/custom.geojson', 'vSMR_Data/../outside.dll',
-        'vSMR_Data/vSMR_Profiles.json', 'vSMR_Data/version.json', 'C:/outside.dll')) {
+        'vSMR_Data/vSMR_Profiles.json', 'vSMR_Data/runway_group_visibility.json', 'vSMR_Data/version.json', 'C:/outside.dll')) {
         $script:record.files = [ordered]@{ $unsafe = $entry }
         Save-Record
         Assert-Rejected 'Not an application-managed payload path*'

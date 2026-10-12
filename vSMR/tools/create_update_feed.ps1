@@ -40,7 +40,7 @@ function Assert-RegularPath([string]$Path) {
 function Assert-ManagedPath([string]$Relative) {
     $allowed = '^(vSMR\.dll|vSMR_Data/(default\.json|airports_hp\.json|ICAO_Aircraft\.json|AVISO-UPDATE-POLICY\.json|AVISO/[A-Z0-9]{4}(?:_[A-Za-z0-9][A-Za-z0-9_-]{0,47})?\.geojson|aircraft_icons/[A-Za-z0-9_-]+\.png|Audio/[A-Za-z0-9_.-]+\.wav|Runtime/[A-Za-z0-9_.-]+\.dll|CrashReporter/vSMRCrashHandler\.dll|Tools/[A-Za-z0-9_.-]+\.(exe|ps1|cs|patch)|Licenses/[A-Za-z0-9_.-]+\.(txt|md)|vSMR_webUI/(index\.html|styles\.css|data\.js|app-bundle\.js)))$'
     if ($Relative -notmatch $allowed -or
-        $Relative -match '(?i)(^|/)(config\.json|vSMR_Profiles\.json|UserData|UpdateBaselines|\.update|version\.json)(/|$)' -or
+        $Relative -match '(?i)(^|/)(config\.json|vSMR_Profiles\.json|runway_group_visibility\.json|UserData|UpdateBaselines|\.update|version\.json)(/|$)' -or
         $Relative -match '(^|/)\.{1,2}(/|$)|[. ](/|$)|(?i)\.(asr|pdb|bak|tmp)$' -or
         $Relative -match '(?i)(^|/)(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|/|$)') {
         throw "Not an application-managed payload path: $Relative"
@@ -123,7 +123,9 @@ if ($Phase -eq 'Prepare') {
         Assert-RegularPath $asset.FullName
         $relative = $asset.FullName.Substring($sourceData.Length).TrimStart('\', '/').Replace('\', '/')
         if ($installedNames.ContainsKey($relative)) { $relative = $installedNames[$relative] }
-        if ($relative -match '(?i)(^|/)(config\.json|vSMR_Profiles\.json|UserData|UpdateBaselines|\.update|version\.json)(/|$)' -or
+        # The visibility template is compiled into default.json. Like legacy
+        # profiles, its editable standalone copy is not an updater-owned file.
+        if ($relative -match '(?i)(^|/)(config\.json|vSMR_Profiles\.json|runway_group_visibility\.json|UserData|UpdateBaselines|\.update|version\.json)(/|$)' -or
             $relative -match '^AVISO/(ALL_FR_.*|_LFXX)\.geojson$|^AVISO/version\.txt$') { continue }
         [void]$managed.Add('vSMR_Data/' + $relative)
     }
