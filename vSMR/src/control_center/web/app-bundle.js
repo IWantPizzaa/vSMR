@@ -3549,6 +3549,36 @@
     return normalizeAvisoColorPalette(state.settings.avisoColorPalette);
   }
 
+  function applyAvisoToAllTerrains() {
+    if (!stageFocusedEditorValue()) return;
+    if (state.dirty || pending.save || pending.resource || state.externalEditConflict || !hostAuthoritativeReady) {
+      showToast("Wait until the current changes are saved before applying them to all terrains.", "error");
+      return;
+    }
+    if (!window.confirm("Use this palette, background and matching visual styles as shared defaults for open and future terrains? Local customizations and imported custom maps remain authoritative. Coordinates and groups are unchanged.")) return;
+    const palette = activeAvisoColorPalette();
+    const styles = {};
+    const colorKeys = AVISO_PALETTE_COLOR_KEYS;
+    for (const [id, style] of Object.entries(state.aviso.styles || {})) {
+      const paint = {}, colors = {};
+      for (const key of [...AVISO_GEOMETRY_PAINT_KEYS, ...AVISO_TEXT_PAINT_KEYS]) {
+        const value = effectiveAvisoPaintValue(style.paint, null, key, undefined, palette);
+        if (value == null) continue;
+        if (colorKeys.has(key) && palette !== "dark") colors[key] = value;
+        else paint[key] = value;
+      }
+      if (Object.keys(colors).length) paint["palette-overrides"] = { [palette]: colors };
+      if (Object.keys(paint).length) styles[id] = { paint };
+    }
+    postRuntimeCommand("settings.update", {
+      airport: state.airport, configRevision: state.configRevision,
+      applyAvisoToAll: { palette, styles, metadata: {
+        background_colors: { [palette]: state.aviso.metadata.background_colors[palette] },
+        background_opacities: { [palette]: state.aviso.metadata.background_opacities[palette] }
+      } }, replaceLocalAppearance: false
+    }, null);
+  }
+
   function avisoPaletteOverride(paint, palette = activeAvisoColorPalette()) {
     if (palette === "dark" || !paint || typeof paint !== "object") return null;
     const overrides = paint["palette-overrides"];
@@ -6346,6 +6376,7 @@
 		markDirty(`AVISO ${palette} palette selected`, ["settings"]);
       }
     }
+    else if (action === "apply-aviso-all") applyAvisoToAllTerrains();
     else if (action === "dismiss-persistent-status") {
       if (persistentStatusState)
         dismissedPersistentStatusKey = `${persistentStatusState.type}|${persistentStatusState.message}`;

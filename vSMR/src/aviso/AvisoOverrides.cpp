@@ -319,6 +319,227 @@ namespace VsmrAvisoOverrides
         return true;
     }
 
+    bool ValidateAppearance(const Value& appearance, std::string& error)
+    {
+        error.clear();
+        if (!appearance.IsObject()) { error = "AVISO appearance must be an object."; return false; }
+        for (auto it = appearance.MemberBegin(); it != appearance.MemberEnd(); ++it)
+        {
+            const std::string key = it->name.GetString();
+            if (key != "palette" && key != "generation" && key != "metadata" && key != "styles")
+            { error = "Only visual AVISO settings can be applied to all airports."; return false; }
+        }
+        const auto* palette = Member(appearance, "palette");
+        if (!palette || !palette->IsString() || (std::string(palette->GetString()) != "dark" &&
+            std::string(palette->GetString()) != "light" && std::string(palette->GetString()) != "real"))
+        { error = "Select a supported AVISO palette."; return false; }
+        const auto* styles = Member(appearance, "styles");
+        if (styles && (!styles->IsObject() || styles->MemberCount() > 512))
+        { error = "AVISO appearance supports at most 512 matching styles."; return false; }
+        const std::set<std::string> keys{ "fill", "stroke", "fill-opacity", "stroke-opacity", "stroke-width",
+            "text-font", "text-size", "text-color", "text-anchor", "text-halo-color", "text-halo-width", "zoomLevel" };
+        const auto paintValid = [&](const Value& paint, bool overrides) {
+            if (!paint.IsObject()) return false;
+            for (auto it = paint.MemberBegin(); it != paint.MemberEnd(); ++it)
+            {
+                const std::string key = it->name.GetString();
+                if (key == "palette-overrides" && overrides) continue;
+                if (!keys.count(key) || (!it->value.IsString() && !it->value.IsNumber())) return false;
+                if (it->value.IsString() && it->value.GetStringLength() > 512) return false;
+                if ((key == "fill-opacity" || key == "stroke-opacity") &&
+                    (!it->value.IsNumber() || it->value.GetDouble() < 0 || it->value.GetDouble() > 1)) return false;
+            }
+            return true;
+        };
+        if (styles) for (auto it = styles->MemberBegin(); it != styles->MemberEnd(); ++it)
+        {
+            const auto* paint = Member(it->value, "paint");
+            if (!it->value.IsObject() || it->value.MemberCount() != 1 || !paint || !paintValid(*paint, true))
+            { error = "AVISO styles may contain visual paint settings only."; return false; }
+            if (const auto* palettes = Member(*paint, "palette-overrides"))
+            {
+                if (!palettes->IsObject() || palettes->MemberCount() > 3) return false;
+                for (auto p = palettes->MemberBegin(); p != palettes->MemberEnd(); ++p)
+                    if ((std::string(p->name.GetString()) != "dark" && std::string(p->name.GetString()) != "light" &&
+                        std::string(p->name.GetString()) != "real") || !paintValid(p->value, false)) return false;
+            }
+        }
+        if (const auto* metadata = Member(appearance, "metadata"))
+        {
+            if (!metadata->IsObject()) return false;
+            for (auto it = metadata->MemberBegin(); it != metadata->MemberEnd(); ++it)
+                if (std::string(it->name.GetString()) != "background_colors" && std::string(it->name.GetString()) != "background_opacities")
+                { error = "AVISO metadata transfer is limited to background appearance."; return false; }
+            AvisoDocumentModel validation;
+            validation.CreateEmptyFeatureCollection();
+            Put(validation.MutableDocument(), "metadata", *metadata, validation.MutableDocument().GetAllocator());
+            if (!validation.ValidateLoadedFeatureCollection(error)) return false;
+        }
+        return true;
+    }
+
+    bool ApplyAppearance(Document& source, const Value* appearance, std::string& error, const Value* localOverrides)
+    {
+        if (appearance && !ValidateAppearance(*appearance, error)) return false;
+        if (!Apply(source, localOverrides, error)) return false;
+        if (!appearance) return true;
+        auto& a = source.GetAllocator();
+        const auto withoutLocal = [&](const Value& settings, const Value* local) {
+            Value result(settings, a);
+            if (!local || !local->IsObject()) return result;
+            for (auto it = local->MemberBegin(); it != local->MemberEnd(); ++it)
+            {
+                const std::string key = it->name.GetString();
+                if (key == "palette-overrides" && it->value.IsObject())
+                {
+                    auto* palettes = Member(result, "palette-overrides");
+                    if (palettes) for (auto p = it->value.MemberBegin(); p != it->value.MemberEnd(); ++p)
+                        if (auto* target = Member(*palettes, p->name.GetString()))
+                            if (p->value.IsObject()) for (auto v = p->value.MemberBegin(); v != p->value.MemberEnd(); ++v) target->RemoveMember(v->name.GetString());
+                }
+                else
+                {
+                    result.RemoveMember(key.c_str());
+                    if (auto* palettes = Member(result, "palette-overrides"))
+                        for (auto p = palettes->MemberBegin(); p != palettes->MemberEnd(); ++p)
+                            if (p->value.IsObject()) p->value.RemoveMember(key.c_str());
+                }
+            }
+            if (auto* palettes = Member(result, "palette-overrides"))
+            {
+                for (auto p = palettes->MemberBegin(); p != palettes->MemberEnd();)
+                    if (p->value.IsObject() && p->value.ObjectEmpty()) p = palettes->EraseMember(p);
+                    else ++p;
+                if (palettes->ObjectEmpty()) result.RemoveMember("palette-overrides");
+            }
+            return result;
+        };
+        const auto updatePaint = [&](Value& target, const Value& paint, const Value* shared) {
+            if (paint.ObjectEmpty()) return;
+            // Editing one palette must not change another through inheritance.
+            Value preserved(rapidjson::kObjectType);
+            const auto palettePaint = [](const Value* p, const std::string& palette) -> const Value* {
+                const auto* all = p ? Member(*p, "palette-overrides") : nullptr;
+                if (!all || palette == "dark") return nullptr;
+                if (const auto* own = Member(*all, palette.c_str())) return own;
+                if (palette == "real") if (const auto* light = Member(*all, "light")) return light;
+                return Member(*all, "day");
+            };
+            for (const std::string other : { "dark", "light", "real" })
+                for (const char* key : { "fill", "stroke", "text-color", "text-halo-color" })
+                {
+                    const auto* all = Member(paint, "palette-overrides");
+                    const auto* specific = all ? Member(*all, other.c_str()) : nullptr;
+                    if ((other == "dark" && Member(paint, key)) || (specific && Member(*specific, key))) continue;
+                    const Value* value = nullptr;
+                    const auto* own = palettePaint(&target, other);
+                    if (own) value = Member(*own, key);
+                    if (!value) value = Member(target, key);
+                    const auto* inherited = palettePaint(shared, other);
+                    if (!value && inherited) value = Member(*inherited, key);
+                    if (!value && shared) value = Member(*shared, key);
+                    if (!value) continue;
+                    if (other == "dark") Put(preserved, key, *value, a);
+                    else
+                    {
+                        if (!preserved.HasMember("palette-overrides")) preserved.AddMember("palette-overrides", Value(rapidjson::kObjectType), a);
+                        auto& overrides = preserved["palette-overrides"];
+                        if (!overrides.HasMember(other.c_str())) { Value name; name.SetString(other.c_str(), a); overrides.AddMember(name, Value(rapidjson::kObjectType), a); }
+                        Put(overrides[other.c_str()], key, *value, a);
+                    }
+                }
+            VsmrLayeredConfig::Merge(target, preserved, a);
+            VsmrLayeredConfig::Merge(target, paint, a);
+        };
+        if (const auto* metadata = Member(*appearance, "metadata"))
+        {
+            if (!source.HasMember("metadata")) source.AddMember("metadata", Value(rapidjson::kObjectType), a);
+            VsmrLayeredConfig::Merge(source["metadata"], *metadata, a);
+            const auto* patch = localOverrides ? Member(*localOverrides, "patch") : nullptr;
+            const auto* document = patch ? Member(*patch, "document") : nullptr;
+            if (const auto* local = document ? Member(*document, "metadata") : nullptr)
+                VsmrLayeredConfig::Merge(source["metadata"], *local, a);
+        }
+        const auto* transfer = Member(*appearance, "styles");
+        if (!transfer) return true;
+        Value effectiveTransfer(*transfer, a);
+        const auto* localPatch = localOverrides ? Member(*localOverrides, "patch") : nullptr;
+        const auto* localDocument = localPatch ? Member(*localPatch, "document") : nullptr;
+        const auto* localStyles = localDocument ? Member(*localDocument, "styles") : nullptr;
+        for (auto it = effectiveTransfer.MemberBegin(); it != effectiveTransfer.MemberEnd(); ++it)
+        {
+            const auto* local = localStyles ? Member(*localStyles, it->name.GetString()) : nullptr;
+            Value paint = withoutLocal(it->value["paint"], local ? Member(*local, "paint") : nullptr);
+            Put(it->value, "paint", paint, a);
+        }
+        transfer = &effectiveTransfer;
+        Value previousStyles(rapidjson::kObjectType);
+        if (const auto* styles = Member(source, "styles")) previousStyles.CopyFrom(*styles, a);
+        if (auto* styles = Member(source, "styles"))
+            for (auto it = transfer->MemberBegin(); it != transfer->MemberEnd(); ++it)
+                if (auto* style = Member(*styles, it->name.GetString()))
+                {
+                    auto* paint = Member(*style, "paint");
+                    if (paint) updatePaint(*paint, it->value["paint"], nullptr);
+                }
+        if (auto* features = Member(source, "features"))
+            for (auto& feature : features->GetArray())
+            {
+                auto* properties = Member(feature, "properties");
+                const auto* id = properties ? Member(*properties, "style_id") : nullptr;
+                const auto* style = id && id->IsString() ? Member(*transfer, id->GetString()) : nullptr;
+                const auto* previousStyle = id && id->IsString() ? Member(previousStyles, id->GetString()) : nullptr;
+                const auto* localFeatures = localPatch ? Member(*localPatch, "features") : nullptr;
+                const auto* localFeature = localFeatures ? Member(*localFeatures, Identity(feature, true).c_str()) : nullptr;
+                if (style) {
+                    Value paint = withoutLocal((*style)["paint"], localFeature ? Member(*localFeature, "properties") : nullptr);
+                    updatePaint(*properties, paint, previousStyle ? Member(*previousStyle, "paint") : nullptr);
+                }
+            }
+        return true;
+    }
+
+    void ClearAppearanceOverrides(Value& record, const Value& appearance, const Value& baseline)
+    {
+        auto* patch = Member(record, "patch");
+        const auto escaped = [](std::string text) {
+            std::string result;
+            for (char c : text) result += c == '~' ? "~0" : c == '/' ? "~1" : std::string(1, c);
+            return result;
+        };
+        std::set<std::string> transferredPaths;
+        const auto erase = [&](Value* target, const Value& settings, const std::string& path, auto&& self) -> void {
+            for (auto it = settings.MemberBegin(); it != settings.MemberEnd(); ++it)
+                if (it->value.IsObject()) self(target ? Member(*target, it->name.GetString()) : nullptr, it->value,
+                    path + "/" + escaped(it->name.GetString()), self);
+                else {
+                    transferredPaths.insert(path + "/" + escaped(it->name.GetString()));
+                    if (target && target->IsObject()) target->RemoveMember(it->name.GetString());
+                }
+        };
+        auto* document = patch ? Member(*patch, "document") : nullptr;
+        if (const auto* metadata = Member(appearance, "metadata")) erase(document ? Member(*document, "metadata") : nullptr, *metadata, "/document/metadata", erase);
+        const auto* styles = Member(appearance, "styles");
+        if (!styles) return;
+        auto* patchedStyles = document ? Member(*document, "styles") : nullptr;
+        for (auto it = styles->MemberBegin(); it != styles->MemberEnd(); ++it)
+            erase(patchedStyles ? Member(*patchedStyles, it->name.GetString()) : nullptr, it->value, "/document/styles/" + escaped(it->name.GetString()), erase);
+        auto* patchedFeatures = patch ? Member(*patch, "features") : nullptr;
+        const auto* features = Member(baseline, "features");
+        if (features) for (const auto& feature : features->GetArray())
+        {
+            const auto* props = Member(feature, "properties");
+            const auto* styleId = props ? Member(*props, "style_id") : nullptr;
+            const auto* style = styleId && styleId->IsString() ? Member(*styles, styleId->GetString()) : nullptr;
+            const std::string id = Identity(feature, true);
+            auto* patchedFeature = patchedFeatures ? Member(*patchedFeatures, id.c_str()) : nullptr;
+            if (style) erase(patchedFeature ? Member(*patchedFeature, "properties") : nullptr, (*style)["paint"], "/features/" + escaped(id) + "/properties", erase);
+        }
+        if (auto* removed = Member(record, "removed"))
+            if (removed->IsObject()) for (auto it = removed->MemberBegin(); it != removed->MemberEnd();)
+                if (transferredPaths.count(it->name.GetString())) it = removed->EraseMember(it); else ++it;
+    }
+
     bool MigrateLegacy(CConfig& config, const std::filesystem::path& dataRoot, std::string& error)
     {
         if (!config.isLayeredConfig() || !config.isConfigHealthy()) return true;

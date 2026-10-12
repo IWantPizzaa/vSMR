@@ -61,9 +61,12 @@ std::string CSMRRadar::GetAvisoDefaultSource(const std::string& path, std::strin
 bool CSMRRadar::ApplyAvisoUserOverrides(const std::string& path,
 	rapidjson::Document& document, std::string& error) const
 {
-	if (CurrentConfig == nullptr ||
-		!VsmrAvisoOverrides::IsManagedSource(std::filesystem::u8path(DataPath),
-			std::filesystem::u8path(path))) return true;
+	const auto appearanceConfig = VsmrAvisoSharedConfig::Read(std::filesystem::u8path(DataPath));
+	if (!appearanceConfig.error.empty()) { error = appearanceConfig.error; return false; }
+	const auto* appearance = appearanceConfig.document ? VsmrLayeredConfig::Member(*appearanceConfig.document, "aviso_display_defaults") : nullptr;
+	const bool managed = VsmrAvisoOverrides::IsManagedSource(std::filesystem::u8path(DataPath), std::filesystem::u8path(path));
+	if (!managed) return true; // Complete custom files own their appearance.
+	if (CurrentConfig == nullptr) return true;
 	if (!CurrentConfig->isLayeredConfig())
 	{
 		const auto shared = VsmrAvisoSharedConfig::Read(std::filesystem::u8path(DataPath));
@@ -72,11 +75,10 @@ bool CSMRRadar::ApplyAvisoUserOverrides(const std::string& path,
 			? VsmrLayeredConfig::Member(*shared.document, "aviso") : nullptr;
 		const auto* overrides = airports != nullptr ? VsmrLayeredConfig::Member(*airports,
 			VsmrAvisoOverrides::AirportKey(std::filesystem::u8path(path)).c_str()) : nullptr;
-		return VsmrAvisoOverrides::Apply(document, overrides, error);
+		return VsmrAvisoOverrides::ApplyAppearance(document, appearance, error, overrides);
 	}
-	return VsmrAvisoOverrides::Apply(document,
-		VsmrAvisoOverrides::Find(*CurrentConfig,
-			VsmrAvisoOverrides::AirportKey(std::filesystem::u8path(path))), error);
+	const auto* overrides = VsmrAvisoOverrides::Find(*CurrentConfig, VsmrAvisoOverrides::AirportKey(std::filesystem::u8path(path)));
+	return VsmrAvisoOverrides::ApplyAppearance(document, appearance, error, overrides);
 }
 
 std::string CSMRRadar::GetAvisoOverridesRevision(bool forceRefresh) const

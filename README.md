@@ -151,6 +151,12 @@ LFPG defaults show East Arrows (`ground-layout-east`) for 08/09 and West Arrows 
 
 This only controls map-group visibility; it does not select vSID rules or configurations. Changed rule decisions are recorded as `AVISO runway visibility` diagnostics, including the source airport and observed ARR/DEP runways. Use `.smr diagnostics` after reproducing a problem to export the recent diagnostic messages, or `.smr log normal` to enable file logging before changing runways.
 
+## AVISO appearance
+
+On the AVISO page, **Apply to all terrains** stores the selected palette, its background color/opacity and matching geometry/text paint styles in `config.json` under `aviso_display_defaults`. It applies to open and future airports without copying coordinates, airport labels, features or groups. Existing local appearance overrides remain authoritative, including inline colors and fonts. Imported custom files keep their own appearance. Unmatched styles and geometry/visibility edits remain local; later per-airport edits can override shared defaults. Palettes unsupported by a map fall back to Light when available.
+
+The Geometry **Background** entry provides an opacity slider per Dark/Light/Real palette. Existing maps remain fully opaque unless configured otherwise; Reset restores the bundled opacity (100% when omitted). Map-surface geometry has its own opacity controls.
+
 ## Profile Rules
 
 Control Center > Profiles > Rules supports nested **All**, **Any** and **Not** groups, exact value lists, text comparisons and numeric ranges. Flight fields include SID, departure/arrival runway, scratchpad, holding point, callsign, origin/destination, aircraft type, wake, status, clearance, speed (knots) and flight level (hundreds of feet). CDM time conditions use **now minus the event time**, in minutes: -5 means five minutes before TOBT, +5 means five minutes after. They use UTC timestamps, not the displayed HHMM string.

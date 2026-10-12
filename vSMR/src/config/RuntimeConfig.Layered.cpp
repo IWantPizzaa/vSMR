@@ -536,6 +536,25 @@ bool CConfig::saveUserConfigSection(const char* key, const rapidjson::Value* val
 	return commitLayeredOverrides(candidate, expectedRevision, error);
 }
 
+// Atomic non-profile writes must not manufacture a new active-profile choice.
+bool CConfig::saveUserConfigSections(const rapidjson::Value& sections,
+	const std::string& expectedRevision, std::string& error)
+{
+	std::lock_guard<std::mutex> lock(ConfigSaveMutex());
+	if (!layered_config || !sections.IsObject()) { error = "Layered configuration sections are unavailable."; return false; }
+	rapidjson::Document candidate;
+	candidate.CopyFrom(layered_overrides, candidate.GetAllocator());
+	for (auto it = sections.MemberBegin(); it != sections.MemberEnd(); ++it)
+	{
+		const std::string key = it->name.GetString();
+		if (key.empty() || key == "profiles" || key == "metadata" || key == "hidden_profiles" || key == "schema_version")
+		{ error = "Global appearance cannot replace profile-owned roots."; return false; }
+		if (it->value.IsNull()) candidate.RemoveMember(key.c_str());
+		else layers::Put(candidate, key.c_str(), it->value, candidate.GetAllocator());
+	}
+	return commitLayeredOverrides(candidate, expectedRevision, error);
+}
+
 bool CConfig::resetProfileOverrides(const std::string& expectedRevision, std::string& error)
 {
 	std::lock_guard<std::mutex> lock(ConfigSaveMutex());
