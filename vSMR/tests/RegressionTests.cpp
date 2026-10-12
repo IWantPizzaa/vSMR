@@ -14,15 +14,19 @@
 #include "control_center/WebMessageValidation.hpp"
 #include "integrations/CdmBridgeData.hpp"
 #include "integrations/VsidBridgeData.hpp"
+#include "integrations/ProxyBridgeSnapshot.hpp"
 #include "insets/TimerCountdownState.hpp"
+#include "insets/ProxyTimerState.hpp"
 #include "insets/AvisoViewportCenter.hpp"
 #include "datalink/PdcLogonSync.hpp"
+#include "datalink/ProxyDatalinkView.hpp"
 #include "insets/WeatherInsetLayout.hpp"
 #include "radar/RecentAirports.hpp"
 #include "radar/DisplayModeVisibility.hpp"
 #include "radar/RadarScreenTypes.hpp"
 #include "radar/RadarGeometry.hpp"
 #include "rdf/RdfTransmissionState.hpp"
+#include "rdf/ProxyRdfState.hpp"
 #include "safety/RimcasLogic.hpp"
 #include "scene/TargetRoleLogic.hpp"
 #include "shared/JsonInputLimits.hpp"
@@ -1820,8 +1824,190 @@ void TestRdfCallAcknowledgements()
 		"RDF shutdown clears session state and resetting an empty item is harmless");
 }
 
+int RunProxyChild(const std::wstring& identity, const std::wstring& mode)
+{
+	if (mode == L"datalink-read") {
+		ProxyDatalinkView view;
+		if (!view.Open(identity)) return 60;
+		view.Poll();
+		return view.remote && view.connected && !view.connecting && view.logon == "LFPG" && view.Flags("TEST123") == 3 ? 0 : 61;
+	}
+	if (mode == L"hoppie-busy") {
+		VsmrProcessSync::Mutex lease;
+		return lease.Open(L"Hoppie", identity) && !lease.Lock(0) ? 0 : 62;
+	}
+	if (mode == L"bridge-read") {
+		ProxyBridgeSnapshot bridge;
+		if (!bridge.Open(identity)) return 50;
+		const auto* api = bridge.RemoteApi();
+		if (!api) return 51;
+		ESB_FieldId field = 0; ESB_Aircraft aircraft = 0; std::string text;
+		if (api->resolve("vsid/sid", ESB_T_STR, &field) != ESB_OK || api->aircraft("TEST123", &aircraft) != ESB_OK ||
+			VsmrPluginBridge::ReadAircraftString(*api, "TEST123", aircraft, field, 32, text) != VsmrPluginBridge::ReadStatus::Value || text != "BUB6B") return 52;
+		if (api->resolve("com.viffsys.cdm/tobt", ESB_T_I64, &field) != ESB_OK) return 53;
+		std::int64_t time = 0;
+		if (VsmrPluginBridge::ReadAircraftInteger(*api, "TEST123", aircraft, field, time) != VsmrPluginBridge::ReadStatus::Value || time != 742) return 54;
+		std::uint64_t id = 0; std::string error;
+		if (!bridge.channel.Submit(4, "LFPG", id, error)) return 55;
+		for (int attempt = 0; attempt < 400; ++attempt) {
+			bool success = false;
+			if (bridge.channel.Result(id, success, error)) return success && error.empty() ? 0 : 56;
+			::Sleep(5);
+		}
+		return 57;
+	}
+	if (mode == L"bridge-publish-exit") {
+		ProxySessionChannel channel;
+		if (!channel.Open(identity) || !channel.Publish("{}")) return 58;
+		::ExitProcess(0); // don't clear owner metadata: reader must check liveness
+	}
+	if (mode == L"rdf-reset" || mode == L"rdf-deny-write") {
+		ProxyRdfState rdf;
+		if (!rdf.Open(identity)) return 40;
+		if (mode == L"rdf-deny-write") return rdf.Event("TEST123", 121700000, true) ? 41 : 0;
+		return rdf.Pending("TEST123") && rdf.Reset("TEST123") && rdf.Transmitting().size() == 1 ? 0 : 42;
+	}
+	if (mode == L"mutex-busy" || mode == L"mutex-abandon") {
+		VsmrProcessSync::Mutex mutex;
+		if (!mutex.Open(L"Test", identity)) return 20;
+		const bool acquired = mutex.Lock(0);
+		if (mode == L"mutex-busy") return acquired ? 21 : 0;
+		if (!acquired) return 22;
+		::ExitProcess(0); // exercise WAIT_ABANDONED, not normal RAII cleanup
+	}
+	if (mode == L"config-save") {
+		CConfig config((std::filesystem::path(identity) / L"default.json").u8string(), "");
+		rapidjson::Document value;
+		value.SetObject(); value.AddMember("child", true, value.GetAllocator());
+		std::string error;
+		return config.saveUserConfigSection("proxy_test", &value, config.getConfigRevision(), error) ? 0 : 30;
+	}
+	ProxyTimerState timers;
+	TimerCountdownState snapshot;
+	bool alarm = false;
+	if (!timers.Join(identity) || !timers.Poll(::GetTickCount64(), snapshot, alarm)) return 1;
+	if (mode == L"reset") return snapshot.Running(2) && timers.Change(2, true, ::GetTickCount64(), snapshot) ? 0 : 2;
+	if (mode == L"expire") return timers.Poll(::GetTickCount64() + 240000, snapshot, alarm) && alarm ? 0 : 3;
+	if (mode == L"hold") {
+		HANDLE ready = ::OpenEventW(EVENT_MODIFY_STATE, FALSE, VsmrProcessSync::Name(L"TestReady", identity).c_str());
+		HANDLE release = ::OpenEventW(SYNCHRONIZE, FALSE, VsmrProcessSync::Name(L"TestRelease", identity).c_str());
+		if (!ready || !release) return 4;
+		::SetEvent(ready);
+		const bool released = ::WaitForSingleObject(release, 5000) == WAIT_OBJECT_0;
+		::CloseHandle(ready); ::CloseHandle(release);
+		return released && snapshot.Running(2) ? 0 : 5;
+	}
+	return 6;
+}
+
+void TestProxyProcesses(const std::filesystem::path& repositoryRoot)
+{
+	wchar_t executable[32768]{};
+	::GetModuleFileNameW(nullptr, executable, _countof(executable));
+	const std::wstring identity = L"regression-" + std::to_wstring(::GetCurrentProcessId()) + L"-" + std::to_wstring(::GetTickCount64());
+	auto spawn = [&](const std::wstring& key, const wchar_t* mode, PROCESS_INFORMATION& process) {
+		std::wstring command = L"\"" + std::wstring(executable) + L"\" --proxy-test \"" + key + L"\" " + mode;
+		STARTUPINFOW startup{}; startup.cb = sizeof(startup);
+		return ::CreateProcessW(executable, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process) != FALSE;
+	};
+	auto finish = [](PROCESS_INFORMATION& process) {
+		if (!process.hProcess) return false;
+		const DWORD wait = ::WaitForSingleObject(process.hProcess, 10000);
+		DWORD code = 1;
+		if (wait == WAIT_OBJECT_0) ::GetExitCodeProcess(process.hProcess, &code);
+		else ::TerminateProcess(process.hProcess, 99); // only this test's own child
+		::CloseHandle(process.hThread); ::CloseHandle(process.hProcess);
+		process = {};
+		return wait == WAIT_OBJECT_0 && code == 0;
+	};
+	ProxyTimerState timers, isolated;
+	TimerCountdownState snapshot;
+	bool alarm = false;
+	Expect(timers.Join(identity) && timers.Change(2, false, ::GetTickCount64(), snapshot), "Proxy timer starts in parent process");
+	PROCESS_INFORMATION child{};
+	Expect(spawn(identity, L"reset", child) && finish(child), "Proxy child sees and resets parent timer");
+	Expect(timers.Poll(::GetTickCount64(), snapshot, alarm) && !snapshot.Running(2), "Proxy reset returns to original process");
+	Expect(isolated.Join(identity + L"-other") && isolated.Poll(::GetTickCount64(), snapshot, alarm) && !snapshot.Running(2), "Different proxy sessions remain isolated");
+	timers.Change(2, false, ::GetTickCount64(), snapshot);
+	HANDLE ready = ::CreateEventW(nullptr, TRUE, FALSE, VsmrProcessSync::Name(L"TestReady", identity).c_str());
+	HANDLE release = ::CreateEventW(nullptr, TRUE, FALSE, VsmrProcessSync::Name(L"TestRelease", identity).c_str());
+	const bool holding = ready && release && spawn(identity, L"hold", child) && ::WaitForSingleObject(ready, 5000) == WAIT_OBJECT_0;
+	Expect(holding, "Proxy child holds the shared timer mapping");
+	if (holding) {
+		timers.Close();
+		Expect(timers.Join(identity) && timers.Poll(::GetTickCount64(), snapshot, alarm) && snapshot.Running(2), "Timer survives closing and reopening one participant while another stays open");
+	}
+	if (release) ::SetEvent(release);
+	if (child.hProcess) Expect(finish(child), "Proxy child exits cleanly after participant restart");
+	if (ready) ::CloseHandle(ready); if (release) ::CloseHandle(release);
+	Expect(spawn(identity, L"expire", child) && finish(child), "Exactly one proxy process claims the timer alarm");
+	Expect(timers.Poll(::GetTickCount64(), snapshot, alarm) && snapshot.Expired(2) && !alarm, "Other instance sees expired timer without replaying the alarm");
+	VsmrProcessSync::Mutex mutex;
+	Expect(mutex.Open(L"Test", identity) && mutex.Lock(), "Cross-process test mutex locks");
+	Expect(spawn(identity, L"mutex-busy", child) && finish(child), "A second process cannot enter a held writer/Hoppie mutex");
+	mutex.Unlock();
+	ProxyRdfState rdf;
+	Expect(rdf.Open(identity) && rdf.BecomePublisher(), "Shared RDF state elects the test publisher");
+	rdf.SetConnected(true);
+	Expect(rdf.Event("TEST123", 121700000, true) && rdf.Pending("TEST123"), "RDF reception is pending in shared state");
+	Expect(spawn(identity, L"rdf-reset", child) && finish(child) && !rdf.Pending("TEST123") && rdf.Transmitting().size() == 1,
+		"Reset from the second process clears TX everywhere without ending live reception");
+	Expect(spawn(identity, L"rdf-deny-write", child) && finish(child), "A follower process cannot duplicate a publisher's audio event");
+	Expect(rdf.Event("TEST123", 121700000, false) && rdf.Event("TEST123", 121700000, true) && rdf.Pending("TEST123"),
+		"A genuinely new transmission reactivates TX after cross-process reset");
+	Expect(spawn(identity, L"mutex-abandon", child) && finish(child) && mutex.Lock(), "An abandoned inter-process lease recovers after owner process exit");
+	mutex.Unlock();
+	{
+		ProxySessionChannel bridge;
+		Expect(bridge.Open(identity) && bridge.Publish(R"({"callsigns":["TEST123"],"providers":{"vsid":{"major":1,"minor":1,"fields":{"sid":{"TEST123":"BUB6B"},"automode":{"":"LFPG=1;"}}},"com.viffsys.cdm":{"major":1,"minor":0,"fields":{"tobt":{"TEST123":742}}}}})"), "Primary publishes companion fields without credentials or SDK pointers");
+		Expect(spawn(identity, L"bridge-read", child), "Secondary companion reader process starts");
+		ProxySessionChannel::Command request; bool taken = false;
+		for (int attempt = 0; child.hProcess && attempt < 400 && !taken; ++attempt) {
+			taken = bridge.Take(request);
+			if (!taken) ::Sleep(5);
+		}
+		Expect(taken && request.action == 4 && request.airport == "LFPG", "Secondary vSID action is routed to publisher as typed enum and ICAO");
+		if (taken) bridge.Complete(request.id, true, "");
+		Expect(finish(child), "Secondary reads primary-only vSID/CDM and receives action acknowledgement");
+		Expect(!bridge.Take(request), "Acknowledged actions cannot be executed twice");
+		std::string error; std::uint64_t id = 0;
+		Expect(!bridge.Submit(100, "LFPG", id, error) && !bridge.Submit(4, "LFPG .quit", id, error), "Proxy relay rejects arbitrary commands and malformed airports");
+	}
+	{
+		ProxyBridgeSnapshot reader;
+		Expect(reader.Open(identity) && spawn(identity, L"bridge-publish-exit", child) && finish(child), "Test publisher exits without cleanup");
+		Expect(!reader.RemoteApi(), "Dead primary cannot leave apparently live companion data behind");
+		ProxySessionChannel replacement;
+		Expect(replacement.Open(identity) && replacement.Publish("{}"), "Publisher lease recovers after an unclean process exit");
+	}
+	{
+		ProxyDatalinkView primary;
+		Expect(primary.Open(identity), "Primary CPDLC display channel opens");
+		primary.Publish(true, false, false, "LFPG", {{"TEST123", 3}});
+		Expect(spawn(identity, L"datalink-read", child) && finish(child), "Secondary sees CPDLC demand/standby flags and primary connection state without credentials");
+		VsmrProcessSync::Mutex hoppie;
+		Expect(hoppie.Open(L"Hoppie", identity) && hoppie.Lock(0) && spawn(identity, L"hoppie-busy", child) && finish(child), "Second process cannot consume Hoppie messages for a logon already leased by the primary");
+	}
+	const auto root = std::filesystem::temp_directory_path() / (L"vSMR-proxy-tests-" + identity);
+	try {
+		std::filesystem::create_directory(root);
+		std::filesystem::copy_file(repositoryRoot / "vSMR/data/default.json", root / "default.json");
+		CConfig config((root / "default.json").u8string(), "");
+		const std::string oldRevision = config.getConfigRevision();
+		Expect(spawn(root.wstring(), L"config-save", child) && finish(child), "Second process commits a real layered configuration change");
+		rapidjson::Document value; value.SetObject(); value.AddMember("parent", true, value.GetAllocator());
+		std::string error;
+		Expect(!config.saveUserConfigSection("proxy_test", &value, oldRevision, error), "Stale original process cannot overwrite a newer process's configuration");
+		Expect(config.reload() && config.getUserConfigSection("proxy_test") && (*config.getUserConfigSection("proxy_test"))["child"].GetBool(), "New configuration becomes visible after cross-process reload");
+	} catch (const std::exception& error) { Expect(false, std::string("Proxy config fixture: ") + error.what()); }
+	std::error_code cleanup;
+	if (root.parent_path() == std::filesystem::temp_directory_path() && root.filename().wstring().rfind(L"vSMR-proxy-tests-", 0) == 0)
+		std::filesystem::remove_all(root, cleanup);
+}
+
 int wmain(int argc, wchar_t** argv)
 {
+	if (argc == 4 && std::wstring(argv[1]) == L"--proxy-test") return RunProxyChild(argv[2], argv[3]);
 	const std::filesystem::path repositoryRoot = argc > 1
 		? std::filesystem::path(argv[1])
 		: std::filesystem::current_path();
@@ -1829,6 +2015,7 @@ int wmain(int argc, wchar_t** argv)
 	TestGroundState();
 	TestRdfCallAcknowledgements();
 	TestSharedTimerCountdowns();
+	TestProxyProcesses(repositoryRoot);
 	TestWeatherInsetLayout();
 	TestRunwayVisibilityRules(repositoryRoot);
 	TestZoomDiagnostics();

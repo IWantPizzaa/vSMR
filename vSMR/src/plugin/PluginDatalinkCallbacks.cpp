@@ -36,6 +36,10 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 	RECT Area)
 {
 	(void)sItemString;
+	if (GetConnectionType() == CONNECTION_TYPE_VIA_PROXY) {
+		DisplayUserMessage("vSMR", "Proxy CPDLC", "Use the primary EuroScope instance for PDC/CPDLC actions. This instance displays shared status only.", true, true, true, false, false);
+		return;
+	}
 	// ----- Handling CPDLC tag actions -----
 	if (FunctionId == TAG_FUNC_DATALINK_MENU) {
 		CFlightPlan FlightPlan = FlightPlanSelectASEL();

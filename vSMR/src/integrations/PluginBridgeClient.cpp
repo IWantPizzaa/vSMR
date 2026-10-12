@@ -7,6 +7,8 @@
 #include <esbridge.h>
 
 #include "integrations/PluginBridgeClient.hpp"
+#include "integrations/ProxyBridgeSnapshot.hpp"
+#include "integrations/VsidBridgeClient.hpp"
 
 #include "EuroScopePlugIn.h"
 #include "shared/TextUtils.hpp"
@@ -32,6 +34,9 @@ namespace
 	std::atomic<AttachState> CurrentAttachState{ AttachState::NotLoaded };
 	std::unordered_set<std::string> ForgottenCallsigns;
 	bool ScanFailureLogged = false;
+	ProxyBridgeSnapshot ProxyBridge;
+	bool RemoteBridge = false;
+	std::uint64_t PendingProxyCommand = 0;
 
 	bool ServesRequiredMembers(const ESB_Api_v1& api) noexcept
 	{
@@ -86,12 +91,22 @@ const ESB_Api_v1* VsmrPluginBridge::AttachForUi()
 		// not serve ABI v1. GetModuleHandleA only asks the loader; it never loads
 		// the bridge (A6).
 		const bool loaded = api != nullptr || ::GetModuleHandleA(ESB_MODULE_NAME) != nullptr;
+		if (ProxyBridge.channel.IsPublisher()) ProxyBridge.Withdraw();
+		RemoteBridge = false;
+		if (!loaded) {
+			if (const auto* remote = ProxyBridge.RemoteApi()) {
+				RemoteBridge = true;
+				CurrentAttachState.store(AttachState::Attached, std::memory_order_relaxed);
+				return remote;
+			}
+		}
 		CurrentAttachState.store(
 			loaded ? AttachState::Incompatible : AttachState::NotLoaded,
 			std::memory_order_relaxed);
 		return nullptr;
 	}
 	CurrentAttachState.store(AttachState::Attached, std::memory_order_relaxed);
+	RemoteBridge = false;
 	return api;
 }
 
@@ -105,6 +120,7 @@ VsmrPluginBridge::Tick VsmrPluginBridge::BeginTick(EuroScopePlugIn::CPlugIn& plu
 	try
 	{
 		CollectCallsigns(plugin, tick.callsigns);
+		if (!RemoteBridge) ProxyBridge.Publish(*tick.api, tick.callsigns);
 		ScanFailureLogged = false;
 	}
 	catch (const std::exception& exception)
@@ -122,6 +138,40 @@ VsmrPluginBridge::Tick VsmrPluginBridge::BeginTick(EuroScopePlugIn::CPlugIn& plu
 		ScanFailureLogged = true;
 	}
 	return tick;
+}
+
+void VsmrPluginBridge::ConfigureProxy(const std::wstring& identity)
+{
+	if (identity.empty()) { ProxyBridge.Close(); PendingProxyCommand = 0; RemoteBridge = false; }
+	else ProxyBridge.Open(identity);
+}
+
+bool VsmrPluginBridge::IsProxyBridge() noexcept { return RemoteBridge; }
+bool VsmrPluginBridge::ProxyCommandPending() noexcept { return PendingProxyCommand != 0; }
+
+bool VsmrPluginBridge::SubmitProxyVsid(int action, const std::string& airport, std::string& error)
+{
+	if (PendingProxyCommand) { error = "A Proxy vSID action is still awaiting confirmation."; return false; }
+	return ProxyBridge.channel.Submit(action, airport, PendingProxyCommand, error);
+}
+
+void VsmrPluginBridge::EndTick(EuroScopePlugIn::CPlugIn& plugin)
+{
+	ProxySessionChannel::Command command;
+	if (!RemoteBridge && ProxyBridge.channel.Take(command)) {
+		std::string error;
+		const bool valid = command.action >= 0 && command.action <= static_cast<int>(VsmrVsid::CommandAction::ReloadConfiguration);
+		const bool accepted = valid && VsmrVsid::SubmitCommand(static_cast<VsmrVsid::CommandAction>(command.action), command.airport, error);
+		if (!valid) error = "Invalid Proxy vSID action.";
+		ProxyBridge.channel.Complete(command.id, accepted, error);
+	}
+	if (PendingProxyCommand) {
+		bool success = false; std::string error;
+		if (ProxyBridge.channel.Result(PendingProxyCommand, success, error)) {
+			PendingProxyCommand = 0;
+			if (!success) plugin.DisplayUserMessage("vSMR", "Proxy vSID", error.c_str(), true, true, true, false, false);
+		}
+	}
 }
 
 VsmrPluginBridge::AttachState VsmrPluginBridge::GetAttachState() noexcept
@@ -155,6 +205,7 @@ void VsmrPluginBridge::ObserveAircraft(const std::string& callsign)
 
 void VsmrPluginBridge::Shutdown() noexcept
 {
+	ProxyBridge.Close(); RemoteBridge = false; PendingProxyCommand = 0;
 	ForgottenCallsigns.clear();
 	ScanFailureLogged = false;
 	CurrentAttachState.store(AttachState::NotLoaded, std::memory_order_relaxed);

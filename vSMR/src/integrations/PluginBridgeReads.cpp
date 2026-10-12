@@ -162,6 +162,8 @@ VsmrPluginBridge::ProviderBinding::ProviderBinding(
 
 VsmrPluginBridge::ProviderState VsmrPluginBridge::ProviderBinding::Refresh(const ESB_Api_v1& api)
 {
+	m_sourceChanged = m_apiIdentity != &api;
+	if (m_sourceChanged) { Reset(); m_apiIdentity = &api; }
 	std::uint32_t major = 0U;
 	std::uint32_t minor = 0U;
 	const ESB_Status version = api.provider_version != nullptr
@@ -205,6 +207,7 @@ VsmrPluginBridge::ProviderState VsmrPluginBridge::ProviderBinding::Refresh(const
 
 void VsmrPluginBridge::ProviderBinding::Reset() noexcept
 {
+	m_apiIdentity = nullptr;
 	std::fill(m_fieldIds.begin(), m_fieldIds.end(), ESB_FIELD_NONE);
 	std::fill(m_resolveStatuses.begin(), m_resolveStatuses.end(), ESB_E_NO_PROVIDER);
 	m_schemaMinor = 0U;

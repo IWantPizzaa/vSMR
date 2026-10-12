@@ -325,6 +325,7 @@
     <ClInclude Include="src\integrations\ParisRunwayRules.hpp" />
     <ClInclude Include="src\insets\InsetWindow.hpp" />
     <ClInclude Include="src\insets\TimerCountdownState.hpp" />
+    <ClInclude Include="src\insets\ProxyTimerState.hpp" />
     <ClInclude Include="src\insets\WeatherInsetLayout.hpp" />
     <ClInclude Include="src\insets\AvisoViewportCenter.hpp" />
     <ClInclude Include="src\datalink\PdcLogonSync.hpp" />
@@ -377,6 +378,11 @@
     <ClInclude Include="src\shared\FunctionRef.hpp" />
     <ClInclude Include="src\shared\JsonDocument.hpp" />
     <ClInclude Include="src\shared\Random.hpp" />
+    <ClInclude Include="src\shared\ProcessSync.hpp" />
+    <ClInclude Include="src\shared\ProxySessionChannel.hpp" />
+    <ClInclude Include="src\datalink\ProxyDatalinkView.hpp" />
+    <ClInclude Include="src\integrations\ProxyBridgeSnapshot.hpp" />
+    <ClInclude Include="src\rdf\ProxyRdfState.hpp" />
     <ClInclude Include="src\shared\RefreshLog.hpp" />
     <ClInclude Include="src\tags\CompiledTagDefinition.hpp" />
     <ClInclude Include="src\tags\TagTokenValues.hpp" />

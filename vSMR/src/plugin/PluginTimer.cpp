@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "plugin/Plugin.hpp"
 #include "plugin/Plugin.RuntimeState.hpp"
+#include "plugin/PluginDatalink.Internal.hpp"
 #include "plugin/PluginRuntimeAudio.hpp"
 
 #include "aircraft/GroundState.hpp"
@@ -14,15 +15,76 @@
 #include "radar/RadarScreen.Registry.hpp"
 #include "rdf/RdfOverlay.hpp"
 #include "scene/TargetRoleLogic.hpp"
+#include "aviso/AvisoSharedConfig.hpp"
 
 #include <atomic>
 #include <string>
+
+void CSMRPlugin::SynchronizeProxyRuntime()
+{
+	std::wstring identity;
+	const int connection = GetConnectionType();
+	if (connection == CONNECTION_TYPE_VIA_PROXY) DatalinkProxyClient = true;
+	else if (connection == CONNECTION_TYPE_DIRECT) DatalinkProxyClient = false;
+	if (connection == CONNECTION_TYPE_DIRECT || connection == CONNECTION_TYPE_VIA_PROXY) {
+		const auto controller = ControllerMyself();
+		if (controller.IsValid()) {
+			const char* raw = controller.GetCallsign();
+			const std::string callsign = raw ? raw : "";
+			if (!callsign.empty()) {
+				identity = std::filesystem::u8path(callsign).wstring();
+				::CharUpperBuffW(identity.data(), static_cast<DWORD>(identity.size()));
+			}
+		}
+	}
+	VsmrPluginBridge::ConfigureProxy(identity);
+	ProxyDatalink.Open(identity);
+	if (!identity.empty()) ProxyTimers.Join(identity);
+	else if (ProxyTimers.Active()) { ProxyTimers.Close(); TimerCountdowns = {}; }
+
+	// Keep a Hoppie lease until old requests have drained after disconnect/error.
+	if (DatalinkSessionLease.Owned() && !HoppieConnected.load(std::memory_order_acquire) &&
+		!HoppieConnecting.load(std::memory_order_acquire)) {
+		const auto workers = GetWorkerQueueSnapshot();
+		if (!workers.networkQueued && !workers.networkInFlight) DatalinkSessionLease.Close();
+	}
+	std::map<std::string, std::string> revisions;
+	std::map<std::string, VsmrAvisoSharedConfig::Snapshot> roots;
+	for (auto* radar : RadarScreensOpened) {
+		if (!radar || radar->IsShutdownRequested()) continue;
+		const auto* config = radar->GetConfiguration();
+		if (!config) continue;
+		const std::string dataPath = radar->GetDataPath();
+		const auto& path = config->getConfigPath();
+		if (!revisions.count(path)) revisions[path] = config->getPersistedConfigRevision();
+		const auto& revision = revisions[path];
+		const bool configChanged = !revision.empty() && revision != config->getConfigRevision();
+		if (!roots.count(dataPath)) roots.emplace(dataPath,
+			VsmrAvisoSharedConfig::Read(std::filesystem::u8path(dataPath)));
+		const auto& shared = roots.at(dataPath);
+		const auto previous = ProxyRootRevisions.find(dataPath);
+		const bool rootChanged = shared.error.empty() && previous != ProxyRootRevisions.end() && previous->second != shared.revision;
+		const auto failed = ProxyFailedConfigRevisions.find(path);
+		if ((!configChanged && !rootChanged) || (failed != ProxyFailedConfigRevisions.end() && failed->second == revision)) continue;
+		if (!radar->ReloadConfig()) {
+			if (!config->isConfigHealthy()) ProxyFailedConfigRevisions[path] = revision;
+			continue;
+		}
+		ProxyFailedConfigRevisions.erase(path);
+		const auto global = radar->GetGlobalAvisoPalette();
+		const char* saved = radar->GetDataFromAsr("AvisoAppearanceGeneration");
+		const std::string generation = saved ? saved : "";
+		if (!global.first.empty() && generation != global.second) radar->SetAvisoColorPalette(global.first, true);
+	}
+	for (const auto& root : roots) if (root.second.error.empty()) ProxyRootRevisions[root.first] = root.second.revision;
+}
 
 void CSMRPlugin::ChangeTimerCountdown(int durationMinutes, bool reset)
 {
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
-	const bool changed = reset ? TimerCountdowns.Reset(durationMinutes) :
+	SynchronizeProxyRuntime();
+	const bool changed = ProxyTimers.Active() ? ProxyTimers.Change(durationMinutes, reset, ::GetTickCount64(), TimerCountdowns) : reset ? TimerCountdowns.Reset(durationMinutes) :
 		TimerCountdowns.Start(durationMinutes, ::GetTickCount64());
 	if (!changed)
 		return;
@@ -43,7 +105,8 @@ void CSMRPlugin::OnTimer(int Counter)
 
 	if (Logger::is_verbose_mode())
 		Logger::info(std::string(__FUNCSIG__));
-	BLINK = !BLINK;
+	BLINK = (::GetTickCount64() / 1000U) % 2U != 0; // common phase across same-PC instances
+	SynchronizeProxyRuntime();
 	SyncPdcLogonWithControllerPosition();
 	VsmrRdf::OnTimer();
 
@@ -161,6 +224,7 @@ void CSMRPlugin::OnTimer(int Counter)
 	const bool vsidChanged = VsmrVsid::Poll(bridgeTick);
 	const bool cdmChanged = VsmrCdm::Poll(bridgeTick);
 	const bool rampAgentChanged = VsmrRampAgent::Poll(bridgeTick);
+	VsmrPluginBridge::EndTick(*this);
 	if (vsidChanged || cdmChanged || rampAgentChanged)
 		FlightDataRefreshPending.store(true, std::memory_order_release);
 
@@ -177,11 +241,14 @@ void CSMRPlugin::OnTimer(int Counter)
 		}
 	}
 	RunDatalinkTimerCycle();
+	SynchronizeProxyDatalink();
 
 	// ----- Updating runtime insets -----
 	const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
 	const int timerWindowId = APPWINDOW_TIMER - APPWINDOW_BASE;
-	const bool timerAlarmDue = TimerCountdowns.Update(::GetTickCount64());
+	bool timerAlarmDue = false;
+	if (ProxyTimers.Active()) ProxyTimers.Poll(::GetTickCount64(), TimerCountdowns, timerAlarmDue);
+	else timerAlarmDue = TimerCountdowns.Update(::GetTickCount64());
 	for (CSMRRadar* radar : RadarScreensOpened)
 	{
 		if (radar == nullptr || radar->IsShutdownRequested())

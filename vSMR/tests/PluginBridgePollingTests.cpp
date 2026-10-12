@@ -1,6 +1,7 @@
 #include "PluginBridgeTests.hpp"
 #include "integrations/CdmBridgeClient.hpp"
 #include "integrations/PluginBridgeClient.hpp"
+#include "integrations/ProxyBridgeSnapshot.hpp"
 #include "integrations/RampAgentBridgeClient.hpp"
 #include "integrations/VsidBridgeClient.hpp"
 #include "platform/windows/EuroScopeCommandLine.hpp"
@@ -18,6 +19,9 @@ namespace
 	std::string SubmittedCommand;
 	std::vector<std::string> SubmittedCommands;
 	bool AcceptCommand = true;
+	bool ProxyBridgeActive = false;
+	int ProxyAction = -1;
+	std::string ProxyAirport;
 	VsmrEuroScopeCommandLine::ProgressCallback CommandProgress = nullptr;
 	const ESB_Api_v1* UiApi = nullptr;
 	VsmrEuroScopeCommandLine::SubmissionStatus SubmissionResult = VsmrEuroScopeCommandLine::SubmissionStatus::Idle;
@@ -112,6 +116,9 @@ std::string Logger::DLL_PATH;
 void VsmrCrashReporter::RecordLog(const char*) noexcept {}
 VsmrPluginBridge::AttachState VsmrPluginBridge::GetAttachState() noexcept { return HostAttachState; }
 const ESB_Api_v1* VsmrPluginBridge::AttachForUi() { return UiApi; }
+bool VsmrPluginBridge::IsProxyBridge() noexcept { return ProxyBridgeActive; }
+bool VsmrPluginBridge::ProxyCommandPending() noexcept { return false; }
+bool VsmrPluginBridge::SubmitProxyVsid(int action, const std::string& airport, std::string&) { ProxyAction = action; ProxyAirport = airport; return true; }
 const char* VsmrPluginBridge::MissingBridgeMessage() noexcept { return ESB_MISSING_MESSAGE; }
 std::string VsmrPluginBridge::NormalizeCallsign(const std::string& callsign)
 {
@@ -189,6 +196,45 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 		"production Ramp Agent polling publishes stand and remark");
 	check(VsmrCdm::TryGetAircraftData("AFR123", cdm) && cdm.tsat == 742 && cdm.manualCtot == true,
 		"production CDM polling reads its declared scalar fields despite absent optional fields");
+	{
+		ProxyBridgeSnapshot primary, secondary;
+		const auto key = L"bridge-poll-" + std::to_wstring(::GetCurrentProcessId()) + L"-" + std::to_wstring(::GetTickCount64());
+		check(primary.Open(key) && secondary.Open(key) && primary.Publish(api, tick.callsigns), "primary captures bounded bridge snapshot");
+		const int readsAfterPublish = Reads;
+		check(primary.Publish(api, tick.callsigns) && Reads == readsAfterPublish, "unchanged proxy snapshots use revision gate rather than rereading aircraft");
+		tick.api = secondary.RemoteApi(); poll();
+		check(tick.api && VsmrVsid::TryGetAircraftData("AFR123", vsid) && vsid.sid == "BUB6B" &&
+			VsmrCdm::TryGetAircraftData("AFR123", cdm) && cdm.tsat == 742 && cdm.manualCtot == true &&
+			VsmrRampAgent::TryGetAircraftData("AFR123", ramp) && ramp.stand == "K12",
+			"production vSID/CDM/Ramp polling works with primary-only providers via read-only proxy facade");
+		const auto oldAircraft = [&] { ESB_Aircraft handle = 0; tick.api->aircraft("AFR123", &handle); return handle; }();
+		Published[0].text = "NEW7W"; ++Revision;
+		check(primary.Publish(api, tick.callsigns), "primary publishes changed provider data");
+		tick.api = secondary.RemoteApi(); poll();
+		ESB_Value stale{};
+		check(tick.api->get_ac(oldAircraft, 1, &stale, nullptr, nullptr) == ESB_E_STALE_AIRCRAFT &&
+			VsmrVsid::TryGetAircraftData("AFR123", vsid) && vsid.sid == "NEW7W", "remote snapshot updates invalidate old aircraft handles");
+		Published[0].text = "BUB6B"; ++Revision;
+		{
+			rapidjson::StringBuffer buffer; rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+			const std::string escapedField(65536, '"');
+			writer.StartObject(); writer.Key("callsigns"); writer.StartArray(); writer.EndArray();
+			writer.Key("providers"); writer.StartObject(); writer.Key("vsid"); writer.StartObject();
+			writer.Key("major"); writer.Uint(1); writer.Key("minor"); writer.Uint(1);
+			writer.Key("fields"); writer.StartObject(); writer.Key("rules"); writer.StartObject();
+			writer.Key(""); writer.String(escapedField.data(), static_cast<rapidjson::SizeType>(escapedField.size()));
+			writer.EndObject(); writer.EndObject(); writer.EndObject(); writer.EndObject(); writer.EndObject();
+			primary.channel.Publish(std::string(buffer.GetString(), buffer.GetSize()));
+			const auto* remote = secondary.RemoteApi(); ESB_FieldId rules = 0; std::string raw;
+			check(remote && remote->resolve("vsid/rules", ESB_T_STR, &rules) == ESB_OK &&
+				VsmrPluginBridge::ReadGlobalString(*remote, rules, 32, raw) == VsmrPluginBridge::ReadStatus::Value && raw == escapedField,
+				"maximum bridge STR remains readable after escaping into the transport envelope");
+		}
+		primary.channel.Publish(std::string(1000, '[') + std::string(1000, ']'));
+		check(!secondary.RemoteApi(), "deep malformed proxy snapshots are rejected before DOM construction");
+		primary.Close(); check(!secondary.RemoteApi(), "closing the bridge owner invalidates remote interface immediately");
+		tick.api = &api; poll();
+	}
 	auto state = VsmrVsid::GetInterfaceState("LFPG");
 	check(state.parisCommandsAvailable && state.regionalCommandsAvailable && state.automaticMode == true && state.paris && state.paris->linked == true,
 		"schema 1.3 preserves manual Paris controls and reads published LFPG state");
@@ -205,6 +251,11 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 	poll();
 	check(Reads == before, "unchanged revisions and callsigns skip provider reads");
 	std::string error;
+	ProxyBridgeActive = true; SubmittedCommand.clear();
+	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::ReloadConfiguration, "LFPG", error) &&
+		ProxyAction == 14 && ProxyAirport == "LFPG" && SubmittedCommand.empty(), "secondary routes validated vSID action to primary, never to its local command line");
+	check(!VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::AutomaticModeToggle, "LFPG .quit", error), "invalid proxy airport is rejected before routing vSID action");
+	ProxyBridgeActive = false;
 	check(VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::ParisWIPG, "LFPT", error) && SubmittedCommand == ".vsid paris LFPT wipg",
 		"regional manual commands keep their companion command spelling");
 	const auto completeCommand = [&] {

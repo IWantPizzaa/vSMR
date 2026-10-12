@@ -271,7 +271,7 @@ bool PollState(const VsmrPluginBridge::Tick& tick, bool configurationOnly)
 		// Coarse gate (B2.5): every vSID write or clear, global or per aircraft,
 		// advances the provider revision.
 		const std::uint64_t providerRevision = api.provider_revision(ProviderId);
-		if (!configurationOnly && !commandStateChanged && providerRevision == LastProviderRevision &&
+		if (!configurationOnly && !Provider.SourceChanged() && !commandStateChanged && providerRevision == LastProviderRevision &&
 			tick.callsigns == LastScannedCallsigns)
 		{
 			return finish(false);
@@ -465,7 +465,7 @@ VsmrVsid::InterfaceState VsmrVsid::GetInterfaceState(const std::string& airport)
 		ProviderReady.load(std::memory_order_relaxed);
 	state.parisCommandsAvailable = state.providerReady && ParisCommandsAvailable.load(std::memory_order_relaxed);
 	state.regionalCommandsAvailable = state.providerReady && RegionalCommandsAvailable.load(std::memory_order_relaxed);
-	state.commandLineBusy = VsmrEuroScopeCommandLine::IsBusy() || AreaSequenceActive.load(std::memory_order_relaxed);
+	state.commandLineBusy = VsmrEuroScopeCommandLine::IsBusy() || AreaSequenceActive.load(std::memory_order_relaxed) || VsmrPluginBridge::ProxyCommandPending();
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
 		state.aircraftCount = AircraftByCallsign.size();
@@ -568,6 +568,8 @@ bool VsmrVsid::SubmitCommand(
 	if (!state.genericConfigurationAvailable && nativeLfpgAction && state.paris &&
 		((action == CommandAction::LfpgLinked && state.paris->linked == true) ||
 		 (action == CommandAction::LfpgUnlinked && state.paris->linked == false))) return true;
+	if (VsmrPluginBridge::IsProxyBridge())
+		return VsmrPluginBridge::SubmitProxyVsid(static_cast<int>(action), NormalizeAirport(activeAirport), error);
 	if (!VsmrEuroScopeCommandLine::Begin(
 		VsmrEuroScopeCommandLine::Owner::Vsid,
 		commands.front(),
