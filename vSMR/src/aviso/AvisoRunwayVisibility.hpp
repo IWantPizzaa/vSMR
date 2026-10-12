@@ -175,7 +175,18 @@ namespace VsmrAviso
 	struct RunwayVisibilityMemory
 	{
 		std::map<std::string, std::string> inputs;
+		std::map<std::string, bool> visibility;
 	};
+
+	template<typename Groups>
+	void RestoreRunwayVisibilityChoices(Groups& groups, const RunwayVisibilityMemory& memory)
+	{
+		for (auto& group : groups)
+		{
+			const auto choice = memory.visibility.find(group.id);
+			if (memory.inputs.count(group.id) && choice != memory.visibility.end()) group.visible = choice->second;
+		}
+	}
 
 	inline std::string RunwayVisibilityInputs(const RunwayVisibilityRule& rule, const AirportRunwayActivity& activity)
 	{
@@ -190,7 +201,12 @@ namespace VsmrAviso
 		result += ":available";
 		for (const auto& runway : observed->second)
 			if (runway.second.arrival || runway.second.departure)
-				result += ":" + runway.first + (runway.second.arrival ? "/A" : "") + (runway.second.departure ? "/D" : "");
+			{
+				// Either observes the active runway set, not ARR/DEP flag churn.
+				if (rule.operation == "either") result += ":" + runway.first;
+				else if (rule.operation == "arrival" && runway.second.arrival) result += ":" + runway.first + "/A";
+				else if (rule.operation == "departure" && runway.second.departure) result += ":" + runway.first + "/D";
+			}
 		return result;
 	}
 
@@ -200,7 +216,7 @@ namespace VsmrAviso
 	{
 		error.clear();
 		if (diagnostic) diagnostic->clear();
-		if (!rules) { if (memory) memory->inputs.clear(); return false; }
+		if (!rules) { if (memory) { memory->inputs.clear(); memory->visibility.clear(); } return false; }
 		if (!rules->IsObject() || rules->MemberCount() > 256) { error = "Expected at most 256 group rules."; return false; }
 		bool changed = false;
 		std::map<std::string, std::string> nextInputs;
@@ -238,6 +254,7 @@ namespace VsmrAviso
 			}
 			changed = changed || group.visible != visible;
 			group.visible = visible;
+			if (memory) memory->visibility[group.id] = visible;
 		}
 		if (memory) memory->inputs = std::move(nextInputs);
 		return changed;

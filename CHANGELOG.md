@@ -2,6 +2,8 @@
 
 ## [2.0.1] - Unreleased
 
+- Preserved manual runway-group choices per airport across map reloads/switches; ARR/DEP flag changes no longer reset an "either" rule when the active runway set is unchanged.
+
 - Fixed AVISO geometry Reset restoring implicit default opacity and clearing stale editor drafts.
 
 - New AVISO views default to the Light palette; saved ASR palette selections remain unchanged.

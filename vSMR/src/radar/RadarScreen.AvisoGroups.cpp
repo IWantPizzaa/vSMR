@@ -337,7 +337,8 @@ bool CSMRRadar::ApplyRunwayGroupVisibility(std::vector<AvisoGroup>& groups) cons
 	{
 		const auto* airports = VsmrAviso::RuleMember(*config.document, "runway_group_visibility");
 		const auto* rules = airports ? VsmrAviso::RuleMember(*airports, getActiveAirport().c_str()) : nullptr;
-		changed = VsmrAviso::ApplyRunwayVisibilityRules(rules, AirportRunwayActivity, groups, error, &diagnostic, &RunwayVisibilityMemory);
+		changed = VsmrAviso::ApplyRunwayVisibilityRules(rules, AirportRunwayActivity, groups, error, &diagnostic,
+			&RunwayVisibilityByAirport[getActiveAirport()]);
 	}
 	if (!diagnostic.empty()) diagnostic = getActiveAirport() + diagnostic;
 	if (!diagnostic.empty() && diagnostic != RunwayVisibilityDiagnostic)
@@ -379,6 +380,7 @@ bool CSMRRadar::SetAvisoGroupVisibility(const std::string& rawGroupId, bool visi
 			return true;
 
 		found->visible = visible;
+		RunwayVisibilityByAirport[getActiveAirport()].visibility[groupId] = visible;
 		auto visibility = std::make_shared<std::unordered_map<std::string, bool>>();
 		visibility->reserve(AvisoRuntimeGroups.size());
 		for (const AvisoGroup& group : AvisoRuntimeGroups)
@@ -409,6 +411,7 @@ bool CSMRRadar::ToggleAvisoGroupVisibility(const std::string& rawGroupId, bool* 
 			return false;
 
 		found->visible = !found->visible;
+		RunwayVisibilityByAirport[getActiveAirport()].visibility[groupId] = found->visible;
 		nextVisibility = found->visible;
 		auto visibility = std::make_shared<std::unordered_map<std::string, bool>>();
 		visibility->reserve(AvisoRuntimeGroups.size());
@@ -461,6 +464,7 @@ bool CSMRRadar::SetAvisoGroupVisibilities(
 				group.visible = found->second;
 				changed = true;
 			}
+			RunwayVisibilityByAirport[getActiveAirport()].visibility[group.id] = group.visible;
 		}
 
 		if (changed)
