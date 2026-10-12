@@ -1021,8 +1021,22 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 		gInsetWindowActiveRadarScreen.erase(hwnd);
 		return ::DefSubclassProc(hwnd, uMsg, wParam, lParam);
 	}
+	if (uMsg == WM_ERASEBKGND)
+	{
+		const HDC eraseDc = reinterpret_cast<HDC>(wParam);
+		const int saved = eraseDc ? ::SaveDC(eraseDc) : 0;
+		const auto active = gInsetWindowActiveRadarScreen.find(hwnd);
+		if (saved && active != gInsetWindowActiveRadarScreen.end() && active->second != nullptr)
+			active->second->ProtectRuntimeMenuDuringHostPaint(hwnd, eraseDc);
+		const LRESULT result = ::DefSubclassProc(hwnd, uMsg, wParam, lParam);
+		if (saved) ::RestoreDC(eraseDc, saved);
+		return result;
+	}
 	if (uMsg == WM_PAINT)
 	{
+		const auto beforePaint = gInsetWindowActiveRadarScreen.find(hwnd);
+		if (beforePaint != gInsetWindowActiveRadarScreen.end() && beforePaint->second != nullptr)
+			beforePaint->second->ProtectRuntimeMenuDuringHostPaint(hwnd);
 		// The host and other plugins can paint tags after our last SDK phase.
 		const LRESULT result = ::DefSubclassProc(hwnd, uMsg, wParam, lParam);
 		// Re-resolve after dispatch: host painting may have destroyed a screen.
