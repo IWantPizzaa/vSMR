@@ -313,17 +313,19 @@ void CSMRRadar::RefreshRimcasRunwayMonitoring()
 		runway.IsValid();
 		runway = GetPlugIn()->SectorFileElementSelectNext(runway, SECTOR_ELEMENT_RUNWAY))
 	{
-		const char* runwayAirport = runway.GetAirportName();
-		const char* runwayNameA = runway.GetRunwayName(0);
-		const char* runwayNameB = runway.GetRunwayName(1);
-		if (runwayAirport == nullptr || runwayNameA == nullptr || runwayNameB == nullptr ||
-			runwayAirport[0] == '\0' || runwayNameA[0] == '\0' || runwayNameB[0] == '\0' ||
-			_stricmp(runwayAirport, activeAirport.c_str()) != 0)
+		const char* rawAirport = runway.GetAirportName();
+		const std::string runwayAirport = rawAirport ? rawAirport : "";
+		const char* rawA = runway.GetRunwayName(0);
+		const std::string runwayNameA = rawA ? rawA : "";
+		const char* rawB = runway.GetRunwayName(1);
+		const std::string runwayNameB = rawB ? rawB : "";
+		if (runwayAirport.empty() || runwayNameA.empty() || runwayNameB.empty() ||
+			_stricmp(runwayAirport.c_str(), activeAirport.c_str()) != 0)
 		{
 			continue;
 		}
 
-		const std::string name = std::string(runwayNameA) + " / " + runwayNameB;
+		const std::string name = runwayNameA + " / " + runwayNameB;
 		const VsmrRimcasLogic::RunwayMonitoring monitoring =
 			VsmrRimcasLogic::ResolveSelectedRunwayMonitoring(
 				runway.IsElementActive(false, 0),

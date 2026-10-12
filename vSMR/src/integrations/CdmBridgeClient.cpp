@@ -123,7 +123,7 @@ bool VsmrCdm::Poll(const VsmrPluginBridge::Tick& tick)
 
 		// Coarse gate (B2.5): every CDM write or clear advances the provider revision.
 		const std::uint64_t providerRevision = api.provider_revision(ProviderId);
-		if (providerRevision == LastProviderRevision &&
+		if (!Provider.SourceChanged() && providerRevision == LastProviderRevision &&
 			tick.callsigns == LastScannedCallsigns)
 		{
 			return false;

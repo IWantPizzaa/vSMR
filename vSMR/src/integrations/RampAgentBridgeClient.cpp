@@ -94,7 +94,7 @@ bool VsmrRampAgent::Poll(const VsmrPluginBridge::Tick& tick)
 		// Coarse gate (B2.5): Ramp Agent's set_ac and clear_ac both advance the
 		// provider revision, so a released stand is noticed too.
 		const std::uint64_t providerRevision = api.provider_revision(ProviderId);
-		if (providerRevision == LastProviderRevision &&
+		if (!Provider.SourceChanged() && providerRevision == LastProviderRevision &&
 			tick.callsigns == LastScannedCallsigns)
 		{
 			return false;

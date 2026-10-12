@@ -706,7 +706,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 				id,
 				valueArea,
 				value,
-				plugin != nullptr && !state.connected && !state.connecting,
+				plugin != nullptr && !state.remoteSession && !state.connected && !state.connecting,
 				false,
 				false,
 				tooltip);
@@ -730,7 +730,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			"runtime.datalink.poll",
 			pollArea,
 			state.pollInProgress ? "Polling..." : "Poll",
-			plugin != nullptr && state.connected && !state.pollInProgress,
+			plugin != nullptr && !state.remoteSession && state.connected && !state.pollInProgress,
 			false,
 			false,
 			"Poll Hoppie messages now");
@@ -738,8 +738,8 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		drawRuntimeButton(
 			"runtime.datalink.connection",
 			connectionArea,
-			state.connected ? "Disconnect" : (state.connecting ? "Cancel" : "Connect"),
-			plugin != nullptr && (state.connected || state.connecting || canConnect),
+			state.remoteSession ? "Primary" : state.connected ? "Disconnect" : (state.connecting ? "Cancel" : "Connect"),
+			plugin != nullptr && !state.remoteSession && (state.connected || state.connecting || canConnect),
 			!state.connected && !state.connecting,
 			state.connected,
 			state.connected || state.connecting ? "Disconnect CPDLC" : "Connect CPDLC");

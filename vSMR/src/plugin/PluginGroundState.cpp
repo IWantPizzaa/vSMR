@@ -263,8 +263,9 @@ bool CSMRPlugin::HandleHoldingPointFunctionCall(
 			return true;
 		}
 
-		const char* callsign = flightPlan.GetCallsign();
-		if (callsign == nullptr || callsign[0] == '\0')
+		const char* rawCallsign = flightPlan.GetCallsign();
+		const std::string callsign = rawCallsign ? rawCallsign : "";
+		if (callsign.empty())
 			return true;
 		// Apply on the initial HP click, including when the popup is cancelled.
 		// Do not turn an already airborne aircraft back into a taxiing departure.
@@ -276,7 +277,7 @@ bool CSMRPlugin::HandleHoldingPointFunctionCall(
 			auto assignedData = flightPlan.GetControllerAssignedData();
 			if (VsmrGroundStateSync::SetTaxiForHoldingPoint(assignedData))
 			{
-				VsmrGroundState::ForgetAircraft(callsign);
+				VsmrGroundState::ForgetAircraft(callsign.c_str());
 				for (CSMRRadar* radar : RadarScreensOpened)
 					if (radar != nullptr && !radar->IsShutdownRequested()) radar->RequestRefresh();
 			}

@@ -52,14 +52,18 @@ void CSMRPlugin::OnGetTagItem(
 		strcpy_s(sItemString, 16, " ");
 		if (!FlightPlan.IsValid())
 			return;
-		const char* callsign = FlightPlan.GetCallsign();
-		if (!VsmrRdf::IsCallPending(callsign))
+		const char* rawCallsign = FlightPlan.GetCallsign();
+		const std::string callsign = rawCallsign ? rawCallsign : "";
+		if (!VsmrRdf::IsCallPending(callsign.c_str()))
 			return;
 		if (!RadarTarget.IsValid())
 			RadarTarget = FlightPlan.GetCorrelatedRadarTarget();
+		// A proxy may receive the flight plan before its radar position. Missing
+		// data in this view must not acknowledge a call in the other process.
+		if (!RadarTarget.IsValid() || !RadarTarget.GetPosition().IsValid()) return;
 		if (!VsmrRdf::IsGroundTarget(RadarTarget))
 		{
-			VsmrRdf::ResetCall(callsign);
+			VsmrRdf::ResetCall(callsign.c_str());
 			return;
 		}
 		strcpy_s(sItemString, 16, "TX");
@@ -75,10 +79,11 @@ void CSMRPlugin::OnGetTagItem(
 			return;
 
 		const char* rawRemarks = FlightPlan.GetFlightPlanData().GetRemarks();
-		const char* callsign = FlightPlan.GetCallsign();
+		const std::string remarks = rawRemarks ? rawRemarks : "";
+		const char* rawCallsign = FlightPlan.GetCallsign();
+		const std::string callsign = rawCallsign ? rawCallsign : "";
 		const std::string holdingPoint = VsmrHoldingPoint::Resolve(
-			callsign != nullptr ? callsign : "",
-			rawRemarks != nullptr ? rawRemarks : "");
+			callsign, remarks);
 		// A single space keeps an empty EuroScope list item clickable without
 		// displaying the old "HP" placeholder.
 		strcpy_s(sItemString, 16, holdingPoint.empty() ? " " : holdingPoint.c_str());
@@ -112,6 +117,11 @@ void CSMRPlugin::OnGetTagItem(
 		hasMessage = ContainsCallsign(AircraftMessage, callsign);
 		isWilco = ContainsCallsign(AircraftWilco, callsign);
 		isMessageSent = ContainsCallsign(AircraftMessageSent, callsign);
+	}
+	if (GetConnectionType() == CONNECTION_TYPE_VIA_PROXY) {
+		const auto flags = ProxyDatalink.Flags(callsign);
+		isDemanding = (flags & 1U) != 0; isStandby = (flags & 2U) != 0;
+		hasMessage = (flags & 4U) != 0; isWilco = (flags & 8U) != 0; isMessageSent = (flags & 16U) != 0;
 	}
 
 	if (isDemanding)

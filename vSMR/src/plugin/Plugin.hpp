@@ -2,6 +2,8 @@
 #include "EuroScopePlugIn.h"
 #include "plugin/PluginMetadata.hpp"
 #include "insets/TimerCountdownState.hpp"
+#include "insets/ProxyTimerState.hpp"
+#include "datalink/ProxyDatalinkView.hpp"
 #include "platform/windows/network/HttpHelper.hpp"
 #include "datalink/CpdlcSettingsDialog.hpp"
 #include "datalink/PdcLogonSync.hpp"
@@ -30,6 +32,7 @@ using namespace EuroScopePlugIn;
 struct DatalinkControlState
 {
 	bool connected = false;
+	bool remoteSession = false;
 	bool connecting = false;
 	bool pollInProgress = false;
 	bool controllerConnected = false;
@@ -129,6 +132,14 @@ private:
 	PdcLogonSync PdcLogonSynchronization;
 	void SyncPdcLogonWithControllerPosition();
 	TimerCountdownState TimerCountdowns;
+	ProxyTimerState ProxyTimers;
+	ProxyDatalinkView ProxyDatalink;
+	bool DatalinkProxyClient = false;
+	void SynchronizeProxyDatalink();
+	VsmrProcessSync::Mutex DatalinkSessionLease;
+	void SynchronizeProxyRuntime();
+	std::map<std::string, std::string> ProxyRootRevisions;
+	std::map<std::string, std::string> ProxyFailedConfigRevisions;
 	friend class VsmrPluginCommandHandler;
 	friend bool VsmrShutdownPlugin();
 

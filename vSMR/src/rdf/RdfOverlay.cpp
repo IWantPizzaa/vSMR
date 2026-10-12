@@ -2,6 +2,7 @@
 #include "shared/JsonDocument.hpp"
 
 #include "rdf/RdfOverlay.hpp"
+#include "rdf/ProxyRdfState.hpp"
 #include "rdf/RdfGeometry.hpp"
 #include "rdf/RdfTransmissionState.hpp"
 #include "plugin/Plugin.hpp"
@@ -100,6 +101,7 @@ namespace
 		{
 			std::lock_guard<std::mutex> lifecycleGuard(LifecycleMutex);
 			Plugin = plugin;
+			if (!SharedTransmissions.Open()) Logger::info("RDF inter-process state unavailable; using process-local reception");
 			const bool enabledChanged =
 				Enabled.exchange(enabled, std::memory_order_acq_rel) != enabled;
 			if (enabledChanged)
@@ -129,24 +131,28 @@ namespace
 			std::vector<std::string> pending;
 			{
 				std::lock_guard<std::mutex> guard(TransmissionMutex);
-				pending.assign(Transmissions.PendingCalls().begin(), Transmissions.PendingCalls().end());
+				if (SharedTransmissions.Active()) pending = SharedTransmissions.PendingCalls();
+				else pending.assign(Transmissions.PendingCalls().begin(), Transmissions.PendingCalls().end());
 			}
 			if (Plugin != nullptr)
 			{
 				for (const auto& callsign : pending)
 				{
 					const auto flightPlan = Plugin->FlightPlanSelect(callsign.c_str());
-					if (!flightPlan.IsValid() || !VsmrRdf::IsGroundTarget(flightPlan.GetCorrelatedRadarTarget()))
-						ResetCall(callsign.c_str());
+					// A different proxy view can lack a target temporarily. Unknown is
+					// not a disconnect; only an observed valid airborne target clears TX.
+					const auto target = flightPlan.IsValid() ? flightPlan.GetCorrelatedRadarTarget() : CRadarTarget{};
+					if ((!SharedTransmissions.Active() && !flightPlan.IsValid()) ||
+						(target.IsValid() && target.GetPosition().IsValid() && !VsmrRdf::IsGroundTarget(target))) ResetCall(callsign.c_str());
 				}
 			}
 			bool blinking = false;
 			{
 				std::lock_guard<std::mutex> guard(TransmissionMutex);
-				blinking = !Transmissions.PendingCalls().empty();
+				blinking = SharedTransmissions.Active() ? !SharedTransmissions.PendingCalls().empty() : !Transmissions.PendingCalls().empty();
 			}
 			const std::uint64_t generation =
-				Generation.load(std::memory_order_acquire);
+				SharedTransmissions.Active() ? SharedTransmissions.Revision() : Generation.load(std::memory_order_acquire);
 			if (generation == LastUiGeneration && !blinking)
 				return;
 			LastUiGeneration = generation;
@@ -177,9 +183,9 @@ namespace
 		{
 			VsmrRdf::Status status;
 			status.enabled = Enabled.load(std::memory_order_acquire);
-			status.trackAudioConnected = Connected.load(std::memory_order_acquire);
+			status.trackAudioConnected = SharedTransmissions.Active() ? SharedTransmissions.Connected() : Connected.load(std::memory_order_acquire);
 			std::lock_guard<std::mutex> transmissionGuard(TransmissionMutex);
-			status.activeTransmissionCount = Transmissions.ActiveCalls().size();
+			status.activeTransmissionCount = !status.trackAudioConnected ? 0 : SharedTransmissions.Active() ? SharedTransmissions.Transmitting().size() : Transmissions.ActiveCalls().size();
 			return status;
 		}
 
@@ -189,6 +195,7 @@ namespace
 			if (!Enabled.load(std::memory_order_acquire))
 				return result;
 			std::lock_guard<std::mutex> transmissionGuard(TransmissionMutex);
+			if (SharedTransmissions.Active()) return SharedTransmissions.Connected() ? SharedTransmissions.Transmitting() : result;
 			result.reserve(Transmissions.ActiveCalls().size());
 			for (const auto& entry : Transmissions.ActiveCalls())
 				result.push_back(entry.first);
@@ -201,7 +208,7 @@ namespace
 				return false;
 			const auto callsign = NormalizeCallsign(rawCallsign, std::strlen(rawCallsign));
 			std::lock_guard<std::mutex> guard(TransmissionMutex);
-			return Transmissions.IsPending(callsign);
+			return SharedTransmissions.Active() ? SharedTransmissions.Pending(callsign) : Transmissions.IsPending(callsign);
 		}
 
 		void ResetCall(const char* rawCallsign)
@@ -210,6 +217,7 @@ namespace
 				return;
 			const auto callsign = NormalizeCallsign(rawCallsign, std::strlen(rawCallsign));
 			std::lock_guard<std::mutex> guard(TransmissionMutex);
+			if (SharedTransmissions.Active()) SharedTransmissions.Reset(callsign);
 			if (Transmissions.Acknowledge(callsign))
 				MarkChanged();
 		}
@@ -221,6 +229,7 @@ namespace
 			const auto callsign = NormalizeCallsign(rawCallsign, std::strlen(rawCallsign));
 			std::lock_guard<std::mutex> guard(TransmissionMutex);
 			Transmissions.Forget(callsign);
+			if (SharedTransmissions.Active()) SharedTransmissions.Forget(callsign);
 			MarkChanged();
 		}
 
@@ -308,9 +317,20 @@ namespace
 
 		void WorkerMain()
 		{
+			VsmrProcessSync::Mutex publisher;
+			if (SharedTransmissions.Active() && !publisher.Open(L"RdfPublisher", SharedTransmissions.Identity()))
+				throw std::runtime_error("Cannot create the RDF publisher lease");
 			unsigned int retrySeconds = 1;
 			while (!ShouldStop())
 			{
+				if (SharedTransmissions.Active() && !publisher.Owned()) {
+					if (!publisher.Lock(0)) {
+						std::unique_lock<std::mutex> followerLock(RetryMutex);
+						RetryCondition.wait_for(followerLock, std::chrono::milliseconds(250), [this]() { return ShouldStop(); });
+						continue;
+					}
+					SharedTransmissions.BecomePublisher();
+				}
 				const bool connectedOnce = RunConnection();
 				SetConnected(false);
 				if (ShouldStop())
@@ -556,6 +576,7 @@ namespace
 
 			const FrequencyHz frequency = static_cast<FrequencyHz>(std::llround(rawFrequency));
 			std::lock_guard<std::mutex> transmissionGuard(TransmissionMutex);
+			if (SharedTransmissions.Active()) SharedTransmissions.Event(callsign, frequency, type == "kRxBegin");
 			// Tracking each frequency prevents one receiver from ending another active transmission
 			if (type == "kRxBegin")
 			{
@@ -587,6 +608,7 @@ namespace
 
 		void SetConnected(bool connected)
 		{
+			if (SharedTransmissions.Active()) SharedTransmissions.SetConnected(connected);
 			const bool previous = Connected.exchange(connected, std::memory_order_acq_rel);
 			if (!connected)
 				ClearTransmissions();
@@ -605,6 +627,7 @@ namespace
 		void ClearTransmissions()
 		{
 			std::lock_guard<std::mutex> transmissionGuard(TransmissionMutex);
+			if (SharedTransmissions.Active()) SharedTransmissions.SetConnected(false);
 			if (Transmissions.ActiveCalls().empty())
 				return;
 			// A TrackAudio reconnect ends live rings, not unacknowledged calls.
@@ -688,6 +711,7 @@ namespace
 		std::atomic<std::uint64_t> Generation{ 0 };
 		std::uint64_t LastUiGeneration = 0;
 		VsmrRdf::TransmissionState Transmissions;
+		ProxyRdfState SharedTransmissions;
 		CSMRPlugin* Plugin = nullptr; // UI thread only; never read by the worker.
 		SharedInternetHandle ActiveWebSocket;
 	};
