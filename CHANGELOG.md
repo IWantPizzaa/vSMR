@@ -1,8 +1,8 @@
 # Changelog
 
-## [2.0.1] - Unreleased
+## [2.0.1] - 2026-10-12
 
-- Added Apply to all terrains for AVISO palette, background and matching visual styles, persisted in user configuration for open and future airports without replacing geometry.
+- Added Apply to all terrains for AVISO palette, background and matching visual styles, persisted in user configuration for open and future airports without replacing geometry or existing local appearance customizations. Imported custom maps retain their own appearance.
 
 - CoFrance runtime menus repaint after the host window completes painting, without re-registering hit targets; queued GDI/GDI+ drawing is synchronized before menus.
 
