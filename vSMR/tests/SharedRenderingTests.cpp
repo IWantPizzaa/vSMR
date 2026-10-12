@@ -8,6 +8,7 @@
 #include "rendering/TargetSymbolRenderer.hpp"
 #include "rendering/DisplayScale.hpp"
 #include "rendering/NorthIndicator.hpp"
+#include "rendering/RuntimeMenuSurface.hpp"
 #include "radar/RadarHoverPointer.hpp"
 #include "radar/InsetHostPolicy.hpp"
 #include "rdf/RdfGeometry.hpp"
@@ -314,6 +315,46 @@ namespace
 		HBITMAP bitmap_ = nullptr;
 		std::uint32_t* pixels_ = nullptr;
 	};
+
+	void TestRuntimeMenuSurface(std::vector<std::string>& failures)
+	{
+		const RECT area{ 70, 80, 118, 380 };
+		const SIZE size = VsmrRendering::RuntimeMenuSurfaceSize(area);
+		Check(size.cx > area.right && size.cy > area.bottom,
+			"Runtime menu surface covers absolute rail coordinates, not only its width/height", failures);
+		DibBitmap canvas(size.cx, size.cy);
+		HDC dc = ::CreateCompatibleDC(nullptr);
+		if (!canvas.IsValid() || !dc) {
+			if (dc) ::DeleteDC(dc);
+			failures.emplace_back("Runtime menu regression bitmap/DC are created");
+			return;
+		}
+		const auto old = ::SelectObject(dc, canvas.Handle());
+		{
+			Gdiplus::Graphics graphics(dc);
+			Gdiplus::Pen icon(Gdiplus::Color(255, 255, 255), 1.0f);
+			::SelectObject(dc, ::GetStockObject(DC_BRUSH));
+			::SelectObject(dc, ::GetStockObject(DC_PEN));
+			for (int button = 0; button < 6; ++button) {
+				const int top = area.top + 25 + button * 43;
+				::SetDCBrushColor(dc, RGB(40, 50, 60));
+				::SetDCPenColor(dc, RGB(5, 10, 15));
+				::RoundRect(dc, area.left + 4, top, area.left + 44, top + 40, 4, 4);
+				graphics.DrawLine(&icon, area.left + 15, top + 20, area.left + 30, top + 20);
+			}
+			graphics.Flush(Gdiplus::FlushIntentionSync);
+			::GdiFlush();
+			for (int button = 0; button < 6; ++button) {
+				const int top = area.top + 25 + button * 43;
+				Check(::GetPixel(dc, area.left + 9, top + 5) == RGB(40, 50, 60),
+					"Every runtime-menu GDI button background survives interleaved GDI+ icon drawing", failures);
+				Check(::GetPixel(dc, area.left + 4, top + 20) == RGB(5, 10, 15),
+					"Every runtime-menu button border remains visible in the final bitmap", failures);
+			}
+		}
+		::SelectObject(dc, old);
+		::DeleteDC(dc);
+	}
 
 	void TestResolutionScaling(std::vector<std::string>& failures)
 	{
@@ -1057,6 +1098,7 @@ std::vector<std::string> RunSharedRenderingBehaviorTests()
 
 	{
 		TestNorthIndicator(failures);
+		TestRuntimeMenuSurface(failures);
 		TestAvisoRasterBlending(failures);
 		TestResolutionScaling(failures);
 		TestTagBackgroundFitsLines(failures);

@@ -3,6 +3,7 @@
 #include "radar/RadarScreen.hpp"
 #include "plugin/Plugin.hpp"
 #include "shared/TextUtils.hpp"
+#include "rendering/RuntimeMenuSurface.hpp"
 
 extern CPoint mouseLocation;
 
@@ -1214,13 +1215,17 @@ void CSMRRadar::RepaintRuntimeMenuAfterHost(HWND window) noexcept
 	CRect area(RuntimeMenuArea);
 	for (const CRect popup : { RuntimeMenuPopupArea, RuntimeMenuSecondaryPopupArea })
 		if (!popup.IsRectEmpty()) area.UnionRect(area, popup);
+	// This renderer mixes GDI, GDI+ and device-coordinate clipping regions.
+	// Keep its logical coordinates identical to bitmap coordinates. Translating
+	// the memory DC alone shifts GDI but not every GDI+/region operation.
+	const SIZE surface = VsmrRendering::RuntimeMenuSurfaceSize(area);
+	if (!surface.cx || !surface.cy) { ::ReleaseDC(window, dc); return; }
 	HDC buffer = ::CreateCompatibleDC(dc);
-	HBITMAP bitmap = buffer ? ::CreateCompatibleBitmap(dc, area.Width(), area.Height()) : nullptr;
+	HBITMAP bitmap = buffer ? ::CreateCompatibleBitmap(dc, surface.cx, surface.cy) : nullptr;
 	if (!bitmap) { if (buffer) ::DeleteDC(buffer); ::ReleaseDC(window, dc); return; }
 	const HGDIOBJ previous = ::SelectObject(buffer, bitmap);
 	const int left = area.left + RuntimeMenuDcOrigin.x, top = area.top + RuntimeMenuDcOrigin.y;
-	::BitBlt(buffer, 0, 0, area.Width(), area.Height(), dc, left, top, SRCCOPY);
-	::SetViewportOrgEx(buffer, -area.left, -area.top, nullptr);
+	::BitBlt(buffer, area.left, area.top, area.Width(), area.Height(), dc, left, top, SRCCOPY);
 	RuntimeMenuPaintOnly = true;
 	try
 	{
