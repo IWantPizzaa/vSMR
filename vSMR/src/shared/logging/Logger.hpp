@@ -1,4 +1,5 @@
 #pragma once
+#include "shared/ProcessSync.hpp"
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "crash/CrashReporter.hpp"
 #include <filesystem>
@@ -145,7 +146,7 @@ public:
 		const std::string timestamp = Logger::build_local_timestamp();
 		const std::string formatted =
 			(timestamp.empty() ? std::string() : timestamp + " ") +
-			"INFO: " + message;
+			"INFO [PID " + std::to_string(::GetCurrentProcessId()) + "]: " + message;
 		std::lock_guard<std::mutex> guard(Logger::log_write_mutex());
 		auto& recent = Logger::recent_log_messages();
 		recent.push_back(formatted);
@@ -157,6 +158,8 @@ public:
 
 		const std::filesystem::path logPath =
 			std::filesystem::u8path(Logger::DLL_PATH) / L"vsmr.log";
+		VsmrProcessSync::Mutex processLock;
+		if (!processLock.Open(L"Log", VsmrProcessSync::PathIdentity(logPath)) || !processLock.Lock(5)) return;
 		// Keep support logs bounded. Probe periodically so verbose rendering traces
 		// do not turn the size check itself into a hot path.
 		static unsigned long writesUntilSizeProbe = 0;

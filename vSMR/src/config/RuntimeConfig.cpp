@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/ProcessSync.hpp"
 #include "shared/JsonDocument.hpp"
 #include "config/RuntimeConfig.hpp"
 #include "config/RuntimeConfig.Internal.hpp"
@@ -843,6 +844,8 @@ bool CConfig::saveConfig(
 	const rapidjson::Value* userSections,
 	bool resetProfiles)
 {
+	VsmrProcessSync::PathMutex processLock(config_path);
+	if (!processLock) { if (error) *error = "Configuration is busy in another EuroScope instance."; return false; }
 	std::lock_guard<std::mutex> writeGuard(ConfigSaveMutex());
 	if (layered_config)
 	{
@@ -977,8 +980,10 @@ bool CConfig::transactAvisoPresetStore(
 	if (NormalizeAirportKey(activeAirport).empty() || !transaction)
 		return false;
 
+	VsmrProcessSync::Mutex processLock;
+	if (!processLock.Open(L"Config", VsmrProcessSync::PathIdentity(std::filesystem::u8path(config_path))) ||
+		!processLock.Lock(1000)) return false;
 	std::lock_guard<std::mutex> writeGuard(ConfigSaveMutex());
-
 	// Deliberately load only the profiles document. A malformed or unavailable
 	// maps file must not make an otherwise valid preset transaction fail.
 	Document latestDocument;
@@ -1063,6 +1068,8 @@ bool CConfig::assignUnscopedAvisoPresetsToAirport(
 		return false;
 	}
 
+	VsmrProcessSync::PathMutex processLock(config_path);
+	if (!processLock) { error = "Configuration is busy in another EuroScope instance."; return false; }
 	std::lock_guard<std::mutex> writeGuard(ConfigSaveMutex());
 	Document latestDocument;
 	std::string previousRevision;
