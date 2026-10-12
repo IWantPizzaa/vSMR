@@ -287,12 +287,7 @@ std::vector<std::string> CSMRRadar::GetAvailableAvisoColorPalettes(const std::st
 
 bool CSMRRadar::EnsureAvisoColorPaletteAvailable(bool persistToAsr)
 {
-	const std::vector<std::string> palettes = GetAvailableAvisoColorPalettes(getActiveAirport());
-	if (palettes.empty())
-		return false;
-	if (std::find(palettes.begin(), palettes.end(), AvisoColorPalette) != palettes.end())
-		return true;
-	return SetAvisoColorPalette(palettes.front(), persistToAsr);
+	return SetAvisoColorPalette(AvisoPreferredColorPalette, persistToAsr);
 }
 
 bool CSMRRadar::SetAvisoColorPalette(const std::string& rawPalette, bool persistToAsr)
@@ -315,8 +310,8 @@ bool CSMRRadar::SetAvisoColorPalette(const std::string& rawPalette, bool persist
 	if (palette != "dark" && palette != "light" && palette != "real")
 		return false;
 	const std::vector<std::string> available = GetAvailableAvisoColorPalettes(getActiveAirport());
-	if (std::find(available.begin(), available.end(), palette) == available.end())
-		return false;
+	AvisoPreferredColorPalette = palette;
+	palette = AvisoDocumentModel::ResolveColorPalette(AvisoPreferredColorPalette, available);
 
 	if (AvisoColorPalette != palette)
 	{
@@ -331,7 +326,7 @@ bool CSMRRadar::SetAvisoColorPalette(const std::string& rawPalette, bool persist
 		SaveDataToAsr(
 			"AvisoColorPalette",
 			"AVISO dark/light/real color palette",
-			GetAvisoColorPalette().c_str());
+			AvisoPreferredColorPalette.c_str());
 	}
 	return true;
 }

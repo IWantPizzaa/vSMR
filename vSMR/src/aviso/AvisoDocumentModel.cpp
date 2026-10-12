@@ -1625,6 +1625,13 @@ void AvisoDocumentModel::NormalizeSharedGeometry()
 	MarkIndexesDirty();
 }
 
+std::string AvisoDocumentModel::ResolveColorPalette(const std::string& preferred, const std::vector<std::string>& available)
+{
+	if (std::find(available.begin(), available.end(), preferred) != available.end()) return preferred;
+	if (std::find(available.begin(), available.end(), "light") != available.end()) return "light";
+	return available.empty() ? "light" : available.front();
+}
+
 double AvisoDocumentModel::BackgroundOpacity(const rapidjson::Value* metadata, const std::string& palette)
 {
 	if (!metadata || !metadata->IsObject() || !metadata->HasMember("background_opacities")) return 1;

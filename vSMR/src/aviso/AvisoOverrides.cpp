@@ -386,7 +386,6 @@ namespace VsmrAvisoOverrides
         Put(result, "palette", requested["palette"], a);
         const std::string palette = requested["palette"].GetString();
         // Real palettes belong to their airport, never to another airport's colors.
-        if (palette == "real") return true;
         const auto equal = [](const Value& left, const Value* right) {
             if (!right) return false;
             if (left.IsString() && right->IsString() && left.GetString()[0] == '#')
@@ -415,6 +414,8 @@ namespace VsmrAvisoOverrides
                 for (auto field = style->value["paint"].MemberBegin(); field != style->value["paint"].MemberEnd(); ++field)
                 {
                     const std::string key = field->name.GetString();
+                    if (palette == "real" && (key == "palette-overrides" || key == "fill" || key == "stroke" ||
+                        key == "text-color" || key == "text-halo-color")) continue;
                     if (key == "palette-overrides") {
                         Value palettes(rapidjson::kObjectType);
                         for (auto p = field->value.MemberBegin(); p != field->value.MemberEnd(); ++p) {
@@ -443,6 +444,7 @@ namespace VsmrAvisoOverrides
         const auto* originalMetadata = Member(defaults, "metadata");
         if (const auto* requestedMetadata = Member(requested, "metadata"))
             for (auto group = requestedMetadata->MemberBegin(); group != requestedMetadata->MemberEnd(); ++group) {
+                if (palette == "real" && std::string(group->name.GetString()) == "background_colors") continue;
                 Value values(rapidjson::kObjectType);
                 const auto* original = originalMetadata ? Member(*originalMetadata, group->name.GetString()) : nullptr;
                 for (auto p = group->value.MemberBegin(); p != group->value.MemberEnd(); ++p) {
@@ -468,7 +470,7 @@ namespace VsmrAvisoOverrides
     void MergeAppearanceChanges(Document& shared, const Value& changes)
     {
         const std::string palette = changes["palette"].GetString();
-        if (palette != "real") {
+        {
             if (auto* styles = Member(shared, "styles")) {
                 for (auto style = styles->MemberBegin(); style != styles->MemberEnd();) {
                     auto* paint = Member(style->value, "paint");
@@ -512,7 +514,16 @@ namespace VsmrAvisoOverrides
         const auto* savedGeneration = generationMetadata ? Member(*generationMetadata, "appearance_generation") : nullptr;
         const auto* globalGeneration = Member(*appearance, "generation");
         if (savedGeneration && globalGeneration && *savedGeneration == *globalGeneration) return true;
-        if (std::string((*appearance)["palette"].GetString()) == "real") return true;
+        Document realSettings;
+        if (std::string((*appearance)["palette"].GetString()) == "real") {
+            realSettings.CopyFrom(*appearance, realSettings.GetAllocator());
+            if (auto* styles = Member(realSettings, "styles"))
+                for (auto style = styles->MemberBegin(); style != styles->MemberEnd(); ++style)
+                    if (auto* paint = Member(style->value, "paint"))
+                        for (const char* key : { "fill", "stroke", "text-color", "text-halo-color", "palette-overrides" }) paint->RemoveMember(key);
+            if (auto* background = Member(realSettings, "metadata")) background->RemoveMember("background_colors");
+            appearance = &realSettings;
+        }
         auto& a = source.GetAllocator();
         const auto withoutLocal = [&](const Value& settings, const Value* local) {
             Value result(settings, a);

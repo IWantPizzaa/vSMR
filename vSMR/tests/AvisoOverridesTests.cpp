@@ -2,6 +2,7 @@
 #include <objidl.h>
 #include "AvisoOverridesTests.hpp"
 #include "aviso/AvisoOverrides.hpp"
+#include "aviso/AvisoDocumentModel.hpp"
 #include "aviso/AvisoSharedConfig.hpp"
 #include "config/LayeredConfig.hpp"
 #include "config/RuntimeConfig.hpp"
@@ -49,6 +50,11 @@ std::vector<std::string> RunAvisoOverridesTests(const std::filesystem::path& rep
 {
     std::vector<std::string> failures;
     auto expect = [&](bool passed, const char* label) { if (!passed) failures.emplace_back(label); };
+    const std::string preferredPalette = "real";
+    expect(AvisoDocumentModel::ResolveColorPalette(preferredPalette, { "dark", "light", "real" }) == "real" &&
+        AvisoDocumentModel::ResolveColorPalette(preferredPalette, { "dark", "light" }) == "light" &&
+        AvisoDocumentModel::ResolveColorPalette(preferredPalette, { "dark", "light", "real" }) == "real" && preferredPalette == "real",
+        "LFPG Real to LFPN Light to LFPG Real preserves the requested palette across an unsupported airport");
     {
         Document baseline, requested, changes;
         baseline.Parse(R"({"metadata":{"background_colors":{"dark":"#123456","light":"#abcdef"}},"styles":{"a":{"paint":{"fill":"#112233","stroke":"#222222","palette-overrides":{"light":{"fill":"#334455"}}}}}})");
@@ -70,11 +76,15 @@ std::vector<std::string> RunAvisoOverridesTests(const std::filesystem::path& rep
             shared["styles"]["a"]["paint"]["palette-overrides"].HasMember("real"),
             "Applying a new sparse preset removes stale same-palette settings while preserving other palettes");
         requested["palette"].SetString("real");
-        expect(VsmrAvisoOverrides::BuildAppearanceChanges(requested, baseline, changes, error) && changes.MemberCount() == 1,
-            "Real global application carries only palette selection, never foreign Real colors");
+        requested["styles"]["a"]["paint"].AddMember("text-size", 18, requested.GetAllocator());
+        expect(VsmrAvisoOverrides::BuildAppearanceChanges(requested, baseline, changes, error) &&
+            changes["styles"]["a"]["paint"].HasMember("text-size") && !changes["styles"]["a"]["paint"].HasMember("palette-overrides"),
+            "Real global application carries text and geometry edits, never foreign Real colors");
         Document original = Map(), actual = Map();
-        expect(VsmrAvisoOverrides::ApplyAppearance(actual, &changes, error) && actual == original,
-            "Real global selection keeps each airport's geometry and native appearance");
+        expect(VsmrAvisoOverrides::ApplyAppearance(actual, &changes, error) && actual["features"] == original["features"] &&
+            actual["styles"]["a"]["paint"]["color"] == original["styles"]["a"]["paint"]["color"] &&
+            actual["styles"]["a"]["paint"]["text-size"].GetInt() == 18,
+            "Real keeps each airport's geometry and native colors while applying common text edits");
     }
     {
         Document appearance, source, old;

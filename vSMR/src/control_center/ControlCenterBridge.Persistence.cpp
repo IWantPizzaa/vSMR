@@ -515,7 +515,9 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 		Owner->ShowNorthIndicator = stagedShowNorthIndicator;
 		Owner->SaveNorthIndicatorStateToAsr();
 	}
-	if (hasStagedAvisoColorPalette)
+	// A full editor snapshot contains the displayed fallback palette too.
+	// Saving unrelated geometry/text must not replace a remembered Real choice.
+	if (hasStagedAvisoColorPalette && stagedAvisoColorPalette != Owner->GetAvisoColorPalette())
 		Owner->SetAvisoColorPalette(stagedAvisoColorPalette, true);
 	if (hasStagedUiColorTheme)
 		Owner->SetUiColorTheme(stagedUiColorTheme, true);
@@ -532,10 +534,8 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 			continue;
 		}
 
-		// Keep ASR display settings synchronized across every radar screen that
-		// shares this configuration file.
-		if (hasStagedAvisoColorPalette && radar != Owner)
-			radar->SetAvisoColorPalette(stagedAvisoColorPalette, false);
+		// Palette choices belong to the current view; only explicit global
+		// application changes the other views. UI theme synchronization is separate.
 		if (hasStagedUiColorTheme && radar != Owner)
 			radar->SetUiColorTheme(stagedUiColorTheme, false);
 
