@@ -94,7 +94,12 @@ if ($Phase -eq 'Prepare') {
         if (-not $BuildOutputDirectory.TrimEnd('\').Equals($defaultBuild.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
             throw 'BuildOutputDirectory must be the repository Release folder unless using -ValidationOnly -SkipBuild.'
         }
-        & (Join-Path $RepositoryRoot 'vSMR/tools/build_project.ps1') -RepositoryRoot $RepositoryRoot
+        # Keep this generator strict, but don't leak its StrictMode into the
+        # independent build/test scripts (legacy profile fixtures legitimately
+        # contain metadata records without a name property).
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+            (Join-Path $RepositoryRoot 'vSMR/tools/build_project.ps1') -RepositoryRoot $RepositoryRoot
+        if ($LASTEXITCODE -ne 0) { throw 'Release build or regression tests failed. No feed payload was staged.' }
     }
     $managed = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($relative in @('vSMR.dll', 'vSMR_Data/Runtime/vSMR.Runtime.dll',
