@@ -790,6 +790,21 @@ COLORREF CSMRRadar::GetAvisoBackgroundColor() const noexcept
 	return AvisoDarkBackgroundColor;
 }
 
+// Alpha is applied once per viewport, not once per cache/render pass.
+void CSMRRadar::DrawAvisoBackground(Gdiplus::Graphics& graphics, const RECT& area) const
+{
+	const COLORREF rgb = GetAvisoBackgroundColor();
+	const size_t palette = AvisoColorPalette == "real" ? 2 : AvisoColorPalette == "light" ? 1 : 0;
+	const auto previous = graphics.GetCompositingMode();
+	graphics.SetCompositingMode(Gdiplus::CompositingModeSourceOver);
+	Gdiplus::SolidBrush brush(Gdiplus::Color(static_cast<BYTE>(std::lround(AvisoBackgroundOpacities[palette] * 255)),
+		GetRValue(rgb), GetGValue(rgb), GetBValue(rgb)));
+	graphics.FillRectangle(&brush, Gdiplus::Rect(static_cast<int>(area.left), static_cast<int>(area.top),
+		static_cast<int>(area.right - area.left), static_cast<int>(area.bottom - area.top)));
+	graphics.Flush(Gdiplus::FlushIntentionSync);
+	graphics.SetCompositingMode(previous);
+}
+
 struct CSMRRadar::MainAvisoCacheView
 {
 	// References to this render pass's projection; no drawing state is owned here.
@@ -1207,7 +1222,7 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	CRect backgroundArea = ResolveMainAvisoRenderArea();
 	backgroundArea.NormalizeRect();
 	if (!backgroundArea.IsRectEmpty())
-		CDC::FromHandle(hDC)->FillSolidRect(backgroundArea, GetAvisoBackgroundColor());
+		DrawAvisoBackground(graphics, backgroundArea);
 	if (AvisoGeoJsonFeatures.empty() && AvisoGeoJsonLabels.empty())
 		return;
 	std::shared_ptr<const std::vector<AvisoFeature>> featureSnapshot;

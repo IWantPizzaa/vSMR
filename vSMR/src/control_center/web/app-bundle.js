@@ -571,6 +571,11 @@
       real: normalizeHex(sourceBackgroundColors?.real, lightBackground).toUpperCase()
     };
     aviso.metadata.default_color_palette = normalizeAvisoColorPalette(aviso.metadata.default_color_palette);
+    const opacities = aviso.metadata.background_opacities || {};
+    aviso.metadata.background_opacities = Object.fromEntries(["dark", "light", "real"].map(palette => {
+      const value = Number(opacities[palette] ?? (palette === "dark" ? opacities.night : palette === "light" ? opacities.day : undefined) ?? 1);
+      return [palette, Number.isFinite(value) ? clamp(value, 0, 1) : 1];
+    }));
     aviso.metadata.color_palettes = avisoColorPalettes(aviso);
     if (!Array.isArray(aviso.vsmr_groups)) aviso.vsmr_groups = [];
 
@@ -3652,7 +3657,7 @@
       name: "Background",
       layer: "AVISO",
       objectType: "Background",
-      paint: { fill: color },
+      paint: { fill: color, "fill-opacity": state.aviso?.metadata?.background_opacities?.[palette] ?? 1 },
       indices: [],
       isText: false,
       isBackground: true
@@ -4217,7 +4222,7 @@
     const paletteLabel = `${activeAvisoColorPalette()[0].toUpperCase()}${activeAvisoColorPalette().slice(1)}`;
     const colorKind = backgroundOnly ? "Background" : types.length > 1 ? "Primary" : types[0] === "Line" ? "Line" : "Fill";
     $("#avisoGeometryColorLabel").textContent = `${colorKind} color · ${paletteLabel}`;
-    $("#avisoGeometryColorOpacity")?.closest(".opacity-channel")?.toggleAttribute("hidden", backgroundOnly);
+    $("#avisoGeometryColorOpacity")?.closest(".opacity-channel")?.removeAttribute("hidden");
 
     const colorResult = commonValue(
       entries.map(entry => entry.objectType === "Line" ? (entry.paint.stroke || entry.paint.fill || "#000000") : (entry.paint.fill || entry.paint.stroke || "#000000")),
@@ -4273,6 +4278,10 @@
       if (entry.isBackground) {
         if (colorTouched && changes.fill) {
           state.aviso.metadata.background_colors[activeAvisoColorPalette()] = changes.fill;
+          updatedCount += 1;
+        }
+        if (opacityTouched && changes["fill-opacity"] != null) {
+          state.aviso.metadata.background_opacities[activeAvisoColorPalette()] = changes["fill-opacity"];
           updatedCount += 1;
         }
         return;
@@ -5368,6 +5377,7 @@
         const color = colors?.[request.palette];
         if (!color) return;
         state.aviso.metadata.background_colors[request.palette] = color;
+        state.aviso.metadata.background_opacities[request.palette] = baseline.metadata?.background_opacities?.[request.palette] ?? 1;
         ++count;
         return;
       }

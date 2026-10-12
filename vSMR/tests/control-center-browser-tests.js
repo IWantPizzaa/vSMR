@@ -1093,6 +1093,15 @@
       expect(JSON.stringify(afterMapReset.profiles) === JSON.stringify(beforeMapReset.profiles), "geometry reset preserves profiles");
       expect(JSON.stringify(afterMapReset.aviso.features.map(feature => [feature.id, feature.geometry])) ===
         JSON.stringify(beforeMapReset.aviso.features.map(feature => [feature.id, feature.geometry])), "geometry reset preserves coordinates and feature identities");
+      document.querySelector('[data-aviso-geometry-style="__aviso_background__"]')?.click();
+      const backgroundOpacity = document.querySelector("#avisoGeometryColorOpacity");
+      expect(!backgroundOpacity?.closest(".opacity-channel")?.hidden, "Background exposes an opacity control");
+      backgroundOpacity.value = "25";
+      backgroundOpacity.dispatchEvent(new Event("input", { bubbles: true }));
+      await waitFor(() => api.getState().aviso.metadata.background_opacities.dark === 0.25, "Background opacity is saved");
+      expect(api.getState().aviso.metadata.background_opacities.light === 1, "Background opacity keeps other palettes unchanged");
+      document.querySelector('[data-editor="geometry"][data-action="reset-editor-section"]').click();
+      await waitFor(() => api.getState().aviso.metadata.background_opacities.dark === 1, "Background Reset restores opaque default");
     } finally { window.confirm = oldConfirm; }
   } catch (error) {
     failures.push(`unexpected browser exception: ${error?.stack || error}`);
