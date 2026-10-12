@@ -2,6 +2,8 @@
 
 ## [2.0.1] - 2026-10-12
 
+- Fixed missing runtime-menu button backgrounds/borders in the CoFrance final paint pass by keeping GDI, GDI+ and clipping regions in the same bitmap coordinate system; retained atomic presentation.
+
 - Preserved the requested AVISO palette while switching ICAO in the same view: Real falls back to Light on unsupported airports and returns to Real on supported airports, including ASR persistence.
 - Moved Apply to all terrains into the shared top toolbar for Geometry, Text and palette settings. Common non-color text/geometry edits also apply in Real mode without copying airport-specific Real colors.
 
