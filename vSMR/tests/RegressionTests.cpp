@@ -1634,6 +1634,17 @@ void TestRunwayVisibilityRules(const std::filesystem::path& repositoryRoot)
 		Expect(!ApplyRunwayVisibilityRules(rules, activity, groups, error, &diagnostic, &memory) &&
 			groups[0].visible && !groups[1].visible, "Repeated polls preserve both manual show and manual hide");
 	Expect(diagnostic.find("manual override") != std::string::npos, "Diagnostics distinguish manual choices from automatic decisions");
+	auto reloadedGroups = groups;
+	reloadedGroups[0].visible = false; reloadedGroups[1].visible = true;
+	RestoreRunwayVisibilityChoices(reloadedGroups, memory);
+	Expect(reloadedGroups[0].visible && !reloadedGroups[1].visible,
+		"Reloaded map groups restore remembered manual choices rather than their file defaults");
+	std::map<std::string, RunwayVisibilityMemory> airportMemories;
+	airportMemories["LFPG"] = memory;
+	ApplyRunwayVisibilityRules(nullptr, activity, reloadedGroups, error, nullptr, &airportMemories["LFBO"]);
+	RestoreRunwayVisibilityChoices(reloadedGroups, airportMemories["LFPG"]);
+	Expect(reloadedGroups[0].visible && !reloadedGroups[1].visible,
+		"A different airport without rules cannot erase LFPG manual choices");
 	activity["LFPO"]["06"] = { true, true };
 	activity["LFPG"]["09R"] = { false, false };
 	Expect(!ApplyRunwayVisibilityRules(rules, activity, groups, error, nullptr, &memory) && groups[0].visible && !groups[1].visible,
@@ -1642,8 +1653,8 @@ void TestRunwayVisibilityRules(const std::filesystem::path& repositoryRoot)
 	Expect(ApplyRunwayVisibilityRules(rules, activity, groups, error, nullptr, &memory) && !groups[0].visible && groups[1].visible,
 		"A changed runway within the same West direction reapplies both rules");
 	groups[1].visible = false; activity["LFPG"]["27R"].departure = true;
-	Expect(ApplyRunwayVisibilityRules(rules, activity, groups, error, nullptr, &memory) && groups[1].visible,
-		"ARR/DEP changes also restore automatic visibility");
+	Expect(!ApplyRunwayVisibilityRules(rules, activity, groups, error, nullptr, &memory) && !groups[1].visible,
+		"Either-rule ARR/DEP churn preserves manual visibility when active runways did not change");
 	groups[0].visible = true; groups[1].visible = false;
 	activity["LFPG"].clear(); activity["LFPG"]["08R"] = { false, true };
 	ApplyRunwayVisibilityRules(rules, activity, groups, error, nullptr, &memory);
