@@ -3,6 +3,8 @@
 
 # Canonical release data is serialized with LF regardless of Windows Git settings.
 vSMR/data/vSMR_Profiles.json text eol=lf
+# Keep the existing default.json migration fingerprint stable across checkouts.
+vSMR/data/profile_templates.json text eol=crlf
 vSMR/data/default.json text eol=lf
 vSMR/data/ICAO_Aircraft.json text eol=lf
 vSMR/data/AVISO/*.geojson text eol=lf

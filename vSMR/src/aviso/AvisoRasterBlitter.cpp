@@ -164,7 +164,8 @@ bool VsmrAviso::AvisoRasterBlitter::Blend(
 	HBITMAP sourceBitmap,
 	const RECT& source,
 	const RECT& destination,
-	const RECT& clip) noexcept
+	const RECT& clip,
+	bool opaque) noexcept
 {
 	if (destinationDc == nullptr || sourceBitmap == nullptr)
 		return false;
@@ -193,6 +194,22 @@ bool VsmrAviso::AvisoRasterBlitter::Blend(
 	StretchMode stretchMode(destinationDc, plan.scaled ? HALFTONE : COLORONCOLOR);
 	if (plan.scaled)
 		::SetBrushOrgEx(destinationDc, 0, 0, nullptr);
+
+	// Opaque AVISO is composed once by the worker. Cached frames need only a
+	// copy, avoiding a destination read and per-pixel alpha arithmetic. Keep the
+	// old sampling policy for zoom previews (AlphaBlend uses COLORONCOLOR).
+	if (opaque)
+	{
+		if (!plan.scaled)
+			return ::BitBlt(destinationDc, plan.destination.left, plan.destination.top,
+				plan.destinationWidth, plan.destinationHeight, sourceDc_,
+				plan.source.left, plan.source.top, SRCCOPY) != FALSE;
+		::SetStretchBltMode(destinationDc, COLORONCOLOR);
+		return ::StretchBlt(destinationDc, plan.destination.left, plan.destination.top,
+			plan.destinationWidth, plan.destinationHeight, sourceDc_,
+			plan.source.left, plan.source.top, plan.sourceWidth, plan.sourceHeight,
+			SRCCOPY) != FALSE;
+	}
 
 	BLENDFUNCTION blend{};
 	blend.BlendOp = AC_SRC_OVER;

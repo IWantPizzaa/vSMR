@@ -64,6 +64,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="AvisoRasterPipelineTests.cpp" />
+    <ClCompile Include="AvisoRasterRendererTests.cpp" />
+    <ClCompile Include="PerformanceDiagnosticsTests.cpp" />
+    <ClCompile Include="..\src\diagnostics\PerformanceDiagnostics.cpp" />
+    <ClCompile Include="..\src\aviso\AvisoRenderScene.cpp" />
+    <ClCompile Include="..\src\aviso\AvisoRasterRenderer.cpp" />
     <ClCompile Include="ConfigurationRegressionTests.cpp" />
     <ClCompile Include="RegressionTests.cpp" />
     <ClCompile Include="AuditRegressionTests.cpp" />
@@ -139,6 +144,10 @@
     <ClInclude Include="..\src\aviso\AvisoDocumentModel.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterBlitter.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterPipeline.hpp" />
+    <ClInclude Include="PerformanceDiagnosticsTests.hpp" />
+    <ClInclude Include="AvisoRasterRendererTests.hpp" />
+    <ClInclude Include="..\src\aviso\AvisoRenderScene.hpp" />
+    <ClInclude Include="..\src\aviso\AvisoRasterRenderer.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterSizing.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterGeometry.hpp" />
     <ClInclude Include="..\src\aviso\AvisoPolygonOutline.hpp" />

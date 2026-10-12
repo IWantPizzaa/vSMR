@@ -119,6 +119,7 @@ namespace
 			item.AddMember("average", distribution.average, allocator);
 			item.AddMember("median", distribution.median, allocator);
 			item.AddMember("p95", distribution.p95, allocator);
+			item.AddMember("p99", distribution.p99, allocator);
 			item.AddMember("max", distribution.maximum, allocator);
 		}
 		rapidjson::Value key;
@@ -465,6 +466,9 @@ namespace VsmrControlCenterPerformance
 		rapidjson::Value timings(rapidjson::kObjectType);
 		const bool hasLatest = snapshot.hasLatestFrame;
 		AddDistribution(timings, "frame", snapshot.frame, snapshot.latestFrame.frameMilliseconds, hasLatest, allocator);
+		AddDistribution(timings, "callbackInterval", snapshot.callbackInterval,
+			snapshot.latestFrame.callbackIntervalMilliseconds,
+			hasLatest && snapshot.latestFrame.callbackIntervalMilliseconds > 0.0, allocator);
 		AddDistribution(timings, "scene", snapshot.scene, snapshot.latestFrame.sceneMilliseconds, hasLatest, allocator);
 		AddDistribution(timings, "aviso", snapshot.aviso, snapshot.latestFrame.avisoMilliseconds, hasLatest, allocator);
 		AddDistribution(timings, "targets", snapshot.targets, snapshot.latestFrame.targetsMilliseconds, hasLatest, allocator);
@@ -529,6 +533,18 @@ namespace VsmrControlCenterPerformance
 			false,
 			allocator);
 		payload.AddMember("timings", timings, allocator);
+		rapidjson::Value cadence(rapidjson::kObjectType);
+		AddString(cadence, "definition",
+			"Selected render callback cadence includes host idle and UI scheduling; not display FPS.", allocator);
+		AddString(cadence, "onePercentLowDefinition",
+			"1000 / mean slowest ceil(N * 0.01) callback entry intervals in milliseconds", allocator);
+		AddSize(cadence, "intervalSamples", snapshot.callbackInterval.sampleCount, allocator);
+		if (snapshot.callbackInterval.sampleCount > 0)
+		{
+			cadence.AddMember("averageHz", snapshot.callbackCadenceHz, allocator);
+			cadence.AddMember("onePercentLowHz", snapshot.callbackCadenceOnePercentLowHz, allocator);
+		}
+		payload.AddMember("callbackCadence", cadence, allocator);
 
 		rapidjson::Value caches(rapidjson::kArrayType);
 		AddCacheItem(
@@ -868,6 +884,7 @@ namespace VsmrControlCenterPerformance
 					: 0,
 				allocator);
 			point.AddMember("frameMs", sample.frameMilliseconds, allocator);
+			point.AddMember("callbackIntervalMs", sample.callbackIntervalMilliseconds, allocator);
 			point.AddMember("avisoMs", sample.avisoMilliseconds, allocator);
 			point.AddMember("avisoInsetMs", sample.avisoInsetMilliseconds, allocator);
 			point.AddMember("sceneMs", sample.sceneMilliseconds, allocator);

@@ -465,6 +465,32 @@ namespace
 					::GetStretchBltMode(destinationDc) == BLACKONWHITE,
 				"AVISO raster blitter restores destination DC clipping and stretch state",
 				failures);
+
+			for (const RECT target : { RECT{ 2, 2, 6, 6 }, RECT{ 0, 0, 8, 8 } })
+			{
+				std::fill(destination.Pixels(), destination.Pixels() + width * height, blue);
+				Check(blitter.Blend(graphics, destinationDc, source.Handle(), RECT{ 0, 0, 4, 4 },
+					target, RECT{ 3, 3, 5, 5 }, true),
+					"Opaque AVISO copies both native and zoom-preview rasters", failures);
+				::GdiFlush();
+				for (int y = 0; y < height; ++y)
+					for (int x = 0; x < width; ++x)
+						Check((destination.Pixels()[y * width + x] & 0xFFFFFFU) ==
+							((x >= 3 && x < 5 && y >= 3 && y < 5 ? red : blue) & 0xFFFFFFU),
+							"Opaque AVISO preserves clipping and every pixel outside the viewport", failures);
+				::GetClipBox(destinationDc, &clipAfter);
+				Check(::EqualRect(&clipBefore, &clipAfter) && ::GetStretchBltMode(destinationDc) == BLACKONWHITE,
+					"Opaque copies restore the host clip and sampling mode", failures);
+			}
+			std::fill(source.Pixels(), source.Pixels() + 16, 0x80800000U);
+			std::fill(destination.Pixels(), destination.Pixels() + width * height, blue);
+			Check(blitter.Blend(graphics, destinationDc, source.Handle(), RECT{ 0, 0, 4, 4 },
+				RECT{ 2, 2, 6, 6 }, RECT{ 3, 3, 5, 5 }),
+				"Translucent AVISO retains the alpha compositing path", failures);
+			::GdiFlush();
+			const auto blended = destination.Pixels()[3 * width + 3];
+			Check(((blended >> 16U) & 255U) == 128U && (blended & 255U) == 127U,
+				"Translucent AVISO mixes premultiplied pixels with the host background", failures);
 		}
 
 		::SelectClipRgn(destinationDc, nullptr);
