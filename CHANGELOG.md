@@ -2,6 +2,8 @@
 
 ## [2.0.1] - Unreleased
 
+- CoFrance runtime menus repaint after the host window completes painting, without re-registering hit targets; queued GDI/GDI+ drawing is synchronized before menus.
+
 - Added per-palette AVISO background opacity in main and inset views, with Reset restoring the opaque default.
 
 - Preserved manual runway-group choices per airport across map reloads/switches; ARR/DEP flag changes no longer reset an "either" rule when the active runway set is unchanged.
