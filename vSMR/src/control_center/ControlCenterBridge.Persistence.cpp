@@ -38,6 +38,12 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 		error = "Save payload is missing profiles.";
 		return false;
 	}
+	// Keep revision validation, custom-map writes and rollback under one lease.
+	VsmrProcessSync::Mutex processLock;
+	if (!processLock.Open(L"Config", VsmrProcessSync::PathIdentity(std::filesystem::u8path(Owner->CurrentConfig->getConfigPath()))) ||
+		!processLock.Lock(1000))
+	{ error = "Another EuroScope instance is saving these settings. Try again."; return false; }
+	VsmrProcessSync::Mutex avisoProcessLock;
 
 	bool hasStagedShowFps = false;
 	bool stagedShowFps = Owner->ShowFps;
@@ -256,6 +262,9 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 
 		avisoPath =
 			Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport());
+		if (!avisoProcessLock.Open(L"Aviso", VsmrProcessSync::PathIdentity(std::filesystem::u8path(avisoPath))) ||
+			!avisoProcessLock.Lock(1000))
+		{ error = "This AVISO is being edited by another EuroScope instance."; return false; }
 		if (!expectedAvisoRevision.empty() &&
 			expectedAvisoRevision != AvisoRevision(avisoPath))
 		{

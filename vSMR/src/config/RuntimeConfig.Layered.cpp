@@ -3,6 +3,7 @@
 #include "config/RuntimeConfig.Internal.hpp"
 #include "config/LayeredConfig.hpp"
 #include "shared/JsonDocument.hpp"
+#include "shared/ProcessSync.hpp"
 #include "updater/UpdaterVerification.hpp"
 
 #include <filesystem>
@@ -269,6 +270,10 @@ void CConfig::configureLayeredPaths(const std::string& requestedPath)
 
 bool CConfig::loadLayeredConfig()
 {
+	VsmrProcessSync::Mutex processLock;
+	if (!processLock.Open(L"Config", VsmrProcessSync::PathIdentity(std::filesystem::u8path(config_path))) ||
+		!processLock.Lock(1000))
+	{ last_load_message = "Configuration is busy in another EuroScope instance."; return false; }
 	std::lock_guard<std::mutex> lock(ConfigSaveMutex());
 	config_healthy = false;
 	config_revision = FileRevision(config_path);
@@ -401,6 +406,10 @@ bool CConfig::loadLayeredConfig()
 bool CConfig::commitLayeredOverrides(rapidjson::Document& candidate, const std::string& expectedRevision,
 	std::string& error, bool allowRecoveryReplacement)
 {
+	VsmrProcessSync::Mutex processLock;
+	if (!processLock.Open(L"Config", VsmrProcessSync::PathIdentity(std::filesystem::u8path(config_path))) ||
+		!processLock.Lock(1000))
+	{ error = "Configuration is being saved by another EuroScope instance. Try again."; return false; }
 	if (!config_healthy && !allowRecoveryReplacement)
 	{
 		error = "User configuration is invalid or unavailable. No settings were written.";
@@ -527,6 +536,8 @@ const rapidjson::Value* CConfig::getDefaultConfigSection(const char* key) const
 bool CConfig::saveUserConfigSection(const char* key, const rapidjson::Value* value,
 	const std::string& expectedRevision, std::string& error)
 {
+	VsmrProcessSync::PathMutex processLock(config_path);
+	if (!processLock) { error = "Configuration is busy in another EuroScope instance."; return false; }
 	std::lock_guard<std::mutex> lock(ConfigSaveMutex());
 	if (!layered_config || key == nullptr || *key == '\0') { error = "Layered configuration is unavailable."; return false; }
 	rapidjson::Document candidate;
@@ -540,6 +551,8 @@ bool CConfig::saveUserConfigSection(const char* key, const rapidjson::Value* val
 bool CConfig::saveUserConfigSections(const rapidjson::Value& sections,
 	const std::string& expectedRevision, std::string& error)
 {
+	VsmrProcessSync::PathMutex processLock(config_path);
+	if (!processLock) { error = "Configuration is busy in another EuroScope instance."; return false; }
 	std::lock_guard<std::mutex> lock(ConfigSaveMutex());
 	if (!layered_config || !sections.IsObject()) { error = "Layered configuration sections are unavailable."; return false; }
 	rapidjson::Document candidate;
@@ -557,6 +570,8 @@ bool CConfig::saveUserConfigSections(const rapidjson::Value& sections,
 
 bool CConfig::resetProfileOverrides(const std::string& expectedRevision, std::string& error)
 {
+	VsmrProcessSync::PathMutex processLock(config_path);
+	if (!processLock) { error = "Configuration is busy in another EuroScope instance."; return false; }
 	std::lock_guard<std::mutex> lock(ConfigSaveMutex());
 	if (!layered_config || !config_healthy) { error = "Layered configuration is unavailable; use explicit recovery."; return false; }
 	rapidjson::Document candidate;
@@ -568,6 +583,8 @@ bool CConfig::resetProfileOverrides(const std::string& expectedRevision, std::st
 bool CConfig::resetUserOverride(const std::vector<std::string>& path,
 	const std::string& expectedRevision, std::string& error)
 {
+	VsmrProcessSync::PathMutex processLock(config_path);
+	if (!processLock) { error = "Configuration is busy in another EuroScope instance."; return false; }
 	std::lock_guard<std::mutex> lock(ConfigSaveMutex());
 	if (!layered_config || path.empty() || path.front() == "_migration" || path.front() == "schema_version")
 	{ error = "The requested override cannot be reset."; return false; }
