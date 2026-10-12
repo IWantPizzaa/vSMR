@@ -210,7 +210,25 @@ Rules live under the profile's `rules: { "version": 2, "items": [...] }` section
 
 With TrackAudio running, vSMR provides an optional EuroScope list item **RDF**, including when `.smr rdf off` hides the map overlay. In the departure-list column setup, select the vSMR **RDF** item, set the width to **2**, and bind its left-click action to vSMR **RDF reset**. vSMR does not rewrite your EuroScope list layout or mouse bindings.
 
-`TX` blinks yellow/grey for each ground aircraft heard transmitting, including simultaneous speakers. It stays pending after the call ends until clicked, so brief calls are not lost between refreshes. Reset acknowledges only the selected aircraft locally, without changing its flight plan or the live RDF ring. A new transmission activates it again; duplicate events or reception on another frequency during the same call do not undo a reset. Ground filtering follows vSMR's departure-tag speed threshold (reported ground speed at most 50 kt); an uncorrelated aircraft has no indication. Aircraft disconnect/takeoff clear pending indications. Disabling Native RDF only hides the map overlay: list detection, blinking and reset remain active, even when starting with the overlay off. A TrackAudio reconnect clears live rings but preserves known ground calls awaiting acknowledgement.
+`TX` blinks yellow/grey for each ground aircraft heard transmitting, including simultaneous speakers. It stays pending after the call ends until clicked, so brief calls are not lost between refreshes. Reset acknowledges only the selected aircraft in the local TrackAudio session (shared by same-computer vSMR instances), without changing its flight plan or the live RDF ring. A new transmission activates it again; duplicate events or reception on another frequency during the same call do not undo a reset. Ground filtering follows vSMR's departure-tag speed threshold (reported ground speed at most 50 kt); an uncorrelated aircraft has no indication. Aircraft disconnect/takeoff clear pending indications; temporarily missing radar data in a Proxy view does not. Disabling Native RDF only hides the map overlay: list detection, blinking and reset remain active, even when starting with the overlay off. A TrackAudio reconnect clears live rings but preserves known ground calls awaiting acknowledgement.
+
+### Two EuroScope instances through Proxy
+
+Use the same vSMR build in both instances, on the same computer and Windows session. Connect the primary directly and the secondary through EuroScope Proxy under the same controller callsign. vSID, CDM, Ramp Agent and EuroScopeBridge may be loaded only in the primary: vSMR relays the supported fields locally, without exposing API pointers, passwords or arbitrary command strings.
+
+| State | Behavior between instances |
+| --- | --- |
+| Timers | Shared start/reset/deadlines; one expiration alarm; survive closing one participant while the other remains connected. |
+| RDF | One TrackAudio receiver with takeover on exit; TX/reset shared even with the overlay off; overlay visibility remains local. |
+| Companion fields and Rules | vSID/CDM/Ramp snapshots relayed from the primary; updates reach the secondary on its next timer tick. vSID buttons send validated actions to the primary, never the secondary command line. |
+| PDC/CPDLC | Primary connection/status flags displayed in both instances. Connection, credentials, polling and sending stay in the primary; the secondary shows **Primary** with write controls disabled. No automatic takeover/reconnection. |
+| User configuration | Shared when using the same configuration/data paths. Saves are serialized and stale edits rejected; other instances reload persisted changes. Independent installation folders do not merge configurations automatically. |
+| ASR, airport selection, layouts, zoom, manual display choices | Remain per view. Explicit Apply to all terrains is persisted and propagated through shared configuration. |
+| Ground status, HP, scratchpad, SID, runway, flight plans | Use EuroScope's normal Proxy transport and permissions; vSMR adds no new synchronization markers to flight plans. Active runways continue to come from EuroScope's committed operational sector. |
+
+Companion snapshots are bounded and discarded when the primary exits or stops publishing for five seconds. A failed/unconfirmed vSID action is reported, never automatically replayed; verify its resulting state before clicking again. Close **both** EuroScope instances before an update can replace shared application files. Use separate EuroScope `.prf`/settings/ASR files if you want independent host layouts: vSMR cannot arbitrate EuroScope's own profile saves.
+
+Before releasing a Proxy change, test in two actual EuroScope instances: start/reset/expire a timer from either view; reset simultaneous RDF calls with one overlay off; change vSID configuration from the secondary and observe CDM-driven tags/rules in both; edit HP/status/runways; save competing configuration edits; close/reopen each instance and reconnect. Native regression tests exercise real child processes and the production bridge consumers, but do not replace this EuroScope/companion-plugin end-to-end check.
 
 ## Useful commands
 
