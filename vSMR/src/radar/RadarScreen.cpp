@@ -1021,6 +1021,16 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 		gInsetWindowActiveRadarScreen.erase(hwnd);
 		return ::DefSubclassProc(hwnd, uMsg, wParam, lParam);
 	}
+	if (uMsg == WM_PAINT)
+	{
+		// The host and other plugins can paint tags after our last SDK phase.
+		const LRESULT result = ::DefSubclassProc(hwnd, uMsg, wParam, lParam);
+		// Re-resolve after dispatch: host painting may have destroyed a screen.
+		const auto active = gInsetWindowActiveRadarScreen.find(hwnd);
+		if (active != gInsetWindowActiveRadarScreen.end() && active->second != nullptr)
+			active->second->RepaintRuntimeMenuAfterHost(hwnd);
+		return result;
+	}
 
 	const UINT workerRefreshMessage = AvisoWorkerRefreshMessage();
 	if (workerRefreshMessage != 0 && uMsg == workerRefreshMessage)
