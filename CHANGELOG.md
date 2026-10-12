@@ -2,6 +2,9 @@
 
 ## [2.0.1] - 2026-10-12
 
+- Preserved the requested AVISO palette while switching ICAO in the same view: Real falls back to Light on unsupported airports and returns to Real on supported airports, including ASR persistence.
+- Moved Apply to all terrains into the shared top toolbar for Geometry, Text and palette settings. Common non-color text/geometry edits also apply in Real mode without copying airport-specific Real colors.
+
 - Revised Apply to all terrains into an explicit Geometry action storing only differences from airport defaults in one shared user-config entry. Ordinary local edits/palette switches no longer broadcast to other views. Matching settings follow last-edit precedence; unrelated local customizations remain intact. Real uses each airport's own Real theme, falling back to Light, without copying its colors.
 
 - Reduced CoFrance v2 runtime-menu hover flicker by protecting the existing menu during host painting and composing its final rail/popups offscreen before a single blit. Native AVISO painting is unchanged.

@@ -1117,8 +1117,8 @@
       const globalCommand = outbound.slice(globalStart).find(message => message.payload?.applyAvisoToAll);
       const appearance = globalCommand?.payload?.applyAvisoToAll;
       expect(globalCommand?.payload?.replaceLocalAppearance === true, "Explicit global application supersedes older local edits on matching fields");
-      expect(document.querySelector('[data-action="apply-aviso-all"]')?.closest('#avisoPanelGeometry'),
-        "Apply to all terrains belongs to the Geometry view only");
+      expect(document.querySelector('[data-action="apply-aviso-all"]')?.closest('.aviso-toolbar'),
+        "Apply to all terrains is in the shared Geometry/Text/palette toolbar");
       expect(appearance?.palette === "dark" && appearance?.metadata?.background_opacities?.dark === 1 &&
         appearance?.styles?.["surface.taxiway"]?.paint && !Object.hasOwn(appearance || {}, "features") && !Object.hasOwn(appearance || {}, "vsmr_groups"),
         "Global transfer contains visual settings only, never geometry or group visibility");
@@ -1132,8 +1132,12 @@
       document.querySelector('[data-action="apply-aviso-all"]').click();
       await waitFor(() => outbound.slice(realGlobalStart).some(message => message.payload?.applyAvisoToAll), "Real global application sends a command");
       const realCommand = outbound.slice(realGlobalStart).find(message => message.payload?.applyAvisoToAll);
-      expect(realCommand?.payload?.applyAvisoToAll?.palette === "real" && Object.keys(realCommand.payload.applyAvisoToAll).length === 1,
-        "Real applies a palette only, without copying background or airport-specific style colors");
+      const realAppearance = realCommand?.payload?.applyAvisoToAll;
+      expect(realAppearance?.palette === "real" && !realAppearance.metadata?.background_colors &&
+        Object.values(realAppearance.styles || {}).every(style => !style.paint.fill && !style.paint.stroke && !style.paint["text-color"] && !style.paint["palette-overrides"]),
+        "Real applies common text/geometry settings without copying airport-specific colors");
+      expect(Object.values(appearance?.styles || {}).some(style => Object.hasOwn(style.paint, "text-size") || Object.hasOwn(style.paint, "text-font")),
+        "Shared toolbar application includes Text settings as well as Geometry");
       if (realCommand) api.receive({ version: 1, id: realCommand.id, type: "state.ack", payload: { action: "settings.update", message: "Settings applied" } });
       if (realCommand) api.receive({ version: 1, id: realCommand.id, type: "state.authoritative", payload: { ...realFixture, reason: "reload" } });
     } finally { window.confirm = oldConfirm; }

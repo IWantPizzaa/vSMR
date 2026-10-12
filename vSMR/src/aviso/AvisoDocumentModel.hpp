@@ -94,6 +94,7 @@ public:
 	static bool ReadBoolProperty(const rapidjson::Value* properties, const char* key, bool fallback);
 	static bool IsFeatureVisible(const rapidjson::Value* properties);
 	static double BackgroundOpacity(const rapidjson::Value* metadata, const std::string& palette);
+	static std::string ResolveColorPalette(const std::string& preferred, const std::vector<std::string>& available);
 	static std::string GeometryTypeFromFeature(const rapidjson::Value& feature);
 	static bool IsEditableTextFeature(const rapidjson::Value& feature);
 
