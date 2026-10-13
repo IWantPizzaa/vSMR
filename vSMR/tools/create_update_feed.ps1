@@ -126,7 +126,7 @@ if ($Phase -eq 'Prepare') {
         # The visibility template is compiled into default.json. Like legacy
         # profiles, its editable standalone copy is not an updater-owned file.
         if ($relative -match '(?i)(^|/)(config\.json|vSMR_Profiles\.json|runway_group_visibility\.json|UserData|UpdateBaselines|\.update|version\.json)(/|$)' -or
-            $relative -match '^AVISO/(ALL_FR_.*|_LFXX)\.geojson$|^AVISO/version\.txt$') { continue }
+            $relative -match '^AVISO/.*\.geojson$|^AVISO/version\.txt$') { continue }
         [void]$managed.Add('vSMR_Data/' + $relative)
     }
     foreach ($name in @('index.html', 'styles.css', 'data.js', 'app-bundle.js')) {

@@ -11,6 +11,7 @@
 #include "aviso/AvisoOverrides.hpp"
 
 #include <cctype>
+#include <fstream>
 #include <limits>
 #include <set>
 #include <unordered_map>
@@ -106,6 +107,16 @@ namespace
 			? PluginDataDirectory(dllPath)
 			: fs::u8path(dataPath);
 
+		const fs::path remoteRoot = resolvedDataDirectory / "UserData" / "France-Ground-Layouts";
+		std::ifstream pointer(remoteRoot / "current.txt", std::ios::binary);
+		std::string commit;
+		if (pointer && std::getline(pointer, commit) && commit.size() == 40 &&
+			std::all_of(commit.begin(), commit.end(), [](char c) {
+				return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+			}))
+		{
+			PushUniquePath(directories, remoteRoot / fs::u8path(commit) / "GeoJSON");
+		}
 		PushUniquePath(directories, resolvedDataDirectory / "AVISO");
 		PushUniquePath(directories, resolvedDataDirectory);
 		PushUniquePath(directories, pluginDirectory / "AVISO");

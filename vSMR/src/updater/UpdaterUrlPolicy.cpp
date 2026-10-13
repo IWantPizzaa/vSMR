@@ -80,19 +80,34 @@ namespace vsmr::updater::url_policy
 			parsed.resource.append(components.lpszExtraInfo, components.dwExtraInfoLength);
 		if (ToLowerWide(parsed.host) == L"raw.githubusercontent.com")
 		{
-			// The raw feed may only serve this project's channel manifests or
-			// immutable commit payloads; arbitrary raw-hosted code is not allowed.
+			// Restrict raw downloads to the release feed and immutable AVISO
+			// GeoJSON paths in the official ground-layout repository.
 			const std::wstring prefix = L"/IWantPizzaa/vSMR/";
-			if (parsed.resource.rfind(prefix, 0) != 0)
-				return false;
-			const std::wstring suffix = parsed.resource.substr(prefix.size());
-			const bool channel = suffix == L"update-feed/stable/version.json" || suffix == L"update-feed/beta/version.json";
-			const bool commit = suffix.size() > 49 && suffix.substr(40, 9) == L"/payload/" &&
-				std::all_of(suffix.begin(), suffix.begin() + 40, [](wchar_t c) {
-					return (c >= L'0' && c <= L'9') || (c >= L'a' && c <= L'f');
-				});
-			if ((!channel && !commit) || suffix.find(L"..") != std::wstring::npos || suffix.find_first_of(L"?\\") != std::wstring::npos)
-				return false;
+			if (parsed.resource.rfind(prefix, 0) == 0)
+			{
+				const std::wstring suffix = parsed.resource.substr(prefix.size());
+				const bool channel = suffix == L"update-feed/stable/version.json" || suffix == L"update-feed/beta/version.json";
+				const bool commit = suffix.size() > 49 && suffix.substr(40, 9) == L"/payload/" &&
+					std::all_of(suffix.begin(), suffix.begin() + 40, [](wchar_t c) {
+						return (c >= L'0' && c <= L'9') || (c >= L'a' && c <= L'f');
+					});
+				if ((!channel && !commit) || suffix.find(L"..") != std::wstring::npos || suffix.find_first_of(L"?\\") != std::wstring::npos)
+					return false;
+			}
+			else
+			{
+				const std::wstring aviso = L"/vaccfr/France-Ground-Layouts/";
+				if (parsed.resource.rfind(aviso, 0) != 0) return false;
+				const std::wstring suffix = parsed.resource.substr(aviso.size());
+				if (suffix.size() != 40 + 9 + 4 + 8 || suffix.substr(40, 9) != L"/GeoJSON/" ||
+					suffix.substr(53) != L".geojson" ||
+					!std::all_of(suffix.begin(), suffix.begin() + 40, [](wchar_t c) {
+						return (c >= L'0' && c <= L'9') || (c >= L'a' && c <= L'f');
+					}) ||
+					!std::all_of(suffix.begin() + 49, suffix.begin() + 53, [](wchar_t c) {
+						return (c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9');
+					})) return false;
+			}
 		}
 		if (parsed.resource.empty())
 			parsed.resource = L"/";

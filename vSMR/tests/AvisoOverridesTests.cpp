@@ -232,6 +232,14 @@ std::vector<std::string> RunAvisoOverridesTests(const std::filesystem::path& rep
             VsmrJson::ParseDocument(bundled, Read(repositoryRoot / "vSMR/data/default.json"));
             const auto mapPath = dataRoot / "AVISO/LFXX.geojson";
             Write(mapPath, mode == 0 ? defaults : edited);
+            const auto remotePath = dataRoot / "UserData/France-Ground-Layouts" /
+                std::string(40, 'a') / "GeoJSON/LFXX.geojson";
+            Write(remotePath, defaults);
+            expect(VsmrAvisoOverrides::IsManagedSource(dataRoot, remotePath),
+                "Cached ground-layout AVISO is protected as an immutable default source");
+            expect(!VsmrAvisoOverrides::IsManagedSource(dataRoot,
+                dataRoot / "UserData/Maps/LFXX.geojson"),
+                "Manually selected AVISO remains a custom source");
             std::string cleanHash;
             const auto baselinePath = dataRoot / "UpdateBaselines/AVISO/LFXX.geojson";
             Write(baselinePath, defaults);
