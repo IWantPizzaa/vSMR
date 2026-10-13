@@ -683,18 +683,16 @@
     const textTab = avisoToolbar?.querySelector('[data-aviso-view="text"]');
     const applyAll = avisoToolbar?.querySelector('[data-action="apply-aviso-all"]');
     const separator = avisoToolbar?.querySelector(".aviso-toolbar-separator");
-    const toolbarRect = avisoToolbar?.getBoundingClientRect();
     const geometryRect = geometryTab?.getBoundingClientRect();
     const textRect = textTab?.getBoundingClientRect();
     const applyRect = applyAll?.getBoundingClientRect();
     const separatorRect = separator?.getBoundingClientRect();
     expect(Boolean(geometryRect && textRect) && Math.abs(textRect.left - geometryRect.right) <= 1.5,
       "Geometry and Text tabs touch as one control");
-    expect(Boolean(toolbarRect && applyRect && paletteRect) &&
-      Math.abs((applyRect.left + applyRect.right - toolbarRect.left - toolbarRect.right) / 2) < 1 &&
+    expect(Boolean(applyRect && paletteRect) &&
       Math.abs(applyRect.height - paletteRect.height) < 1 &&
       getComputedStyle(applyAll).backgroundColor === getComputedStyle(geometryTab).backgroundColor,
-      "Apply to all terrains is centered and matches the other toolbar controls");
+      "Apply to all terrains matches the other toolbar controls");
     expect(Boolean(geometryTab && textTab && applyAll) &&
       [textTab, applyAll, ...paletteButtons].every(button =>
         getComputedStyle(button).fontSize === getComputedStyle(geometryTab).fontSize),
@@ -703,6 +701,9 @@
       separator?.textContent.trim() === "|" &&
       applyRect.right < separatorRect.left && separatorRect.right < paletteRect.left,
       "A separator sits between Apply to all terrains and the palette controls");
+    expect(Boolean(separatorRect && applyRect && paletteRect) &&
+      Math.abs((separatorRect.left - applyRect.right) - (paletteRect.left - separatorRect.right)) < 1,
+      "Apply and palette controls have equal spacing around the separator");
     const originalPaletteButton = paletteButtons.find(
       button => button.getAttribute("aria-pressed") === "true");
     const alternatePaletteButton = paletteButtons.find(
