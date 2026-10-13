@@ -90,6 +90,7 @@
     <ClCompile Include="..\src\updater\UpdaterVerification.cpp" />
     <ClCompile Include="..\src\updater\FileUpdateTransaction.cpp" />
     <ClCompile Include="..\src\updater\FileUpdater.cpp" />
+    <ClCompile Include="..\src\updater\GroundLayoutAviso.cpp" />
     <ClCompile Include="..\src\updater\UpdaterCore.cpp" />
     <ClCompile Include="..\src\updater\UpdaterCoordinator.cpp" />
     <ClCompile Include="..\src\updater\UpdaterHealth.cpp" />

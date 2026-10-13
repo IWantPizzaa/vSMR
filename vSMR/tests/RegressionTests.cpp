@@ -45,6 +45,7 @@
 #include "PluginBridgeTests.hpp"
 #include "TagColorRuleTests.hpp"
 #include "UpdaterUrlPolicyTests.hpp"
+#include "updater/GroundLayoutAviso.hpp"
 #include "tags/TagDefinitionUtils.hpp"
 #include "weather/WeatherStore.hpp"
 #include "diagnostics/ZoomDiagnostics.hpp"
@@ -2011,6 +2012,15 @@ void TestProxyProcesses(const std::filesystem::path& repositoryRoot)
 int wmain(int argc, wchar_t** argv)
 {
 	if (argc == 4 && std::wstring(argv[1]) == L"--proxy-test") return RunProxyChild(argv[2], argv[3]);
+	if (argc == 3 && std::wstring(argv[1]) == L"--ground-layout-live-test")
+	{
+		std::wstring message;
+		const bool success = vsmr::updater::ground_layout_aviso::Sync(argv[2], message);
+		std::wcout << message << L'\n';
+		const auto active = vsmr::updater::ground_layout_aviso::ActiveDirectory(argv[2]);
+		std::wcout << L"active=" << active.wstring() << L'\n';
+		return success && !active.empty() ? 0 : 1;
+	}
 	const std::filesystem::path repositoryRoot = argc > 1
 		? std::filesystem::path(argv[1])
 		: std::filesystem::current_path();

@@ -281,7 +281,10 @@ namespace vsmr::updater::files
         const auto previous = internal::LoadPreviousState(context.statePath);
         context.state.lastActionRequestId = action.valid ? action.requestId : previous.lastActionRequestId;
         context.state.lastCheckedUtc = previous.lastCheckedUtc;
-        if ((!config.autoCheck || internal::IsFutureUtc(previous.nextCheckUtc)) && !force)
+        // The runtime chosen for this EuroScope process is fixed at startup.
+        // A timer shared across previous launches can silently start an older
+        // runtime even after a new release is published, so check every load.
+        if (!config.autoCheck && !force)
             return Result(context, StartupStatus::Current, "", L"No update check is due.");
         context.state.lastCheckedUtc = internal::UtcNow();
         context.state.nextCheckUtc = internal::UtcAfterSeconds(internal::kMinimumCheckIntervalSeconds);

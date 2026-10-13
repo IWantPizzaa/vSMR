@@ -108,12 +108,14 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <AdditionalOptions>/Brepro %(AdditionalOptions)</AdditionalOptions>
       <AdditionalDependencies>bcrypt.lib;comctl32.lib;crypt32.lib;shell32.lib;version.lib;winhttp.lib;wintrust.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="BootstrapLoader.cpp" />
     <ClCompile Include="..\..\updater\FileUpdater.cpp" />
+    <ClCompile Include="..\..\updater\GroundLayoutAviso.cpp" />
     <ClCompile Include="..\..\updater\FileUpdateTransaction.cpp" />
     <ClCompile Include="..\..\updater\UpdaterCoordinator.cpp" />
     <ClCompile Include="..\..\updater\UpdaterCore.cpp" />
@@ -137,6 +139,7 @@
     <ClInclude Include="..\..\updater\UpdaterCore.Internal.hpp" />
     <ClInclude Include="..\..\updater\UpdaterReleaseModel.hpp" />
     <ClInclude Include="..\..\updater\UpdaterTransport.hpp" />
+    <ClInclude Include="..\..\updater\GroundLayoutAviso.hpp" />
     <ClInclude Include="..\..\updater\UpdaterUrlPolicy.hpp" />
     <ClInclude Include="..\..\updater\UpdaterVerification.hpp" />
   </ItemGroup>

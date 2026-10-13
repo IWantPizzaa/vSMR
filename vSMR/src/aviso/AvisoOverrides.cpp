@@ -172,9 +172,18 @@ namespace VsmrAvisoOverrides
         try
         {
             if (AirportKey(source).empty() || Upper(source.extension().u8string()) != ".GEOJSON") return false;
-            const auto expected = std::filesystem::weakly_canonical(dataRoot / "AVISO");
             const auto parent = std::filesystem::weakly_canonical(source.parent_path());
-            return _wcsicmp(expected.c_str(), parent.c_str()) == 0;
+            const auto bundled = std::filesystem::weakly_canonical(dataRoot / "AVISO");
+            if (_wcsicmp(bundled.c_str(), parent.c_str()) == 0) return true;
+            const auto remoteRoot = std::filesystem::weakly_canonical(
+                dataRoot / "UserData" / "France-Ground-Layouts");
+            const std::string commit = parent.parent_path().filename().u8string();
+            return _wcsicmp(parent.filename().c_str(), L"GeoJSON") == 0 &&
+                commit.size() == 40 &&
+                std::all_of(commit.begin(), commit.end(), [](char c) {
+                    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+                }) &&
+                _wcsicmp(parent.parent_path().parent_path().c_str(), remoteRoot.c_str()) == 0;
         }
         catch (...) { return false; }
     }
