@@ -1,7 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
 #include "aviso/AvisoFeatureMetadata.hpp"
-#include "aviso/AvisoRasterPipeline.hpp"
 #include "aviso/AvisoRunwayVisibility.hpp"
 #include "aviso/AvisoSharedConfig.hpp"
 #include "insets/InsetWindow.hpp"
@@ -206,14 +205,8 @@ bool CSMRRadar::ApplyAvisoGroupMembershipSnapshot(
 
 void CSMRRadar::InvalidateAvisoGroupRendering()
 {
-	if (AvisoGeoJsonRenderPipeline != nullptr)
-		AvisoGeoJsonRenderPipeline->InvalidateRequests();
-
-	// Keep the last same-path raster as a stale preview while the new group or
-	// ownership generation is rebuilt. Exact-cache checks still reject it.
-	AvisoGeoJsonLastViewValid = false;
-	AvisoGeoJsonLastViewPath.clear();
-	AvisoGeoJsonLastViewChangeTick = 0;
+	// Changed groups rebuild the exact native view on the next frame.
+	ClearAvisoGeoJsonRasterCache();
 
 	for (auto& appWindow : appWindows)
 	{

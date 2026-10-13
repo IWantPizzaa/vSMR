@@ -15,6 +15,10 @@
 #include <array>
 #include <cerrno>
 #include <cstdlib>
+#include <iomanip>
+#include <limits>
+#include <locale>
+#include <sstream>
 
 std::vector<std::string> CSMRRadar::GetOpenWeatherAirports() const
 {
@@ -83,6 +87,14 @@ namespace
 			return false;
 		value = parsed;
 		return true;
+	}
+
+	std::string FormatAsrDouble(double value)
+	{
+		std::ostringstream stream;
+		stream.imbue(std::locale::classic());
+		stream << std::setprecision(std::numeric_limits<double>::max_digits10) << value;
+		return stream.str();
 	}
 }
 
@@ -626,7 +638,7 @@ void CSMRRadar::ResetInsetWindowState(int appWindowId, bool preserveVisibility)
 	window->m_OffsetDrag = { 0, 0 };
 	window->m_Grip = false;
 	window->m_AvisoLayoutMode = CInsetWindow::AvisoLayoutMode::Floating;
-	window->ResetAvisoInteractionState();
+	window->ResetAvisoInteractionState(!(preserveVisibility && wasVisible));
 
 	if (window->IsAvisoViewport())
 	{
@@ -745,10 +757,10 @@ void CSMRRadar::SaveInsetStateToAsrForAirport(const std::string& airport)
 		save(windowPrefix + "TopLeftY", "AVISO viewport position", std::to_string(window->m_Area.top));
 		save(windowPrefix + "BottomRightX", "AVISO viewport position", std::to_string(window->m_Area.right));
 		save(windowPrefix + "BottomRightY", "AVISO viewport position", std::to_string(window->m_Area.bottom));
-		save(windowPrefix + "CenterLat", "AVISO viewport center", std::to_string(window->m_AvisoCenterLatitude));
-		save(windowPrefix + "CenterLon", "AVISO viewport center", std::to_string(window->m_AvisoCenterLongitude));
+		save(windowPrefix + "CenterLat", "AVISO viewport center", FormatAsrDouble(window->m_AvisoCenterLatitude));
+		save(windowPrefix + "CenterLon", "AVISO viewport center", FormatAsrDouble(window->m_AvisoCenterLongitude));
 		save(windowPrefix + "CenterInitialized", "AVISO viewport center initialized", window->m_AvisoViewInitialized ? "1" : "0");
-		save(windowPrefix + "Scale", "AVISO viewport zoom", std::to_string(window->m_AvisoScale));
+		save(windowPrefix + "Scale", "AVISO viewport zoom", FormatAsrDouble(window->m_AvisoScale));
 		save(windowPrefix + "NorthX", "AVISO compass X offset", std::to_string(window->m_NorthIndicatorOffset.x));
 		save(windowPrefix + "NorthY", "AVISO compass Y offset", std::to_string(window->m_NorthIndicatorOffset.y));
 		save(windowPrefix + "LayoutMode", "AVISO viewport layout mode", std::to_string(static_cast<int>(window->m_AvisoLayoutMode)));
@@ -1061,7 +1073,7 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 		window->m_AvisoViewInitialized = centerLoaded;
 		window->m_AvisoCenterContext.clear();
 		window->m_AvisoLinkedMainAirport.clear();
-		readInt(windowPrefix + "Scale", 1, 2400, window->m_AvisoScale);
+		readDouble(windowPrefix + "Scale", 1.0, 2400.0, window->m_AvisoScale);
 		int northX = -1, northY = -1;
 		readInt(windowPrefix + "NorthX", -1, 100000, northX);
 		readInt(windowPrefix + "NorthY", -1, 100000, northY);
@@ -1072,7 +1084,7 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 		bool visible = appWindowDisplays[avisoWindowId];
 		readDisplay(windowPrefix + "Display", visible);
 		appWindowDisplays[avisoWindowId] = visible;
-		window->ResetAvisoInteractionState();
+		window->ResetAvisoInteractionState(!visible);
 		window->ClearAvisoViewportCache();
 	}
 
@@ -1174,7 +1186,6 @@ std::string CSMRRadar::setActiveAirport(
 	RunwayStatusLastRefreshTick = 0;
 	RunwayStatusLastAirport.clear();
 	ClearAvisoGeoJsonRasterCache();
-	AvisoGeoJsonLastViewValid = false;
 	RefreshRimcasRunwayMonitoring();
 
 	if (switchInsetContext)

@@ -9,6 +9,8 @@
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashRuntime.hpp"
 
+#include <cmath>
+
 extern CPoint mouseLocation;
 extern HCURSOR smrCursor;
 extern bool standardCursor;
@@ -1058,7 +1060,8 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 	if (wheelDelta == 0 || IsShutdownRequested())
 		return false;
 
-	const double scaleMultiplier = (wheelDelta > 0) ? 1.18 : (1.0 / 1.18);
+	// Respect partial notches from precision wheels and multiple-notch events.
+	const double scaleMultiplier = std::pow(1.18, static_cast<double>(wheelDelta) / WHEEL_DELTA);
 
 	// A viewport may only claim a wheel event when its owning radar screen is the
 	// one currently on screen at the cursor. Multiple views (switched with F7) live
@@ -1425,7 +1428,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 			if (appWindowDisplayIt != appWindowDisplays.end())
 			{
 				appWindowDisplayIt->second = false;
-				appWindow->ResetAvisoInteractionState();
+				appWindow->ResetAvisoInteractionState(true);
 				SaveInsetStateToAsrForAirport(getActiveAirport());
 				if (VsmrControlCenterDialog != nullptr)
 					VsmrControlCenterDialog->SyncFromRadar();

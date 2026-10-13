@@ -62,7 +62,7 @@ public:
 	bool m_Grip = false;
 	double m_Rotation = 0;
 	Mode m_Mode = Mode::SecondaryRadar;
-	int m_AvisoScale = 350;
+	double m_AvisoScale = 350.0;
 	POINT m_NorthIndicatorOffset = { -1, -1 };
 	double m_AvisoCenterLatitude = 0.0;
 	double m_AvisoCenterLongitude = 0.0;
@@ -131,9 +131,10 @@ public:
 	void ClearAvisoViewportCache();
 	void InvalidateAvisoViewportRendering();
 	void CancelAvisoViewportRender();
-	void ResetAvisoInteractionState();
+	void ResetAvisoInteractionState(bool releaseRendering = false);
 	VsmrPerformance::AvisoQueueDepth GetAvisoPerformanceQueueDepth();
 	std::size_t GetAvisoPerformanceBitmapCount(std::uint64_t* estimatedBytes = nullptr) const;
+	std::uint64_t GetAvisoPerformanceGpuImageBytes() const noexcept;
 	double GetLastRdfRenderMilliseconds() const noexcept;
 	double GetLastChromeRenderMilliseconds() const noexcept;
 	
@@ -146,8 +147,8 @@ private:
 	struct AvisoTagTarget;
 	struct AvisoTagPass;
 	void renderAvisoTags(std::vector<AvisoTagTarget>& visibleTagTargets, const AvisoTagPass& pass);
-	struct InsetAvisoCacheView;
-	void renderAvisoAircraft(HDC hDC, CDC& dc, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation, const InsetAvisoCacheView& cacheView);
+	struct InsetAvisoView;
+	void renderAvisoAircraft(HDC hDC, CDC& dc, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation, const InsetAvisoView& view);
 	void renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
 	void renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
 	void renderTimer(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);

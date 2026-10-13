@@ -245,6 +245,8 @@ Before releasing a Proxy change, test in two actual EuroScope instances: start/r
 
 The `FPS-Killer` rendering changes, measured component results, and host testing
 limits are documented in [AVISO performance](docs/FPS-Killer.md).
+The subsequent native zoom pipeline and geographic anchoring checks are described
+in [AVISO zoom rendering](docs/AVISO-Zoom.md).
 
 Build from the repository root with Visual Studio C++ tools, MFC support, and a Windows SDK. The build script defaults to MSVC toolset `v145` and `Release | Win32`; it rebuilds the solution and runs native and browser regressions. Microsoft Edge is required for the browser tests.
 

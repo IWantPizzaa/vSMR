@@ -13,6 +13,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <optional>
+#include "aviso/AvisoProjection.hpp"
 
 namespace VsmrAviso { class AvisoRenderScene; }
 
@@ -140,7 +142,7 @@ namespace VsmrRadarTypes
 		std::string name;
 		AvisoMainViewPreset mainView;
 		RECT secondaryArea = { 260, 260, 760, 560 };
-		int secondaryScale = 350;
+		double secondaryScale = 350.0;
 		double secondaryCenterLatitude = 0.0;
 		double secondaryCenterLongitude = 0.0;
 		int secondaryLayoutMode = 0;
@@ -151,9 +153,8 @@ namespace VsmrRadarTypes
 		InsetWindowState timer;
 	};
 
-	// Render requests own immutable snapshots because the raster worker can
-	// outlive the frame that queued it. The generation and cancellation token
-	// prevent an older result from replacing newer group or viewport state.
+	// Immutable scene identity and one geographic mapping define an exact native
+	// view. Legacy raster/pipeline tests also use the queue and cancellation fields.
 	struct AvisoRasterRenderRequest
 	{
 		unsigned long long requestId = 0;
@@ -165,6 +166,9 @@ namespace VsmrRadarTypes
 		std::shared_ptr<const std::vector<AvisoFeature>> features;
 		std::shared_ptr<const std::vector<AvisoLabel>> labels;
 		std::shared_ptr<const VsmrAviso::AvisoRenderScene> scene;
+		// Native view rendering retains the full host mapping in double precision;
+		// visible/culling bounds do not redefine its geographic projection.
+		std::optional<VsmrAviso::BilinearProjection> preciseProjection;
 		std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
 		std::string colorPalette = "dark";
 		// Only fully opaque backgrounds are baked in; translucent viewports keep

@@ -53,8 +53,7 @@ namespace VsmrTargetRendering
 }
 namespace VsmrAviso
 {
-	class AvisoRasterPipeline;
-	class AvisoRasterBlitter;
+	class AvisoViewportRenderer;
 }
 
 class CSMRRadar :
@@ -177,36 +176,7 @@ private:
 	fs::file_time_type AvisoGeoJsonLastFailedWriteTime;
 	unsigned long AvisoGeoJsonLastFailedTick = 0;
 	bool AvisoGeoJsonLastFailedWriteTimeValid = false;
-	HBITMAP AvisoGeoJsonRasterCache = nullptr;
-	std::unique_ptr<VsmrAviso::AvisoRasterBlitter> AvisoRasterBlitterInstance;
-	std::string AvisoGeoJsonRasterCachePath;
-	unsigned long long AvisoGeoJsonRasterGroupGeneration = 0;
-	std::string AvisoGeoJsonRasterColorPalette = "dark";
-	Gdiplus::Color AvisoGeoJsonRasterBackgroundColor = Gdiplus::Color(0, 0, 0, 0);
-	int AvisoGeoJsonRasterViewportZoomLevel = 0;
-	double AvisoGeoJsonRasterDisplayScale = 1.0;
-	double AvisoGeoJsonRasterMinLongitude = 0.0;
-	double AvisoGeoJsonRasterMinLatitude = 0.0;
-	double AvisoGeoJsonRasterMaxLongitude = 0.0;
-	double AvisoGeoJsonRasterMaxLatitude = 0.0;
-	int AvisoGeoJsonRasterWidth = 0;
-	int AvisoGeoJsonRasterHeight = 0;
-	double AvisoGeoJsonRasterAnchorLongitude = 0.0;
-	double AvisoGeoJsonRasterAnchorLatitude = 0.0;
-	double AvisoGeoJsonRasterBottomRightLongitude = 0.0;
-	double AvisoGeoJsonRasterBottomRightLatitude = 0.0;
-	Gdiplus::PointF AvisoGeoJsonRasterProjectedTopLeft;
-	Gdiplus::PointF AvisoGeoJsonRasterProjectedTopRight;
-	Gdiplus::PointF AvisoGeoJsonRasterProjectedBottomLeft;
-	Gdiplus::PointF AvisoGeoJsonRasterProjectedBottomRight;
-	bool AvisoGeoJsonRasterAnchorValid = false;
-	bool AvisoGeoJsonLastViewValid = false;
-	std::string AvisoGeoJsonLastViewPath;
-	double AvisoGeoJsonLastViewMinLongitude = 0.0;
-	double AvisoGeoJsonLastViewMinLatitude = 0.0;
-	double AvisoGeoJsonLastViewMaxLongitude = 0.0;
-	double AvisoGeoJsonLastViewMaxLatitude = 0.0;
-	unsigned long AvisoGeoJsonLastViewChangeTick = 0;
+	std::unique_ptr<VsmrAviso::AvisoViewportRenderer> AvisoNativeViewportRenderer;
 	bool AvisoGeoJsonLoadAttempted = false;
 	bool AvisoGeoJsonLoaded = false;
 	bool AvisoGeoJsonRenderDisabled = false;
@@ -216,11 +186,9 @@ private:
 	double AvisoGeoJsonMinLatitude = 0.0;
 	double AvisoGeoJsonMaxLongitude = 0.0;
 	double AvisoGeoJsonMaxLatitude = 0.0;
-	std::unique_ptr<VsmrAviso::AvisoRasterPipeline> AvisoGeoJsonRenderPipeline;
 	std::atomic<HWND> AvisoRefreshHostWindow{ nullptr };
 	VsmrRadarInteraction::HoverPointer TagHoverPointer;
 	std::atomic<bool> ShutdownRequested{ false };
-	std::atomic<bool> AvisoGeoJsonRenderStop{ false };
 	bool AvisoGeoJsonScrollSelected = false;
 	bool AvisoViewsLinked = false;
 	std::string ActiveAvisoPresetName;
@@ -606,18 +574,10 @@ public:
 	CRect ResolveMainAvisoRenderArea();
 	COLORREF GetAvisoBackgroundColor() const noexcept;
 	Gdiplus::Color GetAvisoRasterBackgroundColor() const noexcept;
-	struct MainAvisoCacheView;
 	void RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics);
 	void BeginShutdown();
 	bool IsShutdownRequested() const;
-	void EnsureAvisoGeoJsonRenderPipeline();
-	void StopAvisoGeoJsonRenderPipeline();
-	bool IsAvisoGeoJsonRenderStopRequested() const;
 	void RequestRefreshFromWorker();
-	void QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request);
-	void ApplyCompletedAvisoGeoJsonRaster();
-	bool IsAvisoRasterRenderRequestCancelled(const AvisoRasterRenderRequest& request) const noexcept;
-	std::unique_ptr<AvisoRasterRenderResult> RenderAvisoGeoJsonRaster(const AvisoRasterRenderRequest& request) const;
 	bool PrewarmAvisoForActiveAirport();
 	std::vector<AvisoPreset> GetAvisoPresets() const;
 	std::string GetDefaultAvisoPresetName() const;

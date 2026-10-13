@@ -59,12 +59,16 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <DataExecutionPrevention>true</DataExecutionPrevention>
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
-      <AdditionalDependencies>gdiplus.lib;msimg32.lib;winhttp.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>gdiplus.lib;msimg32.lib;d2d1.lib;d3d11.lib;dxgi.lib;winhttp.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="AvisoRasterPipelineTests.cpp" />
     <ClCompile Include="AvisoRasterRendererTests.cpp" />
+    <ClCompile Include="AvisoProjectionTests.cpp" />
+    <ClCompile Include="..\src\aviso\AvisoVectorRenderer.cpp" />
+    <ClCompile Include="..\src\aviso\AvisoGlyphAnalyticRenderer.cpp" />
+    <ClCompile Include="..\src\aviso\AvisoViewportRenderer.cpp" />
     <ClCompile Include="PerformanceDiagnosticsTests.cpp" />
     <ClCompile Include="..\src\diagnostics\PerformanceDiagnostics.cpp" />
     <ClCompile Include="..\src\aviso\AvisoRenderScene.cpp" />
@@ -146,6 +150,13 @@
     <ClInclude Include="..\src\aviso\AvisoRasterPipeline.hpp" />
     <ClInclude Include="PerformanceDiagnosticsTests.hpp" />
     <ClInclude Include="AvisoRasterRendererTests.hpp" />
+    <ClInclude Include="AvisoProjectionTests.hpp" />
+    <ClInclude Include="..\src\aviso\AvisoVectorRenderer.hpp" />
+    <ClInclude Include="..\src\aviso\AvisoGlyphAnalyticRenderer.hpp" />
+    <ClInclude Include="..\src\aviso\shaders\AvisoGlyphVertexShader.hpp" />
+    <ClInclude Include="..\src\aviso\shaders\AvisoGlyphPixelShader.hpp" />
+    <ClInclude Include="..\src\aviso\AvisoViewportRenderer.hpp" />
+    <ClInclude Include="..\src\aviso\AvisoProjection.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRenderScene.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterRenderer.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterSizing.hpp" />

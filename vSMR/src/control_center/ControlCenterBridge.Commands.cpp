@@ -103,7 +103,7 @@ bool VsmrControlCenterBridgeImpl::HandleInsetToggle(
 	{
 		auto windowIt = Owner->appWindows.find(id);
 		if (windowIt != Owner->appWindows.end() && windowIt->second != nullptr)
-			windowIt->second->ResetAvisoInteractionState();
+			windowIt->second->ResetAvisoInteractionState(true);
 	}
 	Owner->SaveInsetStateToAsrForAirport(Owner->getActiveAirport());
 	Owner->RequestRefresh();
