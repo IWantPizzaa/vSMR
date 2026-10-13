@@ -42,6 +42,22 @@ std::vector<std::string> RunUpdaterUrlPolicyTests()
 			"updater URL policy accepts an approved HTTPS release URL",
 			failures);
 	}
+	const std::wstring commit(40, L'a');
+	ParsedHttpsUrl groundLayoutUrl;
+	Check(TryParseAllowedHttpsUrl(
+		L"https://raw.githubusercontent.com/vaccfr/France-Ground-Layouts/" + commit +
+		L"/GeoJSON/LFPG.geojson", groundLayoutUrl),
+		"pinned official ground-layout AVISO URL is allowed", failures);
+	for (const auto& invalid : {
+		L"https://raw.githubusercontent.com/vaccfr/France-Ground-Layouts/master/GeoJSON/LFPG.geojson",
+		L"https://raw.githubusercontent.com/vaccfr/France-Ground-Layouts/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/GeoJSON/../LFPG.geojson",
+		L"https://raw.githubusercontent.com/vaccfr/France-Ground-Layouts/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/GeoJSON/LFPG.geojson?x=1",
+		L"https://raw.githubusercontent.com/other/France-Ground-Layouts/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/GeoJSON/LFPG.geojson" })
+	{
+		ParsedHttpsUrl rejected;
+		Check(!TryParseAllowedHttpsUrl(invalid, rejected),
+			"ground-layout downloads reject mutable or unexpected paths", failures);
+	}
 
 	ParsedHttpsUrl parsed;
 	Check(

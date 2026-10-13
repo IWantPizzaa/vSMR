@@ -8,6 +8,7 @@
 #include "bootstrap/loader/LoaderVersion.hpp"
 #include "bootstrap/loader/RuntimeReleaseState.hpp"
 #include "updater/UpdaterCore.hpp"
+#include "updater/GroundLayoutAviso.hpp"
 #include "updater/FileUpdater.hpp"
 
 #include <algorithm>
@@ -1008,6 +1009,12 @@ namespace
 		{
 			return false;
 		}
+		if (ReadRuntimeVersion(attempt.shadowPath) != version)
+		{
+			errorMessage = L"The selected runtime binary version does not match the installed update manifest.";
+			::DeleteFileW(attempt.shadowPath.c_str());
+			return false;
+		}
 
 		// The final path can live in the per-user Temp tree when LocalAppData is
 		// unavailable. Lease the finalized file against writers and deletion, then
@@ -1263,6 +1270,9 @@ void __declspec(dllexport) EuroScopePlugInInit(
 			ShowStartupFailure(L"The updater returned a non-absolute runtime path.");
 			return;
 		}
+		std::wstring groundLayoutMessage;
+		vsmr::updater::ground_layout_aviso::Sync(dataRoot, groundLayoutMessage);
+		if (!groundLayoutMessage.empty()) AppendBootstrapLog(groundLayoutMessage);
 
 		// Locking the selected runtime/data generation for this EuroScope session
 		std::wstring lockError;
@@ -1302,7 +1312,9 @@ void __declspec(dllexport) EuroScopePlugInInit(
 					L"Runtime started, but its pending-health marker could not be cleared; "
 					L"the updater will recover conservatively on the next launch.");
 			}
-			AppendBootstrapLog(L"Runtime activated: " + selectedRuntimePath.wstring());
+			AppendBootstrapLog(L"Runtime activated version " +
+				Utf8ToWide(ReadRuntimeVersion(runtime.shadowPath)) +
+				L" from " + selectedRuntimePath.wstring());
 			return;
 		}
 

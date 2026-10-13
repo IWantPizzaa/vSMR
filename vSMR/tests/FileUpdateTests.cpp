@@ -1,5 +1,6 @@
 #include "FileUpdateTests.hpp"
 #include "updater/FileUpdater.hpp"
+#include "updater/GroundLayoutAviso.hpp"
 #include "updater/FileUpdateTransaction.hpp"
 #include "updater/UpdaterCore.Internal.hpp"
 #include "updater/UpdaterVerification.hpp"
@@ -164,6 +165,19 @@ std::vector<std::string> RunFileUpdateTests()
         check(!up::url_policy::TryResolveAllowedRedirect(manifestUrl, L"/IWantPizzaa/vSMR/update-feed/stable/version.json", redirect), "raw redirect cannot change channel");
         {
             Fixture f;
+            const auto remote = f.options.dataRoot / L"UserData/France-Ground-Layouts";
+            fs::create_directories(remote);
+            Fixture::Put(remote / L"current.txt", "../AVISO");
+            check(up::ground_layout_aviso::ActiveDirectory(f.options.dataRoot).empty(),
+                "invalid remote pointer cannot escape the AVISO cache");
+            const std::string commit(40, 'a');
+            fs::create_directories(remote / commit / L"GeoJSON");
+            Fixture::Put(remote / L"current.txt", commit);
+            check(up::ground_layout_aviso::ActiveDirectory(f.options.dataRoot) ==
+                remote / commit / L"GeoJSON", "complete remote snapshot becomes the default directory");
+        }
+        {
+            Fixture f;
             fu::Manifest manifest;
             std::string error;
             check(fu::ParseManifest(f.manifest, manifest, error), "parses publisher schema");
@@ -174,6 +188,16 @@ std::vector<std::string> RunFileUpdateTests()
             const auto offset = protectedFile.find("vSMR_Data/default.json");
             protectedFile.replace(offset, std::strlen("vSMR_Data/default.json"), "vSMR_Data/config.json");
             check(!fu::ParseManifest(protectedFile, manifest, error), "manifest can never manage user config");
+        }
+        {
+            Fixture f;
+            fs::create_directories(f.options.testStorageDirectory);
+            Fixture::Put(f.options.testStorageDirectory / L"state.json",
+                R"({"next_check_utc":"9999-01-01T00:00:00Z"})");
+            const auto result = up::PrepareUpdateBeforeRuntimeLoad(f.options);
+            check(result.status == up::StartupStatus::Updated && result.updateActivated,
+                "each launch checks for a new runtime despite the previous check timer");
+            check(up::ConfirmRuntimeHealthy(result), "newly installed runtime confirms on this launch");
         }
         {
             Fixture f;
