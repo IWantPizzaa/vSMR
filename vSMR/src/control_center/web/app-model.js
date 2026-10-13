@@ -759,7 +759,6 @@
         avisoFile: "vSMR_DATA\\AVISO\\LFPG.geojson",
         aliasFile: "C:\\EuroScope\\Alias\\alias.txt",
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
-        showFps: true,
         rdfEnabled: true,
         uiColorTheme: "night",
         weatherAllAirports: true,

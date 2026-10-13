@@ -45,8 +45,6 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 	{ error = "Another EuroScope instance is saving these settings. Try again."; return false; }
 	VsmrProcessSync::Mutex avisoProcessLock;
 
-	bool hasStagedShowFps = false;
-	bool stagedShowFps = Owner->ShowFps;
 	bool hasStagedShowNorthIndicator = false;
 	bool stagedShowNorthIndicator = Owner->ShowNorthIndicator;
 	bool hasStagedRdfEnabled = false;
@@ -72,16 +70,6 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 				return false;
 			}
 			stagedWeatherAllAirports = settings["weatherAllAirports"].GetBool();
-		}
-		if (settings.HasMember("showFps"))
-		{
-			if (!settings["showFps"].IsBool())
-			{
-				error = "Show FPS must be a boolean setting.";
-				return false;
-			}
-			hasStagedShowFps = true;
-			stagedShowFps = settings["showFps"].GetBool();
 		}
 		if (settings.HasMember("showNorthIndicator"))
 		{
@@ -509,14 +497,6 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 	// Display settings are ASR state rather than profile JSON. Commit them only
 	// after the profiles/AVISO transaction succeeds so a failed Save changes no
 	// live or persisted display state.
-	if (hasStagedShowFps)
-	{
-		Owner->ShowFps = stagedShowFps;
-		Owner->SaveDataToAsr(
-			"ShowFps",
-			"Show FPS counter",
-			Owner->ShowFps ? "1" : "0");
-	}
 	if (hasStagedRdfEnabled)
 		ApplyRdfEnabled(stagedRdfEnabled);
 	if (hasStagedShowNorthIndicator)

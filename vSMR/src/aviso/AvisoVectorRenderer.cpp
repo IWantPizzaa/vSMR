@@ -292,20 +292,11 @@ struct VsmrAviso::AvisoVectorRenderer::Impl
 			// doubles into the current screen instead of clipping its retained mesh.
 			compiled.safeWorldBounds = (feature.maxLongitude-feature.minLongitude)*WorldUnitsPerDegree <= 1048000.0 &&
 				(feature.maxLatitude-feature.minLatitude)*WorldUnitsPerDegree <= 1048000.0;
-			compiled.paths.reserve(feature.paths.size());
+			// A detailed view may use only a fraction of an airport's paths.
+			// Compile each retained path after it survives the viewport query
+			// and screen-space culling, then reuse it across later zoom frames.
+			compiled.paths.resize(feature.paths.size());
 			compiled.fills.resize(feature.paths.size());
-			for (const auto& points : feature.paths)
-			{
-				if (!compiled.safeWorldBounds || (!feature.polygon && points.size() == 2U))
-				{
-					compiled.paths.emplace_back();
-					continue;
-				}
-				compiled.paths.push_back(Path(points, feature.polygon, [&](const AvisoPoint& point) {
-					return D2D1::Point2F(static_cast<float>((point.longitude - compiled.longitude) * WorldUnitsPerDegree),
-						static_cast<float>((point.latitude - compiled.latitude) * WorldUnitsPerDegree));
-				}));
-			}
 		}
 		std::vector<std::shared_ptr<LabelGeometry>> replacementGlyphs(request.labels->size());
 		features = request.features; labels = request.labels;
@@ -587,11 +578,21 @@ std::unique_ptr<AvisoRasterRenderResult> VsmrAviso::AvisoVectorRenderer::Render(
 				if (right < -margin || left > request.rasterWidth + margin || bottom < -margin || top > request.rasterHeight + margin)
 				{ ++impl_->stats.pathsCulled; continue; }
 				ComPtr<ID2D1PathGeometry> projected;
-				ID2D1PathGeometry* path = compiled.paths[p].Get();
+				ID2D1PathGeometry* path = nullptr;
 				if (!useRetainedGeometry)
 				{
 					projected = impl_->Path(feature.paths[p], feature.polygon, [&](const AvisoPoint& point){return project(point.longitude,point.latitude);});
 					path = projected.Get(); impl_->stats.projectedVertices += feature.paths[p].size();
+				}
+				else
+				{
+					auto& retained = compiled.paths[p];
+					if (!retained)
+						retained = impl_->Path(feature.paths[p], feature.polygon, [&](const AvisoPoint& point) {
+							return D2D1::Point2F(static_cast<float>((point.longitude - compiled.longitude) * Impl::WorldUnitsPerDegree),
+								static_cast<float>((point.latitude - compiled.latitude) * Impl::WorldUnitsPerDegree));
+						});
+					path = retained.Get();
 				}
 				++impl_->stats.pathsDrawn;
 				if (fillVisible)
@@ -767,8 +768,11 @@ std::unique_ptr<AvisoRasterRenderResult> VsmrAviso::AvisoVectorRenderer::Render(
 		D3D11_MAPPED_SUBRESOURCE mapped{};
 		Check(impl_->immediate->Map(impl_->staging.Get(),0,D3D11_MAP_READ,0,&mapped));
 		const std::size_t stride = static_cast<std::size_t>(request.rasterWidth)*4;
-		for (int y = 0; y < request.rasterHeight; ++y)
-			std::memcpy(static_cast<BYTE*>(outputBits) + y*stride,static_cast<BYTE*>(mapped.pData) + y*mapped.RowPitch,stride);
+		if (mapped.RowPitch == stride)
+			std::memcpy(outputBits,mapped.pData,stride*static_cast<std::size_t>(request.rasterHeight));
+		else
+			for (int y = 0; y < request.rasterHeight; ++y)
+				std::memcpy(static_cast<BYTE*>(outputBits) + y*stride,static_cast<BYTE*>(mapped.pData) + y*mapped.RowPitch,stride);
 		impl_->immediate->Unmap(impl_->staging.Get(),0);
 		impl_->timings.readbackMilliseconds = elapsed();
 		auto result = reusable ? std::move(reusable) : std::make_unique<AvisoRasterRenderResult>();
