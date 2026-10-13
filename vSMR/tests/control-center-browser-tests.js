@@ -695,6 +695,10 @@
       Math.abs(applyRect.height - paletteRect.height) < 1 &&
       getComputedStyle(applyAll).backgroundColor === getComputedStyle(geometryTab).backgroundColor,
       "Apply to all terrains is centered and matches the other toolbar controls");
+    expect(Boolean(geometryTab && textTab && applyAll) &&
+      [textTab, applyAll, ...paletteButtons].every(button =>
+        getComputedStyle(button).fontSize === getComputedStyle(geometryTab).fontSize),
+      "All AVISO toolbar buttons use the same font size");
     expect(Boolean(separatorRect && applyRect && paletteRect) &&
       separator?.textContent.trim() === "|" &&
       applyRect.right < separatorRect.left && separatorRect.right < paletteRect.left,
