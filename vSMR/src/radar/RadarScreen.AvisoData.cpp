@@ -2,7 +2,6 @@
 #include "shared/JsonDocument.hpp"
 #include "aviso/AvisoFeatureMetadata.hpp"
 #include "aviso/AvisoPolygonOutline.hpp"
-#include "aviso/AvisoRasterPipeline.hpp"
 #include "aviso/AvisoRenderScene.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.AvisoSupport.hpp"
@@ -1210,9 +1209,6 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	AvisoGeoJsonViewInitializedPath.clear();
 	AvisoGeoJsonLoadedWriteTime = writeTime;
 	AvisoGeoJsonLoadedConfigRevision = configRevision;
-	AvisoGeoJsonLastViewValid = false;
-	AvisoGeoJsonLastViewPath.clear();
-	AvisoGeoJsonLastViewChangeTick = 0;
 	AvisoGeoJsonLastStatTick = nowTick;
 	AvisoGeoJsonLoadAttempted = true;
 	AvisoGeoJsonLoaded = true;
@@ -1232,8 +1228,6 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	const Value* backgroundMetadata = document.HasMember("metadata") ? &document["metadata"] : nullptr;
 	AvisoBackgroundOpacities = { AvisoDocumentModel::BackgroundOpacity(backgroundMetadata, "dark"),
 		AvisoDocumentModel::BackgroundOpacity(backgroundMetadata, "light"), AvisoDocumentModel::BackgroundOpacity(backgroundMetadata, "real") };
-	if (AvisoGeoJsonRenderPipeline != nullptr)
-		AvisoGeoJsonRenderPipeline->InvalidateRequests();
 	if (loadedPathChanged)
 		ClearAvisoGeoJsonRasterCache();
 	{

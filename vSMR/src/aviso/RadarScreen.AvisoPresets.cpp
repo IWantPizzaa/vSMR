@@ -411,7 +411,8 @@ namespace
 			if (!ReadValidWindowRect(*secondary, out.secondaryArea))
 				return false;
 			out.secondaryVisible = ReadBoolMember(*secondary, "visible", true);
-			out.secondaryScale = std::clamp(ReadIntMember(*secondary, "scale", out.secondaryScale), 1, 2400);
+			ReadDoubleMember(*secondary, "scale", out.secondaryScale);
+			out.secondaryScale = std::clamp(out.secondaryScale, 1.0, 2400.0);
 			ReadDoubleMember(*secondary, "center_latitude", out.secondaryCenterLatitude);
 			ReadDoubleMember(*secondary, "center_longitude", out.secondaryCenterLongitude);
 			if (secondary->HasMember("layout_mode"))
@@ -504,7 +505,7 @@ namespace
 		AddIntMember(secondary, "bottom", preset.secondaryArea.bottom, allocator);
 		AddDoubleMember(secondary, "center_latitude", preset.secondaryCenterLatitude, allocator);
 		AddDoubleMember(secondary, "center_longitude", preset.secondaryCenterLongitude, allocator);
-		AddIntMember(secondary, "scale", std::clamp(preset.secondaryScale, 1, 2400), allocator);
+		AddDoubleMember(secondary, "scale", std::clamp(preset.secondaryScale, 1.0, 2400.0), allocator);
 		AddString(secondary, "layout_mode", LayoutModeToString(preset.secondaryLayoutMode), allocator);
 		AddIntMember(secondary, "layout_mode_id", std::clamp(preset.secondaryLayoutMode, 0, 8), allocator);
 		rapidjson::Value secondaryKey("secondary", allocator);
@@ -749,7 +750,7 @@ bool CSMRRadar::SaveAvisoPreset(
 		return false;
 
 	preset.secondaryArea = avisoWindow->m_Area;
-	preset.secondaryScale = std::clamp(avisoWindow->m_AvisoScale, 1, 2400);
+	preset.secondaryScale = std::clamp(avisoWindow->m_AvisoScale, 1.0, 2400.0);
 	preset.secondaryCenterLatitude = avisoWindow->m_AvisoCenterLatitude;
 	preset.secondaryCenterLongitude = avisoWindow->m_AvisoCenterLongitude;
 	preset.secondaryLayoutMode = std::clamp(static_cast<int>(avisoWindow->m_AvisoLayoutMode), 0, 8);
@@ -886,7 +887,6 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 		SetDisplayArea(downLeft, upRight);
 		RadarViewZoomLevel = -1;
 		InvalidateAvisoGroupRendering();
-		AvisoGeoJsonLastViewValid = false;
 	}
 
 	// Restoring the inset layout
@@ -894,14 +894,14 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 	if (avisoWindow != nullptr)
 	{
 		avisoWindow->m_Area = preset.secondaryArea;
-		avisoWindow->m_AvisoScale = std::clamp(preset.secondaryScale, 1, 2400);
+		avisoWindow->m_AvisoScale = std::clamp(preset.secondaryScale, 1.0, 2400.0);
 		avisoWindow->m_AvisoCenterLatitude = std::clamp(preset.secondaryCenterLatitude, -85.0, 85.0);
 		avisoWindow->m_AvisoCenterLongitude = preset.secondaryCenterLongitude;
 		avisoWindow->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(std::clamp(preset.secondaryLayoutMode, 0, 8));
 		avisoWindow->m_AvisoViewInitialized = true;
 		avisoWindow->m_AvisoCenterContext.clear();
 		avisoWindow->m_AvisoLinkedMainAirport.clear();
-		avisoWindow->ResetAvisoInteractionState();
+		avisoWindow->ResetAvisoInteractionState(!preset.secondaryVisible);
 		avisoWindow->InvalidateAvisoViewportRendering();
 	}
 
@@ -1256,7 +1256,7 @@ void CSMRRadar::ActivateNoAvisoPreset()
 		appWindowDisplays[appWindowId] = false;
 		const auto window = appWindows.find(appWindowId);
 		if (window != appWindows.end() && window->second != nullptr)
-			window->second->ResetAvisoInteractionState();
+			window->second->ResetAvisoInteractionState(true);
 	}
 
 	SaveInsetStateToAsrForAirport(getActiveAirport());
@@ -1409,8 +1409,8 @@ void CSMRRadar::SyncLinkedAvisoSecondaryToMainView()
 	else
 		pixPerMeter = (std::max)(pixPerMeterX, pixPerMeterY);
 
-	const int linkedScale = pixPerMeter > 0.0
-		? std::clamp(static_cast<int>(std::lround(pixPerMeter * 1852.0)), 1, 2400)
+	const double linkedScale = pixPerMeter > 0.0
+		? std::clamp(pixPerMeter * 1852.0, 1.0, 2400.0)
 		: avisoWindow->m_AvisoScale;
 
 	const bool changed =

@@ -920,6 +920,7 @@ std::string VsmrPerformance::BuildJsonReport(
 		<< ",\"mainAvisoBitmapCount\":" << snapshot.resources.mainAvisoBitmapCount
 		<< ",\"insetAvisoBitmapCount\":" << snapshot.resources.insetAvisoBitmapCount
 		<< ",\"estimatedBitmapBytes\":" << snapshot.resources.estimatedBitmapBytes
+		<< ",\"estimatedAvisoGpuImageBytes\":" << snapshot.resources.estimatedAvisoGpuImageBytes
 		<< "},\n  \"frames\": [";
 	for (std::size_t index = 0; index < snapshot.series.size(); ++index)
 	{

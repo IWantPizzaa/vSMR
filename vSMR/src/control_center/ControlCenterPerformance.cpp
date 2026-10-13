@@ -715,6 +715,7 @@ namespace VsmrControlCenterPerformance
 		graphics.AddMember("peakProcessGdiObjects", peaks.processGdiObjects, allocator);
 		AddSize(graphics, "peakVsmrCachedBitmaps", peaks.cachedBitmaps, allocator);
 		AddUint64(graphics, "estimatedBitmapBytes", snapshot.resources.estimatedBitmapBytes, allocator);
+		AddUint64(graphics, "estimatedAvisoGpuImageBytes", snapshot.resources.estimatedAvisoGpuImageBytes, allocator);
 		AddUint64(graphics, "peakEstimatedBitmapBytes", peaks.estimatedBitmapBytes, allocator);
 		AddSize(graphics, "aircraftBitmapCount", snapshot.resources.aircraftBitmapCount, allocator);
 		AddSize(graphics, "realisticIconBitmapCount", snapshot.resources.realisticIconBitmapCount, allocator);

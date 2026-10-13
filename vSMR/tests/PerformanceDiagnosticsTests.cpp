@@ -68,6 +68,14 @@ std::vector<std::string> RunPerformanceDiagnosticsTests()
 		report["frames"][1]["callbackIntervalMilliseconds"].GetDouble() == 1.0 &&
 		json.find("not display FPS") != std::string::npos,
 		"Performance report exports p99 and explicitly labels event-driven callback cadence");
+	ResourceSample resources;
+	resources.estimatedBitmapBytes = 1024;
+	resources.estimatedAvisoGpuImageBytes = 8192;
+	distribution->RecordResources(resources);
+	report.Parse(BuildJsonReport(snapshot(*distribution), "test", "TEST", "profile").c_str());
+	expect(!report.HasParseError() && report["resources"]["estimatedBitmapBytes"].GetUint64() == 1024 &&
+		report["resources"]["estimatedAvisoGpuImageBytes"].GetUint64() == 8192,
+		"Resource reports account for native GPU images separately from CPU bitmaps");
 
 	auto windowed = std::make_unique<PerformanceDiagnostics>();
 	const double now = PerformanceDiagnostics::HighResolutionMonotonicMilliseconds();
