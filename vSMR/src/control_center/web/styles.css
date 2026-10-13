@@ -2898,11 +2898,14 @@ html.host-mode .control-window.hidden {
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 }
 
+.aviso-toolbar .ui-button {
+  font-size: var(--ui-font-size);
+}
+
 .aviso-apply-all {
   justify-self: center;
   height: var(--ui-control-height);
   padding-inline: 8px;
-  font-size: var(--ui-font-size-compact);
 }
 
 .aviso-toolbar-palette-actions {
