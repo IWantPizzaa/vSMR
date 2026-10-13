@@ -764,7 +764,6 @@
         avisoFile: "vSMR_DATA\\AVISO\\LFPG.geojson",
         aliasFile: "C:\\EuroScope\\Alias\\alias.txt",
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
-        showFps: true,
         rdfEnabled: true,
         uiColorTheme: "night",
         weatherAllAirports: true,
@@ -4984,7 +4983,6 @@
     $("#settingsAvisoFile").title = settings.avisoFile;
     $("#settingsAliasFile").title = aliasFile || "No alias file found";
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
-    $("#settingsShowFps").checked = settings.showFps !== false;
     $("#settingsShowNorthIndicator").checked = settings.showNorthIndicator !== false;
     $("#settingsWeatherAirports").value = settings.weatherAllAirports !== false ? "all" : "single";
     $("#settingsRdfEnabled").checked = settings.rdfEnabled !== false;
@@ -5006,7 +5004,6 @@
       profileFile: $("#settingsProfileFile").value,
       avisoFile: $("#settingsAvisoFile").value,
       resolutionPreset: $("#settingsResolutionPreset").value || "1080p",
-      showFps: $("#settingsShowFps").checked,
       showNorthIndicator: $("#settingsShowNorthIndicator").checked,
       weatherAllAirports: $("#settingsWeatherAirports").value === "all",
       rdfEnabled: $("#settingsRdfEnabled").checked

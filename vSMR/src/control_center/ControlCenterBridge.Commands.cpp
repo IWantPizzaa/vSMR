@@ -401,15 +401,6 @@ bool VsmrControlCenterBridgeImpl::HandleSettings(
 		return false;
 	}
 
-	if (payload->HasMember("showFps") && (*payload)["showFps"].IsBool())
-	{
-		Owner->ShowFps = (*payload)["showFps"].GetBool();
-		Owner->SaveDataToAsr(
-			"ShowFps",
-			"Show FPS counter",
-			Owner->ShowFps ? "1" : "0");
-	}
-
 	if (payload->HasMember("rdfEnabled") && (*payload)["rdfEnabled"].IsBool())
 		ApplyRdfEnabled((*payload)["rdfEnabled"].GetBool());
 

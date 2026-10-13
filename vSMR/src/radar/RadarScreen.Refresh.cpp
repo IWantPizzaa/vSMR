@@ -941,91 +941,6 @@ void CSMRRadar::RenderRefreshInsets(
 		renderInsetWindow(foregroundInsetWindow);
 }
 
-void CSMRRadar::RenderRefreshFpsOverlay(
-	CDC& dc,
-	const RECT& radarArea,
-	const std::function<void(const char*)>& setRefreshStage)
-{
-	setRefreshStage("fps overlay");
-	if (ShowFps)
-	{
-		const std::string fpsText = "FPS " + std::to_string(FpsDisplayValue);
-		CFont* previousFont = RuntimeOverlayFont.GetSafeHandle() != nullptr
-			? dc.SelectObject(&RuntimeOverlayFont)
-			: nullptr;
-		const CSize fpsSize = dc.GetTextExtent(fpsText.c_str());
-		CRect fpsArea = ResolveMainAvisoRenderArea();
-		if (fpsArea.IsRectEmpty())
-			fpsArea = CRect(radarArea);
-		fpsArea.NormalizeRect();
-		auto overlapsVisibleInset = [&](const CRect& candidate, int& nextY) -> bool
-		{
-			bool overlaps = false;
-			for (const auto& display : appWindowDisplays)
-			{
-				if (!display.second)
-					continue;
-				auto windowIt = appWindows.find(display.first);
-				if (windowIt == appWindows.end() || windowIt->second == nullptr)
-					continue;
-				CRect overlap;
-				const CRect frame = windowIt->second->GetWindowFrameRect();
-				if (overlap.IntersectRect(candidate, frame) && !overlap.IsRectEmpty())
-				{
-					overlaps = true;
-					nextY = (std::max<LONG>)(nextY, frame.bottom + 4);
-				}
-				CRect preview;
-				if (windowIt->second->GetSnapPreviewRect(preview) &&
-					overlap.IntersectRect(candidate, preview) && !overlap.IsRectEmpty())
-				{
-					overlaps = true;
-					nextY = (std::max<LONG>)(nextY, preview.bottom + 4);
-				}
-			}
-			return overlaps;
-		};
-		auto findFpsPosition = [&](bool alignRight, POINT& position) -> bool
-		{
-			int y = fpsArea.top + 4;
-			for (size_t attempt = 0; attempt <= appWindows.size(); ++attempt)
-			{
-				const int x = alignRight
-					? (std::max)(fpsArea.left + 4, fpsArea.right - fpsSize.cx - 6)
-					: fpsArea.left + 6;
-				CRect candidate(x, y, x + fpsSize.cx, y + fpsSize.cy);
-				if (candidate.right > fpsArea.right || candidate.bottom > fpsArea.bottom)
-					return false;
-				int nextY = y;
-				if (!overlapsVisibleInset(candidate, nextY))
-				{
-					position = { x, y };
-					return true;
-				}
-				if (nextY <= y)
-					return false;
-				y = nextY;
-			}
-			return false;
-		};
-		POINT fpsPosition = {
-			(std::max)(fpsArea.left + 4, fpsArea.right - fpsSize.cx - 6),
-			fpsArea.top + 4
-		};
-		bool fpsPositionFound = findFpsPosition(true, fpsPosition);
-		if (!fpsPositionFound)
-			fpsPositionFound = findFpsPosition(false, fpsPosition);
-		const int previousBackgroundMode = dc.SetBkMode(TRANSPARENT);
-		const COLORREF previousTextColor = dc.SetTextColor(RGB(235, 245, 247));
-		if (fpsPositionFound)
-			dc.TextOutA(fpsPosition.x, fpsPosition.y, fpsText.c_str());
-		dc.SetTextColor(previousTextColor);
-		dc.SetBkMode(previousBackgroundMode);
-		if (previousFont != nullptr)
-			dc.SelectObject(previousFont);
-	}
-}
-
 void CSMRRadar::RecordRefreshPerformance(
 	const VsmrScene::RadarScene* frameScene,
 	RefreshPerformance& performance)
@@ -1181,17 +1096,6 @@ bool CSMRRadar::PrepareRefreshPhase(HDC hDC, int phase)
 	EnsureInsetWindowProcHook(insetHostWindow, this);
 	AvisoRefreshHostWindow.store(insetHostWindow, std::memory_order_release);
 
-	const unsigned long fpsNowTick = ::GetTickCount();
-	if (FpsLastSampleTick == 0)
-		FpsLastSampleTick = fpsNowTick;
-	++FpsFrameCount;
-	const unsigned long fpsElapsedMs = fpsNowTick - FpsLastSampleTick;
-	if (fpsElapsedMs >= 500)
-	{
-		FpsDisplayValue = static_cast<int>((static_cast<double>(FpsFrameCount) * 1000.0 / static_cast<double>(fpsElapsedMs)) + 0.5);
-		FpsFrameCount = 0;
-		FpsLastSampleTick = fpsNowTick;
-	}
 	return true;
 }
 
@@ -1418,8 +1322,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			graphics,
 			performance,
 			setRefreshStage);
-		if (!IsInsetsOnly())
-			RenderRefreshFpsOverlay(dc, RadarArea, setRefreshStage);
 
 		setRefreshStage("runtime menu");
 		RenderRuntimeMenu(hDC, graphics);

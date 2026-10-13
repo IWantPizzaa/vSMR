@@ -1260,9 +1260,6 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	// Label font size is persisted per profile in vSMR_Profiles.json.
 	// Keep ASR value untouched to avoid overriding the active profile setting.
 
-	ShowFps = true;
-	if ((p_value = GetDataFromAsr("ShowFps")) != NULL)
-		ShowFps = atoi(p_value) != 0;
 
 	AvisoColorPalette = "light";
 	AvisoPreferredColorPalette = "light";
@@ -1333,7 +1330,6 @@ void CSMRRadar::OnAsrContentToBeSaved()
 
 	SaveDataToAsr("FontSize", "vSMR font size", std::to_string(currentFontSize).c_str());
 
-	SaveDataToAsr("ShowFps", "Show FPS counter", ShowFps ? "1" : "0");
 	SaveDataToAsr("AvisoAppearanceGeneration", "Applied global AVISO appearance", GetGlobalAvisoPalette().second.c_str());
 	SaveDataToAsr(
 		"AvisoColorPalette",

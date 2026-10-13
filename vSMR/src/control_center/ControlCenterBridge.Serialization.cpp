@@ -367,7 +367,6 @@ void VsmrControlCenterBridgeImpl::BuildSettings(
 		"resolutionPreset",
 		Owner->GetSmallTargetIconBoostResolutionPreset(),
 		allocator);
-	settings.AddMember("showFps", Owner->ShowFps, allocator);
 	settings.AddMember("showNorthIndicator", Owner->ShowNorthIndicator, allocator);
 	settings.AddMember("weatherAllAirports", Owner->WeatherAllAirports, allocator);
 	// The RDF worker is plug-in wide, so the Control Center also reflects a state

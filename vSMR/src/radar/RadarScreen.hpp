@@ -256,10 +256,6 @@ private:
 	CRect RuntimeMenuPopupArea = { 0, 0, 0, 0 };
 	CRect RuntimeMenuSecondaryPopupArea = { 0, 0, 0, 0 };
 	int RuntimeMenuPopupScrollOffset = 0;
-	unsigned long FpsLastSampleTick = 0;
-	int FpsFrameCount = 0;
-	int FpsDisplayValue = 0;
-	bool ShowFps = true;
 	bool ShowNorthIndicator = true;
 	POINT NorthIndicatorOffset = { -1, -1 };
 	void LoadNorthIndicatorStateFromAsr();
@@ -350,8 +346,6 @@ private:
 	void RenderRefreshInsets(
 		HDC hDC, Gdiplus::Graphics& graphics, RefreshPerformance& performance,
 		const RefreshStageCallback& setRefreshStage);
-	void RenderRefreshFpsOverlay(
-		CDC& dc, const RECT& radarArea, const RefreshStageCallback& setRefreshStage);
 	void RenderRefreshTagsAndRdf(
 		HDC hDC, Gdiplus::Graphics& graphics, CDC& dc, RefreshPerformance& performance,
 		const RefreshStageCallback& setRefreshStage);
