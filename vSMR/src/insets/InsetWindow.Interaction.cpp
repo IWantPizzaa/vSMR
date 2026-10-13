@@ -2,15 +2,14 @@
 #include "insets/InsetWindow.hpp"
 #include "insets/InsetWindow.Internal.hpp"
 #include "insets/WeatherInsetLayout.hpp"
+#include "aviso/AvisoProjection.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 
 using VsmrInsetWindowInternal::AvisoCornerRectForFrameSize;
-using VsmrInsetWindowInternal::AvisoCosLatitude;
 using VsmrInsetWindowInternal::ClampAvisoDividerX;
 using VsmrInsetWindowInternal::ClampAvisoDividerY;
-using VsmrInsetWindowInternal::ClampAvisoLatitude;
 using VsmrInsetWindowInternal::InsetCloseButtonRect;
 using VsmrInsetWindowInternal::InsetContentRect;
 using VsmrInsetWindowInternal::InsetFilterButtonRect;
@@ -29,12 +28,8 @@ using VsmrInsetWindowInternal::ResizeAvisoSplitRectToPoint;
 using VsmrInsetWindowInternal::ResizeRegionHasHorizontalEdge;
 using VsmrInsetWindowInternal::ResizeRegionHasVerticalEdge;
 using VsmrInsetWindowInternal::ResolveAvisoSnapTarget;
-using VsmrInsetWindowInternal::RotateAvisoVector;
 using VsmrInsetWindowInternal::TryParseInsetResizeObjectId;
 using VsmrInsetWindowInternal::kAvisoCornerSnapThresholdPx;
-using VsmrInsetWindowInternal::kAvisoLatMetersPerDegree;
-using VsmrInsetWindowInternal::kAvisoLonMetersPerDegree;
-using VsmrInsetWindowInternal::kAvisoMetersPerNm;
 using VsmrInsetWindowInternal::kAvisoMinLayoutHeight;
 using VsmrInsetWindowInternal::kAvisoMinLayoutWidth;
 using VsmrInsetWindowInternal::kAvisoSnapThresholdPx;
@@ -43,7 +38,7 @@ using VsmrInsetWindowInternal::kInsetDragThresholdPx;
 using VsmrInsetWindowInternal::kTimerContentHeight;
 using VsmrInsetWindowInternal::kTimerContentWidth;
 
-void CInsetWindow::ResetAvisoInteractionState()
+void CInsetWindow::ResetAvisoInteractionState(bool releaseRendering)
 {
 	m_AvisoTagHits.Clear();
 	m_AvisoRightPanning = false;
@@ -53,6 +48,8 @@ void CInsetWindow::ResetAvisoInteractionState()
 	m_AvisoScreenAreaValid = false;
 	m_AvisoRenderWindow = nullptr;
 	CancelWindowInteraction();
+	if (releaseRendering)
+		CancelAvisoViewportRender();
 }
 
 bool CInsetWindow::IsPointInside(POINT Pt) const
@@ -840,16 +837,20 @@ bool CInsetWindow::UpdateAvisoPan(POINT Pt)
 		return true;
 	}
 
-	const int scale = (std::max)(1, m_AvisoScale);
-	const double metersPerPixel = kAvisoMetersPerNm / static_cast<double>(scale);
-	const double lonDegreesPerPixel = metersPerPixel / (kAvisoLonMetersPerDegree * AvisoCosLatitude(m_AvisoDragStartLatitude));
-	const double latDegreesPerPixel = metersPerPixel / kAvisoLatMetersPerDegree;
-	const Gdiplus::PointF drag = RotateAvisoVector(
-		static_cast<double>(Pt.x - m_OffsetDrag.x),
-		static_cast<double>(Pt.y - m_OffsetDrag.y),
-		-GetAvisoViewportScreenRotationDeg());
-	m_AvisoCenterLongitude = m_AvisoDragStartLongitude - (static_cast<double>(drag.X) * lonDegreesPerPixel);
-	m_AvisoCenterLatitude = ClampAvisoLatitude(m_AvisoDragStartLatitude + (static_cast<double>(drag.Y) * latDegreesPerPixel));
+	CRect viewportRect = GetWindowContentRect();
+	viewportRect.NormalizeRect();
+	const VsmrAviso::InsetProjection startProjection{
+		{ m_AvisoDragStartLongitude, m_AvisoDragStartLatitude },
+		{ static_cast<double>(viewportRect.left) + viewportRect.Width() * 0.5,
+			static_cast<double>(viewportRect.top) + viewportRect.Height() * 0.5 },
+		(std::max)(1.0, m_AvisoScale),
+		GetAvisoViewportScreenRotationDeg()
+	};
+	const auto anchor = startProjection.Unproject({ static_cast<double>(m_OffsetDrag.x), static_cast<double>(m_OffsetDrag.y) });
+	const auto projection = startProjection.AnchoredAt(anchor,
+		{ static_cast<double>(Pt.x), static_cast<double>(Pt.y) }, startProjection.scale, startProjection.rotationDegrees);
+	m_AvisoCenterLongitude = projection.center.longitude;
+	m_AvisoCenterLatitude = projection.center.latitude;
 	return true;
 }
 
@@ -899,7 +900,8 @@ void CInsetWindow::FloatAvisoViewport(POINT Pt, const RECT* layoutBounds)
 
 bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
 {
-	if (!SupportsPanAndZoom() || !IsPointInside(Pt) || !std::isfinite(scaleMultiplier) || scaleMultiplier <= 0.0)
+	if (!SupportsPanAndZoom() || !IsPointInside(Pt) || !std::isfinite(scaleMultiplier) ||
+		scaleMultiplier <= 0.0 || scaleMultiplier == 1.0)
 		return false;
 
 	CRect viewportRect = GetWindowContentRect();
@@ -914,10 +916,9 @@ bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
 		const int minimumScale = 1;
 		const int maximumScale = 2400;
 		const int oldScale = std::clamp(m_Scale, minimumScale, maximumScale);
-		int newScale = std::clamp(
-			static_cast<int>(std::lround(static_cast<double>(oldScale) * scaleMultiplier)),
-			minimumScale,
-			maximumScale);
+		int newScale = static_cast<int>(std::lround(std::clamp(
+			static_cast<double>(oldScale) * scaleMultiplier,
+			static_cast<double>(minimumScale), static_cast<double>(maximumScale))));
 		if (newScale == oldScale)
 			newScale = std::clamp(oldScale + (scaleMultiplier > 1.0 ? 1 : -1), minimumScale, maximumScale);
 		if (newScale == oldScale)
@@ -946,31 +947,20 @@ bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
 		return true;
 	}
 
-	const POINT centerPoint = viewportRect.CenterPoint();
-	const Gdiplus::PointF localOffset = RotateAvisoVector(
-		static_cast<double>(Pt.x - centerPoint.x),
-		static_cast<double>(Pt.y - centerPoint.y),
-		-GetAvisoViewportScreenRotationDeg());
-	const double dx = static_cast<double>(localOffset.X);
-	const double dy = static_cast<double>(localOffset.Y);
-
-	const int oldScale = (std::max)(1, m_AvisoScale);
-	const double oldMetersPerPixel = kAvisoMetersPerNm / static_cast<double>(oldScale);
-	const double oldLonDegreesPerPixel = oldMetersPerPixel / (kAvisoLonMetersPerDegree * AvisoCosLatitude(m_AvisoCenterLatitude));
-	const double oldLatDegreesPerPixel = oldMetersPerPixel / kAvisoLatMetersPerDegree;
-	const double anchorLongitude = m_AvisoCenterLongitude + (dx * oldLonDegreesPerPixel);
-	const double anchorLatitude = m_AvisoCenterLatitude - (dy * oldLatDegreesPerPixel);
-
-	const int newScale = std::clamp(static_cast<int>(std::lround(static_cast<double>(oldScale) * scaleMultiplier)), 20, 2400);
-	if (newScale == oldScale)
+	const VsmrAviso::InsetProjection oldProjection{
+		{ m_AvisoCenterLongitude, m_AvisoCenterLatitude },
+		{ static_cast<double>(viewportRect.left) + viewportWidth * 0.5,
+			static_cast<double>(viewportRect.top) + viewportHeight * 0.5 },
+		m_AvisoScale,
+		GetAvisoViewportScreenRotationDeg()
+	};
+	VsmrAviso::InsetProjection newProjection;
+	if (!oldProjection.TryZoomedByAt(
+		{ static_cast<double>(Pt.x), static_cast<double>(Pt.y) }, scaleMultiplier, newProjection))
 		return false;
-
-	m_AvisoScale = newScale;
-	const double newMetersPerPixel = kAvisoMetersPerNm / static_cast<double>(newScale);
-	const double newLonDegreesPerPixel = newMetersPerPixel / (kAvisoLonMetersPerDegree * AvisoCosLatitude(anchorLatitude));
-	const double newLatDegreesPerPixel = newMetersPerPixel / kAvisoLatMetersPerDegree;
-	m_AvisoCenterLongitude = anchorLongitude - (dx * newLonDegreesPerPixel);
-	m_AvisoCenterLatitude = ClampAvisoLatitude(anchorLatitude + (dy * newLatDegreesPerPixel));
+	m_AvisoScale = newProjection.scale;
+	m_AvisoCenterLongitude = newProjection.center.longitude;
+	m_AvisoCenterLatitude = newProjection.center.latitude;
 	m_AvisoScrollSelected = true;
 	return true;
 }

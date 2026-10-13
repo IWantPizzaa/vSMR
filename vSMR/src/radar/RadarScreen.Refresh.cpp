@@ -360,7 +360,6 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRefreshSceneAndRend
 		AvisoGeoJsonRenderDisabled = true;
 		AvisoGeoJsonRenderDisabledPath = disabledPath;
 		ClearAvisoGeoJsonRasterCache();
-		AvisoGeoJsonLastViewValid = false;
 		Logger::info("AVISO GeoJSON render disabled path=" + disabledPath + " reason=" + reason);
 	};
 

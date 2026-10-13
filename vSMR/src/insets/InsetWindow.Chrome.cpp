@@ -1,5 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "insets/InsetWindow.Internal.hpp"
+#include "aviso/AvisoProjection.hpp"
 #include "radar/RadarScreen.hpp"
 #include "rendering/NorthIndicator.hpp"
 #include <chrono>
@@ -110,6 +111,67 @@ namespace VsmrInsetWindowInternal
 		if (radarScreen == nullptr)
 			return 0.0;
 
+		// An independently zoomed inset follows the host screen's complete
+		// projection basis, not short integer-pixel probes at its moving center.
+		// This keeps its angle unchanged when only the inset center/scale changes.
+		CPosition displayA;
+		CPosition displayB;
+		radarScreen->GetDisplayArea(&displayA, &displayB);
+		const double minLatitude = (std::min)(displayA.m_Latitude, displayB.m_Latitude);
+		const double maxLatitude = (std::max)(displayA.m_Latitude, displayB.m_Latitude);
+		const double minLongitude = (std::min)(displayA.m_Longitude, displayB.m_Longitude);
+		const double maxLongitude = (std::max)(displayA.m_Longitude, displayB.m_Longitude);
+		if (std::isfinite(minLatitude) && std::isfinite(maxLatitude) &&
+			std::isfinite(minLongitude) && std::isfinite(maxLongitude) &&
+			maxLatitude > minLatitude && maxLongitude > minLongitude)
+		{
+			// Recover the same double-precision host basis used by main AVISO.
+			// Rounded forward POINTs can change the angle when a host zoom moves
+			// their fractional positions, even though the actual rotation is fixed.
+			CRect fullRadarArea(radarScreen->GetRadarArea());
+			CRect chatArea(radarScreen->GetChatArea());
+			fullRadarArea.NormalizeRect();
+			chatArea.NormalizeRect();
+			if (!chatArea.IsRectEmpty())
+				fullRadarArea.bottom = chatArea.top;
+			fullRadarArea.NormalizeRect();
+			if (!fullRadarArea.IsRectEmpty())
+			{
+				const auto samplePixels = VsmrAviso::InverseProjectionSamplePoints(
+					{ static_cast<double>(fullRadarArea.left), static_cast<double>(fullRadarArea.top) },
+					fullRadarArea.Width(), fullRadarArea.Height());
+				std::array<VsmrAviso::ProjectionSample, 9> samples;
+				for (std::size_t i = 0; i < samples.size(); ++i)
+				{
+					const POINT pixel{ static_cast<LONG>(samplePixels[i].X), static_cast<LONG>(samplePixels[i].Y) };
+					const CPosition geographic = radarScreen->ConvertCoordFromPixelToPosition(pixel);
+					samples[i] = { samplePixels[i], { geographic.m_Longitude, geographic.m_Latitude } };
+				}
+				VsmrAviso::BilinearProjection preciseProjection;
+				if (VsmrAviso::TryRecoverAffineProjection(
+					{ minLongitude, minLatitude, maxLongitude, maxLatitude }, samples, preciseProjection))
+				{
+					const auto& vertical = preciseProjection.Vertical();
+					if (std::hypot(vertical.X, vertical.Y) >= 2.0)
+						return std::atan2(-vertical.X, vertical.Y) * 180.0 / 3.14159265358979323846;
+				}
+			}
+			// Nonlinear or rounded SDK inverse coordinates retain the complete
+			// forward-corner basis rather than accepting an approximate affine fit.
+			const auto project = [&](double lat, double lon) {
+				CPosition position;
+				position.m_Latitude = lat;
+				position.m_Longitude = lon;
+				const POINT point = radarScreen->ConvertCoordFromPositionToPixel(position);
+				return VsmrAviso::PointD{ static_cast<double>(point.x), static_cast<double>(point.y) };
+			};
+			double rotation = 0.0;
+			if (VsmrAviso::TryNorthRotationFromCorners(
+				project(maxLatitude, minLongitude), project(maxLatitude, maxLongitude),
+				project(minLatitude, minLongitude), project(minLatitude, maxLongitude), rotation))
+				return rotation;
+		}
+		// Invalid/degenerate host extents retain the existing projection fallback.
 		return VsmrRendering::ProjectedNorthRotation(latitude, longitude,
 			[&](double lat, double lon) {
 				CPosition position;

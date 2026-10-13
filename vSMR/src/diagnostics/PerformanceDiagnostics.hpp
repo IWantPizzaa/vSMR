@@ -140,6 +140,9 @@ namespace VsmrPerformance
 		std::size_t mainAvisoBitmapCount = 0;
 		std::size_t insetAvisoBitmapCount = 0;
 		std::uint64_t estimatedBitmapBytes = 0;
+		// D3D working/readback images and bounded GPU glyph buffers; separate
+		// from the CPU/GDI bitmap estimate and excluding driver allocations.
+		std::uint64_t estimatedAvisoGpuImageBytes = 0;
 	};
 
 	struct RefreshReasonCounters

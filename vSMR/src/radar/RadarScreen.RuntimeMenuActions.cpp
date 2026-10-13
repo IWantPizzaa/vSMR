@@ -372,7 +372,7 @@ bool CSMRRadar::HandleRuntimeInsetClick(const char* id)
 			{
 				auto window = appWindows.find(appWindowId);
 				if (window != appWindows.end() && window->second != nullptr)
-					window->second->ResetAvisoInteractionState();
+					window->second->ResetAvisoInteractionState(true);
 			}
 			SaveInsetStateToAsrForAirport(getActiveAirport());
 		}

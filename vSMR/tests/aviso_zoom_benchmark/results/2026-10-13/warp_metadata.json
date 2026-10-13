@@ -1,0 +1,170 @@
+﻿{
+    "started_utc":  "2026-10-13T06:36:21.3603183Z",
+    "base_commit":  "a76b379e03a33aadc8d936c1f41034b2a6f62cb7",
+    "configuration":  "Release Win32 v145 /O2 /W4 /WX",
+    "frames":  16,
+    "quick":  true,
+    "quality_only":  false,
+    "backend_requested":  "WARP",
+    "text_mode":  "NativeAnalytic",
+    "binary_sha256":  "F3897E77A5DAB61C645D72181E95F726146B3F0F57C136DC82C74412E381B540",
+    "sources":  [
+                    {
+                        "path":  "vSMR/src/radar/RadarScreenTypes.hpp",
+                        "sha256":  "2769140CCAD00591E21079120DEBF70473CB6A260C28C82C16773D2ACCC9F3E8"
+                    },
+                    {
+                        "path":  "vSMR/BuildHardening.props",
+                        "sha256":  "A29AA0E499D946A07EA4DF7787A6103B21F685AB13D68C0BCC5CD550A1F7A8A4"
+                    },
+                    {
+                        "path":  "vSMR/vSMR.vcxproj",
+                        "sha256":  "68EE02B1361AA428A8B9C196AB30E1F1A1B6AD0D633486C580C9EB7F9A10D9E4"
+                    },
+                    {
+                        "path":  "vSMR/tests/vSMR.Tests.vcxproj",
+                        "sha256":  "B3BCC26727A75AB374C87C4277C9B1F616F76435E09AEE7FE38315211E4F6350"
+                    },
+                    {
+                        "path":  "vSMR/src/aviso/AvisoRasterRenderer.cpp",
+                        "sha256":  "04E84B7E4F347C3E57FFBED1E02DC1F3621E1ADACE29FDCC2B9B4004BCCE6F78"
+                    },
+                    {
+                        "path":  "vSMR/src/aviso/AvisoRasterBlitter.cpp",
+                        "sha256":  "ECB4A92A1247C60B3407DECF90664A75867F607F9BAADBC8CAE73FC1A400FFD0"
+                    },
+                    {
+                        "path":  "vSMR/src/aviso/AvisoRasterSizing.hpp",
+                        "sha256":  "DA03744B9D01A9F3DEFBC8281D82BDD8CF2FF3BC920CC9DFB017248F4AA1E371"
+                    },
+                    {
+                        "path":  "vSMR/src/aviso/AvisoRenderScene.cpp",
+                        "sha256":  "3EBA8D8E1AD8C778AB8143FBB94835BE337F383CADDCECF05FC4A67B8E74EC03"
+                    },
+                    {
+                        "path":  "vSMR/src/aviso/AvisoProjection.hpp",
+                        "sha256":  "DF09C7EDF2629EC038DD91932A67DFCB65EACC6BCE8DE11EA7287B7060196B63"
+                    },
+                    {
+                        "path":  "vSMR/src/aviso/AvisoVectorRenderer.cpp",
+                        "sha256":  "AC4C5A1B42AA80EA138C12671F080F5F935986509757517D37C3E46744C78DE8"
+                    },
+                    {
+                        "path":  "vSMR/src/aviso/AvisoVectorRenderer.hpp",
+                        "sha256":  "A6A51B5187E30FC16FDC5B7A5742ABED262A8A2447867B403BC65241D2226F0E"
+                    },
+                    {
+                        "path":  "vSMR/src/aviso/AvisoGlyphAnalyticRenderer.cpp",
+                        "sha256":  "B0368FEA6E48CEFF88812A1E8165C56F3D184D4A46DC55293A3D68B651968F61"
+                    },
+                    {
+                        "path":  "vSMR/src/aviso/AvisoGlyphAnalyticRenderer.hpp",
+                        "sha256":  "057DB640598B4C06A18319571AE71904DFB41407C14BD44A116C004F2798EE9F"
+                    },
+                    {
+                        "path":  "vSMR/src/aviso/AvisoViewportRenderer.cpp",
+                        "sha256":  "9E703A5F59005471AA7EA4DF32A353BFB936C2511B17A319DC1A95A4193AF90A"
+                    },
+                    {
+                        "path":  "vSMR/src/aviso/shaders/AvisoGlyph.hlsl",
+                        "sha256":  "58CED6FA51E76A6862AA34E3819D1A6ACD6F2B3A6D141A7C9DE1D36A7629DA34",
+                        "final_sha256":  "CE2A01528E07198CC8303E8477761A0C65DCB34BEAF7C2987020B3DA4227E895",
+                        "change_note":  "Post-measurement formatting only: trailing spaces/tabs and an extra HLSL EOF blank removed; generator now normalizes generated header whitespace. Measured sha256 is preserved. Compiled shader byte arrays are identical before and after."
+                    },
+                    {
+                        "path":  "vSMR/src/aviso/shaders/AvisoGlyphVertexShader.hpp",
+                        "sha256":  "7B1E7E144099915E8ED75131DD8C177BB1828F06484543B94E366D6B78D8DBE4",
+                        "final_sha256":  "A2E403EA7A076B7D81F892BB42CAA31BE8F16EE23976DEF8C9F531C327C3DF85",
+                        "change_note":  "Post-measurement formatting only: trailing spaces/tabs and an extra HLSL EOF blank removed; generator now normalizes generated header whitespace. Measured sha256 is preserved. Compiled shader byte arrays are identical before and after."
+                    },
+                    {
+                        "path":  "vSMR/src/aviso/shaders/AvisoGlyphPixelShader.hpp",
+                        "sha256":  "88C14552EBAB1C9CEE3E2F9775CFBEA6E4D0D11B0A69375A91D4BB2452081284",
+                        "final_sha256":  "22763375BAD884F4C19B0CA2D6B02794A52EC01A67A505D39825F980916809E1",
+                        "change_note":  "Post-measurement formatting only: trailing spaces/tabs and an extra HLSL EOF blank removed; generator now normalizes generated header whitespace. Measured sha256 is preserved. Compiled shader byte arrays are identical before and after."
+                    },
+                    {
+                        "path":  "vSMR/src/aviso/shaders/compile_aviso_glyph_shaders.ps1",
+                        "sha256":  "286CB371A805D963B54934A87A776101ED64C9ACEA620268C135E6F9E6FA8311",
+                        "final_sha256":  "A78548863967B09AE22C9FC2993895836101252544831C85620AFC237CC54A2A",
+                        "change_note":  "Post-measurement formatting only: trailing spaces/tabs and an extra HLSL EOF blank removed; generator now normalizes generated header whitespace. Measured sha256 is preserved. Compiled shader byte arrays are identical before and after."
+                    },
+                    {
+                        "path":  "vSMR/src/aviso/AvisoViewportRenderer.hpp",
+                        "sha256":  "67F9E3440073FF440893E856B83A5FD6EFFDED7094428707BAD966F128B57EF5"
+                    },
+                    {
+                        "path":  "vSMR/tests/aviso_benchmark/BenchmarkFixture.cpp",
+                        "sha256":  "26F9D5B90FE06BAE8DD8BB7FBD06AA83A1F524A54E81ED48066F5C003B8EA127"
+                    },
+                    {
+                        "path":  "vSMR/tests/aviso_zoom_benchmark/AvisoZoomBenchmark.cpp",
+                        "sha256":  "698A1A30120CA5ACE4CC7D2BAB73BF1B6F10B91AC0D1E7E9C19A702848D72AF9"
+                    },
+                    {
+                        "path":  "vSMR/tests/aviso_zoom_benchmark/vSMR.AvisoZoomBenchmark.vcxproj",
+                        "sha256":  "ACCEF9DECD85654DA6BDE91FD4DD8DCDC6F6D6F751900FA4AB899E4B758ED196"
+                    },
+                    {
+                        "path":  "vSMR/tests/aviso_zoom_benchmark/run_zoom_benchmark.ps1",
+                        "sha256":  "349DD41B904C0461182D8003E969628E7330A16C732D4AF09CD5552ECEA40D1B"
+                    }
+                ],
+    "fixtures":  [
+                     {
+                         "path":  "vSMR/data/AVISO/LFPG.geojson",
+                         "sha256":  "D58276D983154AE1853E7A4EBA845B6B8285AE003F8FC29C618F7AB10D4AE436"
+                     },
+                     {
+                         "path":  "vSMR/data/AVISO/LFPO.geojson",
+                         "sha256":  "44B681A05676741E53486B119F466DF671D8FFA201AB7B0E2F4EA7EC8D32B08E"
+                     },
+                     {
+                         "path":  "vSMR/data/AVISO/LFML.geojson",
+                         "sha256":  "66A181B0F48465696B457AB241238EF5898E84B94F9050C01733AFB1EFC3BCD8"
+                     }
+                 ],
+    "finished_utc":  "2026-10-13T06:36:36.1105768Z",
+    "exit_code":  0,
+    "processor":  [
+                      {
+                          "Name":  "AMD Ryzen 7 9800X3D 8-Core Processor           "
+                      }
+                  ],
+    "graphics":  [
+                     {
+                         "Name":  "Parsec Virtual Display Adapter",
+                         "DriverVersion":  "0.45.0.0"
+                     },
+                     {
+                         "Name":  "AMD Radeon(TM) Graphics",
+                         "DriverVersion":  "32.0.21042.62"
+                     },
+                     {
+                         "Name":  "NVIDIA GeForce RTX 5070",
+                         "DriverVersion":  "32.0.16.1088"
+                     }
+                 ],
+    "operating_system":  {
+                             "Caption":  "Microsoft Windows 11 Home",
+                             "Version":  "10.0.26200",
+                             "BuildNumber":  "26200"
+                         },
+    "post_run_formatting":  {
+                                "note":  "Four shader source/generator/header files were normalized after measurement. Original source sha256 values and measured executable fingerprint are retained; final_sha256 values identify the committed formatting. All other measured inputs and the benchmark executable remain unchanged.",
+                                "shader_bytecode_before_after_identical":  true,
+                                "shader_generation_check":  "compile_aviso_glyph_shaders.ps1 -Check passed after normalization",
+                                "shader_bytecode_sha256":  [
+                                                               {
+                                                                   "stage":  "Vertex",
+                                                                   "bytes":  532,
+                                                                   "sha256":  "0D278DAD7E62FA7E7F87689AB54F38C8E39C52E1EFC0DFF676CF413ACBD659FE"
+                                                               },
+                                                               {
+                                                                   "stage":  "Pixel",
+                                                                   "bytes":  20752,
+                                                                   "sha256":  "4267F28218D62A66DF47AB3F43D46BE38487DAE29B1CC68714C51298F6FEF42D"
+                                                               }
+                                                           ]
+                            }
+}

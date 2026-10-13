@@ -4,6 +4,7 @@
 
 #include "SharedRenderingTests.hpp"
 #include "aviso/AvisoRasterBlitter.hpp"
+#include "aviso/AvisoViewportRenderer.hpp"
 #include "rendering/TagRenderer.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
 #include "rendering/DisplayScale.hpp"
@@ -315,6 +316,100 @@ namespace
 		HBITMAP bitmap_ = nullptr;
 		std::uint32_t* pixels_ = nullptr;
 	};
+
+	void TestAvisoNativeViewport(std::vector<std::string>& failures)
+	{
+		using namespace VsmrAviso;
+		using namespace VsmrRadarTypes;
+		DibBitmap canvas(96, 72);
+		HDC dc = ::CreateCompatibleDC(nullptr);
+		if (!canvas.IsValid() || dc == nullptr)
+		{
+			if (dc) ::DeleteDC(dc);
+			failures.emplace_back("Native AVISO test surface is available");
+			return;
+		}
+		const auto previous = ::SelectObject(dc, canvas.Handle());
+		{
+			Gdiplus::Graphics graphics(dc);
+			AvisoViewportRenderer renderer(AvisoVectorRenderer::Backend::Software);
+			const RECT viewport{ 13, 11, 77, 59 };
+			AvisoFeature feature;
+			feature.polygon = true;
+			feature.fillColor = Gdiplus::Color(255, 255, 255, 255);
+			feature.groupIds = { "surface" };
+			feature.minLongitude = feature.minLatitude = 0.25;
+			feature.maxLongitude = feature.maxLatitude = 0.75;
+			feature.paths = { { { 0.25, 0.25 }, { 0.75, 0.25 }, { 0.75, 0.75 }, { 0.25, 0.75 } } };
+			AvisoRasterRenderRequest request;
+			request.features = std::make_shared<const std::vector<AvisoFeature>>(std::vector<AvisoFeature>{feature});
+			AvisoLabel label;
+			label.position = { 0.85, 0.5 };
+			label.text = L"O";
+			label.groupIds = { "surface" };
+			label.textColor = Gdiplus::Color(255, 240, 40, 40);
+			request.labels = std::make_shared<const std::vector<AvisoLabel>>(std::vector<AvisoLabel>{label});
+			request.rasterWidth = 64;
+			request.rasterHeight = 48;
+			request.backgroundColor = Gdiplus::Color(255, 0, 0, 0);
+			request.displayMaxLongitude = request.displayMaxLatitude = 1.0;
+			request.renderMaxLongitude = request.renderMaxLatitude = 1.0;
+			request.scaleX = 64;
+			request.scaleY = 48;
+			auto mapping = [&](double offset) {
+				return BilinearProjection::FromCorners({ 0, 0, 1, 1 },
+					PointD{13 + offset, 11}, PointD{77 + offset, 11},
+					PointD{13 + offset, 59}, PointD{77 + offset, 59});
+			};
+			request.preciseProjection = mapping(0);
+			int backgrounds = 0;
+			const auto paintBackground = [&]() { ++backgrounds; };
+			std::fill(canvas.Pixels(), canvas.Pixels() + 96 * 72, 0xFF0000FFU);
+			const auto initial = renderer.Draw(graphics, dc, viewport, request, paintBackground);
+			Check(initial.drawn && initial.buildAttempted && !initial.cacheHit && !initial.hardware,
+				"Native AVISO software fallback renders a new viewport immediately", failures);
+			if (initial.drawn)
+			{
+				::GdiFlush();
+				Check(::GetPixel(dc, 31, 35) == RGB(255, 255, 255) &&
+					::GetPixel(dc, 14, 12) == RGB(0, 0, 0) && ::GetPixel(dc, 12, 35) == RGB(0, 0, 255),
+					"Native geometry uses the absolute geographic mapping and clips to the offset viewport", failures);
+				Check(renderer.CachedGlyphPoints() > 0,
+					"Native map labels compile their configured outlines for the current view", failures);
+				Check(renderer.UsesNativeLabels(),
+					"The production default uses analytic native font coverage on WARP", failures);
+				const auto settled = renderer.Draw(graphics, dc, viewport, request, paintBackground);
+				Check(settled.drawn && settled.cacheHit && !settled.buildAttempted && backgrounds == 0,
+					"Settled opaque AVISO reuses exact pixels without a background fill", failures);
+				request.preciseProjection = mapping(8.25);
+				const auto moved = renderer.Draw(graphics, dc, viewport, request, paintBackground);
+				::GdiFlush();
+				Check(moved.drawn && moved.buildAttempted && !moved.cacheHit &&
+					::GetPixel(dc, 31, 35) == RGB(0, 0, 0) && ::GetPixel(dc, 45, 35) == RGB(255, 255, 255),
+					"A subpixel projection change invalidates the native cache even when legacy corners match", failures);
+				request.groupVisibility = std::make_shared<const std::unordered_map<std::string, bool>>(
+					std::unordered_map<std::string, bool>{ { "surface", false } });
+				const auto hidden = renderer.Draw(graphics, dc, viewport, request, paintBackground);
+				::GdiFlush();
+				Check(hidden.drawn && hidden.buildAttempted && ::GetPixel(dc, 45, 35) == RGB(0, 0, 0),
+					"Native rendering honors an immutable visibility snapshot", failures);
+				const auto savedFeatures = request.features;
+				request.features.reset();
+				const auto rejected = renderer.Draw(graphics, dc, viewport, request, paintBackground);
+				Check(!rejected.drawn && rejected.buildAttempted && renderer.Bitmap() == nullptr,
+					"A failed replacement never publishes stale native-view pixels", failures);
+				request.features = savedFeatures;
+				const auto recovered = renderer.Draw(graphics, dc, viewport, request, paintBackground);
+				Check(recovered.drawn && recovered.buildAttempted && !recovered.cacheHit,
+					"Native rendering recovers after an invalid replacement request", failures);
+			}
+			renderer.ReleaseResources();
+			Check(renderer.Bitmap() == nullptr && renderer.BitmapBytes() == 0 && renderer.EstimatedGpuImageBytes() == 0,
+				"Closing a viewport releases its native image and device resources", failures);
+		}
+		::SelectObject(dc, previous);
+		::DeleteDC(dc);
+	}
 
 	void TestRuntimeMenuSurface(std::vector<std::string>& failures)
 	{
@@ -1126,6 +1221,7 @@ std::vector<std::string> RunSharedRenderingBehaviorTests()
 		TestNorthIndicator(failures);
 		TestRuntimeMenuSurface(failures);
 		TestAvisoRasterBlending(failures);
+		TestAvisoNativeViewport(failures);
 		TestResolutionScaling(failures);
 		TestTagBackgroundFitsLines(failures);
 		TestRuleFieldRendering(failures);

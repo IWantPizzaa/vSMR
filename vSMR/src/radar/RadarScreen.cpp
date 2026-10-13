@@ -1,8 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "platform/windows/ResourceIds.h"
 #include "bootstrap/RuntimeContext.hpp"
-#include "aviso/AvisoRasterBlitter.hpp"
-#include "aviso/AvisoRasterPipeline.hpp"
+#include "aviso/AvisoViewportRenderer.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.AvisoRuntimeState.hpp"
 #include "radar/RadarScreen.Registry.hpp"
@@ -352,16 +351,14 @@ void CSMRRadar::SamplePerformanceResourcesIfDue(bool force)
 		addBitmap(aircraftIcon.second.get(), sample.aircraftBitmapCount);
 	for (const auto& realisticIcon : RealisticIconBitmapCache)
 		addBitmap(realisticIcon.second.bitmap.get(), sample.realisticIconBitmapCount);
-	if (AvisoGeoJsonRasterCache != nullptr)
+	if (AvisoNativeViewportRenderer != nullptr && AvisoNativeViewportRenderer->Bitmap() != nullptr)
 	{
-		sample.mainAvisoBitmapCount = 1;
+		++sample.mainAvisoBitmapCount;
 		++sample.ownedBitmapCount;
-		if (AvisoGeoJsonRasterWidth > 0 && AvisoGeoJsonRasterHeight > 0)
-		{
-			sample.estimatedBitmapBytes += static_cast<std::uint64_t>(AvisoGeoJsonRasterWidth) *
-				static_cast<std::uint64_t>(AvisoGeoJsonRasterHeight) * 4ULL;
-		}
+		sample.estimatedBitmapBytes += AvisoNativeViewportRenderer->BitmapBytes();
 	}
+	if (AvisoNativeViewportRenderer != nullptr)
+		sample.estimatedAvisoGpuImageBytes += AvisoNativeViewportRenderer->EstimatedGpuImageBytes();
 	for (const auto& appWindow : appWindows)
 	{
 		if (appWindow.second == nullptr)
@@ -371,6 +368,7 @@ void CSMRRadar::SamplePerformanceResourcesIfDue(bool force)
 		sample.insetAvisoBitmapCount += bitmapCount;
 		sample.ownedBitmapCount += bitmapCount;
 		sample.estimatedBitmapBytes += estimatedBytes;
+		sample.estimatedAvisoGpuImageBytes += appWindow.second->GetAvisoPerformanceGpuImageBytes();
 	}
 	PerformanceDiagnostics.RecordResources(sample);
 }
@@ -380,10 +378,7 @@ VsmrPerformance::Snapshot CSMRRadar::GetPerformanceSnapshot(
 	std::size_t maximumSeriesPoints)
 {
 	SamplePerformanceResourcesIfDue();
-	const VsmrPerformance::AvisoQueueDepth mainQueue =
-		AvisoGeoJsonRenderPipeline != nullptr
-		? AvisoGeoJsonRenderPipeline->QueueDepth()
-		: VsmrPerformance::AvisoQueueDepth{};
+	const VsmrPerformance::AvisoQueueDepth mainQueue{};
 	VsmrPerformance::AvisoQueueDepth insetQueue;
 	for (const auto& appWindow : appWindows)
 	{

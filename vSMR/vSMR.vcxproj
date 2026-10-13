@@ -92,7 +92,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ModuleDefinitionFile>resources\vSMR.def</ModuleDefinitionFile>
-      <AdditionalDependencies>..\lib\EuroScopePlugInDll.lib;winmm.lib;msimg32.lib</AdditionalDependencies>
+      <AdditionalDependencies>..\lib\EuroScopePlugInDll.lib;winmm.lib;msimg32.lib;d2d1.lib;d3d11.lib;dxgi.lib</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>/IGNORE:4099 %(AdditionalOptions)</AdditionalOptions>
@@ -140,7 +140,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
       <ModuleDefinitionFile>resources\vSMR.def</ModuleDefinitionFile>
-      <AdditionalDependencies>..\lib\EuroScopePlugInDll.lib;winmm.lib;msimg32.lib</AdditionalDependencies>
+      <AdditionalDependencies>..\lib\EuroScopePlugInDll.lib;winmm.lib;msimg32.lib;d2d1.lib;d3d11.lib;dxgi.lib</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>/IGNORE:4099 /NODEFAULTLIB:LIBCMT %(AdditionalOptions)</AdditionalOptions>
@@ -167,6 +167,9 @@
     <ClCompile Include="src\aviso\AvisoRasterPipeline.cpp" />
     <ClCompile Include="src\aviso\AvisoRenderScene.cpp" />
     <ClCompile Include="src\aviso\AvisoRasterRenderer.cpp" />
+    <ClCompile Include="src\aviso\AvisoVectorRenderer.cpp" />
+    <ClCompile Include="src\aviso\AvisoGlyphAnalyticRenderer.cpp" />
+    <ClCompile Include="src\aviso\AvisoViewportRenderer.cpp" />
     <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp" />
     <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp" />
     <ClCompile Include="src\config\RuntimeConfig.cpp" />
@@ -289,6 +292,12 @@
     <ClInclude Include="src\aviso\AvisoRasterPipeline.hpp" />
     <ClInclude Include="src\aviso\AvisoRenderScene.hpp" />
     <ClInclude Include="src\aviso\AvisoRasterRenderer.hpp" />
+    <ClInclude Include="src\aviso\AvisoVectorRenderer.hpp" />
+    <ClInclude Include="src\aviso\AvisoGlyphAnalyticRenderer.hpp" />
+    <ClInclude Include="src\aviso\shaders\AvisoGlyphVertexShader.hpp" />
+    <ClInclude Include="src\aviso\shaders\AvisoGlyphPixelShader.hpp" />
+    <ClInclude Include="src\aviso\AvisoViewportRenderer.hpp" />
+    <ClInclude Include="src\aviso\AvisoProjection.hpp" />
     <ClInclude Include="src\aviso\AvisoRasterSizing.hpp" />
     <ClInclude Include="src\aviso\AvisoRasterGeometry.hpp" />
     <ClInclude Include="src\aviso\AvisoPolygonOutline.hpp" />
@@ -492,6 +501,8 @@
     <None Include="tools\create_release_package.ps1" />
     <None Include="tools\build_config_defaults.ps1" />
     <None Include="tools\create_update_feed.ps1" />
+    <None Include="src\aviso\shaders\AvisoGlyph.hlsl" />
+    <None Include="src\aviso\shaders\compile_aviso_glyph_shaders.ps1" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="resources\PluginResources.rc" />

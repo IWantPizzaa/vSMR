@@ -40,6 +40,7 @@
 #include "SharedRenderingTests.hpp"
 #include "PerformanceDiagnosticsTests.hpp"
 #include "AvisoRasterRendererTests.hpp"
+#include "AvisoProjectionTests.hpp"
 #include "AuditRegressionTests.hpp"
 #include "PluginBridgeTests.hpp"
 #include "TagColorRuleTests.hpp"
@@ -2024,6 +2025,8 @@ int wmain(int argc, wchar_t** argv)
 	for (const std::string& failure : RunPerformanceDiagnosticsTests())
 		Expect(false, failure);
 	for (const std::string& failure : RunAvisoRasterRendererTests())
+		Expect(false, failure);
+	for (const std::string& failure : RunAvisoProjectionTests())
 		Expect(false, failure);
 	TestSharedGroundState();
 	TestRapidJsonUtilities();
