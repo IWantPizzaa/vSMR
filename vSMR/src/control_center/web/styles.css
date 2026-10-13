@@ -2895,7 +2895,7 @@ html.host-mode .control-window.hidden {
 }
 
 .aviso-toolbar {
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .aviso-toolbar .ui-button {
@@ -2903,7 +2903,6 @@ html.host-mode .control-window.hidden {
 }
 
 .aviso-apply-all {
-  justify-self: center;
   height: var(--ui-control-height);
   padding-inline: 8px;
 }
