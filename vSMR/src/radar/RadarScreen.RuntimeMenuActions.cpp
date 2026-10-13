@@ -416,17 +416,6 @@ bool CSMRRadar::HandleRuntimeInsetClick(const char* id)
 		resetInsetWindow(1);
 		return true;
 	}
-	if (std::strcmp(id, "runtime.inset.reset.weather") == 0)
-	{
-		resetInsetWindow(APPWINDOW_WEATHER - APPWINDOW_BASE);
-		return true;
-	}
-	if (std::strcmp(id, "runtime.inset.reset.timer") == 0)
-	{
-		resetInsetWindow(APPWINDOW_TIMER - APPWINDOW_BASE);
-		return true;
-	}
-
 	return false;
 }
 

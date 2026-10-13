@@ -839,8 +839,8 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		} insetRows[] = {
 			{ "runtime.inset.aviso", "runtime.inset.reset.aviso", "AVISO", avisoWindowId },
 			{ "runtime.inset.srw1", "runtime.inset.reset.srw1", "SRW 1", 1 },
-			{ "runtime.inset.weather", "runtime.inset.reset.weather", "Weather", weatherWindowId },
-			{ "runtime.inset.timer", "runtime.inset.reset.timer", "Timer", timerWindowId }
+			{ "runtime.inset.weather", nullptr, "Weather", weatherWindowId },
+			{ "runtime.inset.timer", nullptr, "Timer", timerWindowId }
 		};
 		const CRect insetListArea(
 			radar.RuntimeMenuPopupArea.left + kPopupPadding,
@@ -868,22 +868,26 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 				radar.RuntimeMenuPopupArea.right - kPopupPadding,
 				contentTop + kPopupRowHeight);
 			CRect visibilityArea(rowArea);
-			visibilityArea.right -= 45;
+			if (inset.resetId != nullptr)
+				visibilityArea.right -= 51;
 			drawChoiceRow(entry, visibilityArea);
-			CRect resetArea(
-				visibilityArea.right + 3,
-				rowArea.top + 3,
-				rowArea.right,
-				rowArea.bottom - 3);
-			DrawRoundedRect(
-				hdc,
-				resetArea,
-				PointInside(resetArea, mouseLocation) ? palette.buttonHover : palette.buttonBackground,
-				palette.outerBorder,
-				kControlCornerDiameter);
-			::SelectObject(hdc, actionFont);
-			DrawTextEllipsis(hdc, resetArea, "Reset", palette.text, DT_CENTER);
-			addPopupScreenObject(inset.resetId, resetArea, "Reset this inset view");
+			if (inset.resetId != nullptr)
+			{
+				CRect resetArea(
+					visibilityArea.right + 4,
+					rowArea.top + 4,
+					rowArea.right - 7,
+					rowArea.bottom - 4);
+				DrawRoundedRect(
+					hdc,
+					resetArea,
+					PointInside(resetArea, mouseLocation) ? palette.buttonHover : palette.buttonBackground,
+					palette.outerBorder,
+					kControlCornerDiameter);
+				::SelectObject(hdc, actionFont);
+				DrawTextEllipsis(hdc, resetArea, "Reset", palette.text, DT_CENTER);
+				addPopupScreenObject(inset.resetId, resetArea, "Reset this inset view");
+			}
 			contentTop += kPopupRowHeight;
 		}
 		::RestoreDC(hdc, insetListClipState);
