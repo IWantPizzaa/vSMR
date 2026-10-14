@@ -15,6 +15,16 @@ namespace VsmrAviso
 	class AvisoGlyphAnalyticRenderer final
 	{
 	public:
+		struct Timings
+		{
+			double setupMilliseconds = 0.0;
+			double meshMilliseconds = 0.0;
+			double packMilliseconds = 0.0;
+			double drawMilliseconds = 0.0;
+			double fillMilliseconds = 0.0;
+			double haloMilliseconds = 0.0;
+			double binMilliseconds = 0.0;
+		};
 		struct Instance
 		{
 			ID2D1PathGeometry* outline = nullptr;
@@ -45,6 +55,7 @@ namespace VsmrAviso
 		std::uint64_t GpuImageBytes() const noexcept;
 		std::uint64_t EstimatedImageBytes() const noexcept { return GpuImageBytes(); }
 		std::uint64_t GpuBufferBytes() const noexcept;
+		const Timings& LastTimings() const noexcept;
 		bool GlyphAreaCentroid(ID2D1Factory* factory, ID2D1PathGeometry* outline,
 			D2D1_POINT_2F& centroid, double& area) noexcept;
 		void Clear() noexcept;

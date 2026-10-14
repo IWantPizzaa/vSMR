@@ -17,6 +17,7 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <sstream>
 #include <stdexcept>
 
 using namespace Gdiplus;
@@ -381,6 +382,21 @@ namespace
         const double cold = Milliseconds(started);
         std::cout << "  " << name << " vector hardware=" << status.hardware << ", cold=" << cold << " ms" << std::endl;
         std::cout << "  backend=" << viewport.BackendDescription() << std::endl;
+        const auto coldTimings = viewport.LastTimings();
+        const auto coldStats = viewport.LastStats();
+        stages << name << ",-1," << status.cacheHit << ',' << coldTimings.prepareMilliseconds << ','
+            << coldTimings.geometryMilliseconds << ',' << coldTimings.labelMilliseconds << ','
+            << coldTimings.flushMilliseconds << ',' << coldTimings.readbackMilliseconds << ','
+            << status.buildMilliseconds << ',' << cold << ',' << coldStats.glyphCacheHits << ','
+            << coldStats.glyphCacheMisses << ',' << coldStats.featureCandidates << ','
+            << coldStats.labelCandidates << ',' << coldStats.pathsDrawn << ','
+            << coldStats.projectedVertices << ',' << viewport.CachedGlyphPoints() << ','
+            << viewport.EstimatedGpuImageBytes() << ',' << viewport.CachedNativeMeshBytes() << ','
+            << viewport.UsesNativeLabels() << ',' << viewport.LastVisibleLabelCount() << ','
+            << coldTimings.glyphMilliseconds << ',' << coldTimings.meshSetupMilliseconds << ','
+            << coldTimings.meshBuildMilliseconds << ',' << coldTimings.meshPackMilliseconds << ','
+            << coldTimings.meshDrawMilliseconds << ',' << coldTimings.meshFillMilliseconds << ','
+            << coldTimings.meshHaloMilliseconds << ',' << coldTimings.meshBinMilliseconds << '\n';
         std::vector<double> oldRebuild, oldPreview, changed, unchanged;
         Difference oldHandoff, newHandoff;
         double alignment = 0, cursorError = 0;
@@ -446,7 +462,11 @@ namespace
                 << counters.glyphCacheHits << ',' << counters.glyphCacheMisses << ',' << counters.featureCandidates << ','
                 << counters.labelCandidates << ',' << counters.pathsDrawn << ',' << counters.projectedVertices << ','
                 << viewport.CachedGlyphPoints() << ',' << viewport.EstimatedGpuImageBytes() << ','
-                << viewport.CachedNativeMeshBytes() << ',' << viewport.UsesNativeLabels() << ',' << viewport.LastVisibleLabelCount() << '\n';
+                << viewport.CachedNativeMeshBytes() << ',' << viewport.UsesNativeLabels() << ',' << viewport.LastVisibleLabelCount() << ','
+                << timings.glyphMilliseconds << ',' << timings.meshSetupMilliseconds << ','
+                << timings.meshBuildMilliseconds << ',' << timings.meshPackMilliseconds << ','
+                << timings.meshDrawMilliseconds << ',' << timings.meshFillMilliseconds << ','
+                << timings.meshHaloMilliseconds << ',' << timings.meshBinMilliseconds << '\n';
             if (TextMode != VsmrAviso::AvisoVectorRenderer::TextMode::Vector && viewport.LastVisibleLabelCount() != 0)
                 Require(viewport.UsesNativeLabels(),"A nonempty native label batch silently used vector fallback");
             if (i == frames / 3)
@@ -997,39 +1017,64 @@ int main(int argc, char** argv)
         const int frames = argc > 3 ? (std::max)(8, std::stoi(argv[3])) : 32;
         bool quick = false;
         bool qualityOnly = false;
+        std::vector<double> zoomLevels{ 1.0, 5.0 };
+        std::vector<std::string> airports{ "LFPG", "LFPO", "LFML" };
+        std::vector<std::string> palettes{ "dark", "light", "real" };
         auto backend = VsmrAviso::AvisoVectorRenderer::Backend::Hardware;
         for (int i = 4; i < argc; ++i)
         {
-            if (std::string(argv[i]) == "--quick") quick = true;
-            if (std::string(argv[i]) == "--software") backend = VsmrAviso::AvisoVectorRenderer::Backend::Software;
-            if (std::string(argv[i]) == "--vector-reference") TextMode = VsmrAviso::AvisoVectorRenderer::TextMode::Vector;
-            if (std::string(argv[i]) == "--native-analytic") TextMode = VsmrAviso::AvisoVectorRenderer::TextMode::NativeAnalytic;
-            if (std::string(argv[i]) == "--quality-only") qualityOnly = true;
+            const std::string argument(argv[i]);
+            if (argument == "--quick") quick = true;
+            if (argument == "--software") backend = VsmrAviso::AvisoVectorRenderer::Backend::Software;
+            if (argument == "--vector-reference") TextMode = VsmrAviso::AvisoVectorRenderer::TextMode::Vector;
+            if (argument == "--native-analytic") TextMode = VsmrAviso::AvisoVectorRenderer::TextMode::NativeAnalytic;
+            if (argument == "--quality-only") qualityOnly = true;
+            auto parseList = [&](const char* prefix, std::vector<std::string>& result) {
+                const std::string option(prefix);
+                if (argument.rfind(option, 0) != 0) return;
+                result.clear();
+                std::istringstream input(argument.substr(option.size()));
+                std::string value;
+                while (std::getline(input, value, ',')) result.push_back(value);
+                Require(!result.empty(), "Empty benchmark selection");
+            };
+            parseList("--airports=", airports);
+            parseList("--palettes=", palettes);
+            if (argument.rfind("--zoom=", 0) == 0)
+            {
+                const double zoom = std::stod(argument.substr(7));
+                Require(std::isfinite(zoom) && zoom > 0.0, "Invalid benchmark zoom");
+                zoomLevels = { zoom };
+            }
         }
+        for (const auto& airport : airports)
+            Require(airport.size() == 4 && std::all_of(airport.begin(), airport.end(), [](char ch) { return ch >= 'A' && ch <= 'Z'; }), "Invalid airport code");
+        for (const auto& palette : palettes)
+            Require(palette == "dark" || palette == "light" || palette == "real", "Invalid palette");
         fs::create_directories(output);
         std::ofstream csv(output / "zoom_measurements.csv");
         std::ofstream stages(output / "zoom_stages.csv");
-        stages << std::setprecision(9) << "scene,frame,cache_hit,prepare_ms,geometry_ms,label_ms,flush_ms,readback_ms,build_ms,total_frame_ms,glyph_hits,glyph_misses,feature_candidates,label_candidates,paths_drawn,projected_vertices,cached_glyph_points,estimated_gpu_image_bytes,cached_native_glyph_bytes,native_labels_used,visible_labels\n";
+        stages << std::setprecision(9) << "scene,frame,cache_hit,prepare_ms,geometry_ms,label_ms,flush_ms,readback_ms,build_ms,total_frame_ms,glyph_hits,glyph_misses,feature_candidates,label_candidates,paths_drawn,projected_vertices,cached_glyph_points,estimated_gpu_image_bytes,cached_native_glyph_bytes,native_labels_used,visible_labels,glyph_ms,mesh_setup_ms,mesh_build_ms,mesh_pack_ms,mesh_draw_ms,mesh_fill_ms,mesh_halo_ms,mesh_bin_ms\n";
         csv << std::setprecision(9) << "scene,operation,frames,old_mean_ms,new_mean_ms,old_median_ms,new_median_ms,old_p95_ms,new_p95_ms,old_max_ms,new_max_ms,old_handoff_differing_pixels,old_handoff_max_channel,old_handoff_mean_channel,new_handoff_differing_pixels,new_handoff_max_channel,new_handoff_mean_channel,old_max_affine_alignment_error_px,cursor_anchor_error_px,new_cold_ms,hardware,old_cold_ms\n";
         if (!ProbeMarker(csv, output, backend)) exitCode = 2;
         if (!ProbeVisualStateSwaps(csv, backend)) exitCode = 2;
         if (!ProbeMembershipCopies(csv, backend)) exitCode = 2;
         if (!ProbeGlyphPhysicalCentroid(output, backend)) exitCode = 2;
         if (TextMode != VsmrAviso::AvisoVectorRenderer::TextMode::Vector && !ProbeGlyphRendering(output, backend)) exitCode = 2;
-        for (const char* airport : qualityOnly ? std::vector<const char*>{} : std::vector<const char*>{ "LFPG", "LFPO", "LFML" })
+        for (const auto& airport : qualityOnly ? std::vector<std::string>{} : airports)
         {
-            const fs::path path = data / (std::string(airport) + ".geojson");
+            const fs::path path = data / (airport + ".geojson");
             const Fixture fixture = LoadFixture(path);
-            for (double zoom : { 1.0, 5.0 })
-                for (const char* palette : { "dark", "light", "real" })
+            for (double zoom : zoomLevels)
+                for (const auto& palette : palettes)
                 {
-                    if (quick && (zoom > 1 || std::string(palette) != "dark")) continue;
+                    if (quick && (zoom > 1 || palette != "dark")) continue;
                     auto request = MakeRequest(fixture, path, zoom, zoom > 1 ? 23.0 : 0.0, 1920, 1080);
                     request.colorPalette = palette;
-                    const std::string name = std::string(airport) + (zoom > 1 ? "_detail_rotated_" : "_whole_") + palette;
+                    const std::string name = airport + (zoom > 1 ? "_detail_rotated_" : "_whole_") + palette;
                     if (!RunScene(fixture, output, name, std::move(request), frames, csv, stages, backend)) exitCode = 2;
                 }
-            if (std::string(airport) == "LFPG")
+            if (airport == "LFPG")
             {
                 auto request = MakeRequest(fixture, path, 1, 0, 1920, 1080);
                 if (!ProbeTransparent(request, csv, output, backend)) exitCode = 2;

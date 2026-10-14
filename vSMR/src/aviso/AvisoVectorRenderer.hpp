@@ -17,6 +17,14 @@ namespace VsmrAviso
 			double labelMilliseconds = 0.0;
 			double flushMilliseconds = 0.0;
 			double readbackMilliseconds = 0.0;
+			double glyphMilliseconds = 0.0;
+			double meshSetupMilliseconds = 0.0;
+			double meshBuildMilliseconds = 0.0;
+			double meshPackMilliseconds = 0.0;
+			double meshDrawMilliseconds = 0.0;
+			double meshFillMilliseconds = 0.0;
+			double meshHaloMilliseconds = 0.0;
+			double meshBinMilliseconds = 0.0;
 		};
 		enum class Backend { Hardware, Software };
 		enum class TextMode { Vector, NativeAnalytic };

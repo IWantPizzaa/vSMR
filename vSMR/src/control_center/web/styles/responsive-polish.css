@@ -1,6 +1,6 @@
 /* Responsive adaptations only; base component rules live with their owners. */
 
-@container rules (max-width: 480px) {
+@container rules (max-width: 440px) {
   .rule-editor-summary-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
