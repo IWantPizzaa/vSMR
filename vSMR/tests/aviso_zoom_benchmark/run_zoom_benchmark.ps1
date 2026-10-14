@@ -6,9 +6,17 @@ param(
     [switch]$Software,
     [switch]$VectorReference,
     [switch]$NativeAnalytic,
-    [switch]$QualityOnly
+    [switch]$QualityOnly,
+    [string]$Airports = '',
+    [string]$Palettes = '',
+    [double]$Zoom = 0
 )
 $ErrorActionPreference = 'Stop'
+$airportNames = @($Airports.Split(',', [StringSplitOptions]::RemoveEmptyEntries))
+$paletteNames = @($Palettes.Split(',', [StringSplitOptions]::RemoveEmptyEntries))
+if ($airportNames.Where({ $_ -cnotmatch '^[A-Z]{4}$' }).Count -gt 0) { throw 'Airports must be comma-separated ICAO codes.' }
+if ($paletteNames.Where({ $_ -cnotin @('dark', 'light', 'real') }).Count -gt 0) { throw 'Palettes must be dark, light or real.' }
+if ($Zoom -lt 0 -or [double]::IsInfinity($Zoom) -or [double]::IsNaN($Zoom)) { throw 'Zoom must be a finite positive value.' }
 $workspaceDirectory = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..\..')).Path
 if (!$OutputDirectory) { $OutputDirectory = Join-Path $workspaceDirectory 'artifacts\aviso-zoom-benchmark' }
 if (!$SkipBuild) {
@@ -25,6 +33,9 @@ if ($Software) { $benchmarkArguments += '--software' }
 if ($VectorReference) { $benchmarkArguments += '--vector-reference' }
 if ($NativeAnalytic) { $benchmarkArguments += '--native-analytic' }
 if ($QualityOnly) { $benchmarkArguments += '--quality-only' }
+if ($airportNames.Count -gt 0) { $benchmarkArguments += '--airports=' + ($airportNames -join ',') }
+if ($paletteNames.Count -gt 0) { $benchmarkArguments += '--palettes=' + ($paletteNames -join ',') }
+if ($Zoom -gt 0) { $benchmarkArguments += '--zoom=' + $Zoom.ToString([Globalization.CultureInfo]::InvariantCulture) }
 $sourcePaths = @(
     'vSMR/src/radar/RadarScreenTypes.hpp', 'vSMR/BuildHardening.props',
     'vSMR/vSMR.vcxproj', 'vSMR/tests/vSMR.Tests.vcxproj',
@@ -45,7 +56,7 @@ $sourceHashes = foreach ($relativePath in $sourcePaths) {
     $digest = Get-FileHash -LiteralPath (Join-Path $workspaceDirectory $relativePath) -Algorithm SHA256
     [ordered]@{ path = $relativePath; sha256 = $digest.Hash }
 }
-$fixtureHashes = foreach ($airport in @('LFPG', 'LFPO', 'LFML')) {
+$fixtureHashes = foreach ($airport in $(if ($airportNames.Count -gt 0) { $airportNames } else { @('LFPG', 'LFPO', 'LFML') })) {
     $relativePath = "vSMR/data/AVISO/$airport.geojson"
     $digest = Get-FileHash -LiteralPath (Join-Path $workspaceDirectory $relativePath) -Algorithm SHA256
     [ordered]@{ path = $relativePath; sha256 = $digest.Hash }
@@ -55,6 +66,7 @@ $runMetadata = [ordered]@{
     base_commit = (& git -C $workspaceDirectory rev-parse HEAD)
     configuration = 'Release Win32 v145 /O2 /W4 /WX'
     frames = $Frames; quick = [bool]$Quick; quality_only = [bool]$QualityOnly
+    airports = @($airportNames); palettes = @($paletteNames); zoom = $Zoom
     backend_requested = $(if ($Software) { 'WARP' } else { 'Hardware' })
     text_mode = $(if ($VectorReference -and !$NativeAnalytic) { 'Vector' } else { 'NativeAnalytic' })
     binary_sha256 = (Get-FileHash -LiteralPath $executablePath -Algorithm SHA256).Hash

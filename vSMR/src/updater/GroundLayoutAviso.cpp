@@ -134,6 +134,13 @@ namespace vsmr::updater::ground_layout_aviso
 			return Parse(bytes, document) && String(document, "type") == "FeatureCollection" &&
 				document.HasMember("features") && document["features"].IsArray();
 		}
+
+		bool ReadySnapshot(const fs::path& root, const std::string& commit)
+		{
+			std::vector<std::uint8_t> marker;
+			return ReadFile(root / fs::u8path(commit) / L"snapshot-ready.txt", 40, marker) &&
+				std::string(marker.begin(), marker.end()) == commit;
+		}
 	}
 
 	fs::path ActiveDirectory(const fs::path& dataRoot)
@@ -161,12 +168,18 @@ namespace vsmr::updater::ground_layout_aviso
 				HANDLE handle = INVALID_HANDLE_VALUE;
 				~Lock() { if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle); }
 			} lock;
+			const bool hasCachedSnapshot = !ActiveDirectory(dataRoot).empty();
 			while (GetTickCount64() - started < StartupBudgetMs)
 			{
 				lock.handle = CreateFileW((root / L"sync.lock").c_str(), GENERIC_READ | GENERIC_WRITE,
 					0, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 				if (lock.handle != INVALID_HANDLE_VALUE) break;
 				if (GetLastError() != ERROR_SHARING_VIOLATION) break;
+				if (hasCachedSnapshot)
+				{
+					message = L"Another ground-layout update is running; using cached AVISO.";
+					return true;
+				}
 				Sleep(100);
 			}
 			if (lock.handle == INVALID_HANDLE_VALUE)
@@ -190,6 +203,17 @@ namespace vsmr::updater::ground_layout_aviso
 				if (treeMember != commitMember->value.MemberEnd()) treeSha = String(treeMember->value, "sha");
 			}
 			if (!Hex40(commit) || !Hex40(treeSha)) { message = L"Invalid ground-layout commit."; return false; }
+			// The ready marker is published only after every file of that immutable
+			// commit has been validated and saved. When master still points to it, avoid
+			// fetching the full Git tree and rehashing every GeoJSON on every launch.
+			const fs::path active = ActiveDirectory(dataRoot);
+			if (!active.empty() && active.parent_path().filename() == fs::u8path(commit) &&
+				ReadySnapshot(root, commit))
+			{
+				message = L"France-Ground-Layouts AVISO already current at commit " +
+					std::wstring(commit.begin(), commit.end()) + L".";
+				return true;
+			}
 			const auto treeResponse = Get(std::wstring(ApiRoot) + L"git/trees/" +
 				std::wstring(treeSha.begin(), treeSha.end()) + L"?recursive=1", started, 4 * 1024 * 1024);
 			rapidjson::Document treeJson;
@@ -253,6 +277,11 @@ namespace vsmr::updater::ground_layout_aviso
 				if (!WriteAtomic(target, bytes)) { message = L"Could not save ground-layout AVISO cache."; return false; }
 			}
 			const std::vector<std::uint8_t> pointer(commit.begin(), commit.end());
+			if (!WriteAtomic(root / fs::u8path(commit) / L"snapshot-ready.txt", pointer))
+			{
+				message = L"Could not mark ground-layout AVISO cache as complete.";
+				return false;
+			}
 			if (!WriteAtomic(root / L"current.txt", pointer)) { message = L"Could not activate ground-layout AVISO cache."; return false; }
 			message = L"France-Ground-Layouts AVISO ready at commit " + std::wstring(commit.begin(), commit.end()) + L".";
 			return true;

@@ -7,6 +7,8 @@
 #include <wrl/client.h>
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <climits>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -22,6 +24,10 @@ namespace
 	constexpr std::uint64_t VertexBudget = 64ULL * 1024ULL * 1024ULL;
 	constexpr std::uint64_t ImageBudget = 320ULL * 1024ULL * 1024ULL;
 	constexpr float CurveTolerance = 1.0f / 64.0f;
+	// A 1/32-pixel widened outline keeps halo coverage visually stable while
+	// avoiding the expensive sub-1/64-pixel curves on first compilation.
+	constexpr float HaloWidenTolerance = 1.0f / 32.0f;
+	constexpr float HaloTessellationTolerance = CurveTolerance;
 	constexpr float BinSize = 4.0f;
 
 	void Check(HRESULT status)
@@ -65,11 +71,12 @@ namespace
 		std::vector<D2D1_TRIANGLE> triangles_;
 	};
 
-	std::vector<D2D1_TRIANGLE> Tessellate(ID2D1Geometry* geometry, std::uint64_t byteBudget)
+	std::vector<D2D1_TRIANGLE> Tessellate(ID2D1Geometry* geometry, std::uint64_t byteBudget,
+		float tolerance = CurveTolerance)
 	{
 		ComPtr<TriangleSink> sink;
 		sink.Attach(new TriangleSink(static_cast<std::size_t>(byteBudget / sizeof(D2D1_TRIANGLE))));
-		Check(geometry->Tessellate(nullptr, CurveTolerance, sink.Get()));
+		Check(geometry->Tessellate(nullptr, tolerance, sink.Get()));
 		Check(sink->Close());
 		return sink->Take();
 	}
@@ -150,44 +157,62 @@ struct VsmrAviso::AvisoGlyphAnalyticRenderer::Impl
 			binColumns = static_cast<UINT>(columns); binRows = static_cast<UINT>(rows);
 			const std::size_t count = static_cast<std::size_t>(binColumns)*binRows;
 			const std::uint64_t triangleBytes = Bytes();
-			if (triangleBytes > MeshBudget || count > (MeshBudget-triangleBytes)/sizeof(BinRange) ||
-				count > MeshBudget/(2U*sizeof(std::vector<std::uint32_t>))) throw E_OUTOFMEMORY;
+			if (triangleBytes > MeshBudget || count > (MeshBudget-triangleBytes)/sizeof(BinRange)) throw E_OUTOFMEMORY;
 			const auto referenceBudget = (MeshBudget-triangleBytes-count*sizeof(BinRange))/sizeof(std::uint32_t);
-			std::vector<std::vector<std::uint32_t>> fillIds(count), haloIds(count);
-			std::uint64_t references = 0;
-			for (const auto* triangles : {&fill,&halo})
-			{
-				auto& ids = triangles == &fill ? fillIds : haloIds;
-				const UINT first = triangles == &fill ? 0U : static_cast<UINT>(fill.size());
-				for (std::size_t index = 0; index < triangles->size(); ++index)
+			bins.resize(count);
+			// Count first, then write directly into contiguous ranges. This preserves
+			// triangle order without allocating two small vectors for every bin.
+			auto visitReferences = [&](const auto& visit) {
+				for (const auto* triangles : {&fill,&halo})
 				{
-					const auto& triangle = (*triangles)[index];
-					// Pixel centers in a bin can cover triangles half a pixel beyond
-					// its boundary. This guard keeps every fractional anchor exact.
-					const float left = (std::min)({triangle.point1.x,triangle.point2.x,triangle.point3.x})-0.5f;
-					const float right = (std::max)({triangle.point1.x,triangle.point2.x,triangle.point3.x})+0.5f;
-					const float top = (std::min)({triangle.point1.y,triangle.point2.y,triangle.point3.y})-0.5f;
-					const float bottom = (std::max)({triangle.point1.y,triangle.point2.y,triangle.point3.y})+0.5f;
-					const UINT x0 = static_cast<UINT>(std::clamp(std::floor((left-binOriginX)/BinSize),0.0f,float(binColumns-1U)));
-					const UINT x1 = static_cast<UINT>(std::clamp(std::floor((right-binOriginX)/BinSize),0.0f,float(binColumns-1U)));
-					const UINT y0 = static_cast<UINT>(std::clamp(std::floor((top-binOriginY)/BinSize),0.0f,float(binRows-1U)));
-					const UINT y1 = static_cast<UINT>(std::clamp(std::floor((bottom-binOriginY)/BinSize),0.0f,float(binRows-1U)));
-					const std::uint64_t added = static_cast<std::uint64_t>(x1-x0+1U)*(y1-y0+1U);
-					if (added > referenceBudget-references) throw E_OUTOFMEMORY;
-					references += added;
-					for (UINT y = y0; y <= y1; ++y) for (UINT x = x0; x <= x1; ++x)
-						ids[static_cast<std::size_t>(y)*binColumns+x].push_back(first+static_cast<UINT>(index));
+					const bool isHalo = triangles == &halo;
+					const UINT first = isHalo ? static_cast<UINT>(fill.size()) : 0U;
+					for (std::size_t index = 0; index < triangles->size(); ++index)
+					{
+						const auto& triangle = (*triangles)[index];
+						// Pixel centers in a bin can cover triangles half a pixel beyond
+						// its boundary. This guard keeps every fractional anchor exact.
+						const float left = (std::min)({triangle.point1.x,triangle.point2.x,triangle.point3.x})-0.5f;
+						const float right = (std::max)({triangle.point1.x,triangle.point2.x,triangle.point3.x})+0.5f;
+						const float top = (std::min)({triangle.point1.y,triangle.point2.y,triangle.point3.y})-0.5f;
+						const float bottom = (std::max)({triangle.point1.y,triangle.point2.y,triangle.point3.y})+0.5f;
+						const UINT x0 = static_cast<UINT>(std::clamp(std::floor((left-binOriginX)/BinSize),0.0f,float(binColumns-1U)));
+						const UINT x1 = static_cast<UINT>(std::clamp(std::floor((right-binOriginX)/BinSize),0.0f,float(binColumns-1U)));
+						const UINT y0 = static_cast<UINT>(std::clamp(std::floor((top-binOriginY)/BinSize),0.0f,float(binRows-1U)));
+						const UINT y1 = static_cast<UINT>(std::clamp(std::floor((bottom-binOriginY)/BinSize),0.0f,float(binRows-1U)));
+						for (UINT y = y0; y <= y1; ++y) for (UINT x = x0; x <= x1; ++x)
+							visit(static_cast<std::size_t>(y)*binColumns+x,first+static_cast<UINT>(index),isHalo);
+					}
 				}
-			}
-			bins.reserve(count); triangleIds.reserve(static_cast<std::size_t>(references));
+			};
+			std::uint64_t references = 0;
+			visitReferences([&](std::size_t cell, UINT, bool isHalo) {
+				if (references >= referenceBudget) throw E_OUTOFMEMORY;
+				++references;
+				auto& amount = isHalo ? bins[cell].haloCount : bins[cell].fillCount;
+				if (amount == UINT_MAX) throw E_OUTOFMEMORY;
+				++amount;
+			});
+			std::size_t offset = 0;
 			for (std::size_t index = 0; index < count; ++index)
 			{
-				const auto start = static_cast<UINT>(triangleIds.size());
-				const auto fills = static_cast<UINT>(fillIds[index].size()), halos = static_cast<UINT>(haloIds[index].size());
-				bins.push_back({start,fills,start+fills,halos});
-				triangleIds.insert(triangleIds.end(),fillIds[index].begin(),fillIds[index].end());
-				triangleIds.insert(triangleIds.end(),haloIds[index].begin(),haloIds[index].end());
-				maximumBinTriangles = (std::max)(maximumBinTriangles,fills+halos);
+				auto& bin = bins[index];
+				bin.fillStart = static_cast<UINT>(offset);
+				offset += bin.fillCount;
+				bin.haloStart = static_cast<UINT>(offset);
+				offset += bin.haloCount;
+				maximumBinTriangles = (std::max)(maximumBinTriangles,bin.fillCount+bin.haloCount);
+			}
+			if (offset != references) throw E_FAIL;
+			triangleIds.resize(static_cast<std::size_t>(references));
+			visitReferences([&](std::size_t cell, UINT triangle, bool isHalo) {
+				auto& cursor = isHalo ? bins[cell].haloStart : bins[cell].fillStart;
+				triangleIds[cursor++] = triangle;
+			});
+			for (auto& bin : bins)
+			{
+				bin.fillStart -= bin.fillCount;
+				bin.haloStart -= bin.haloCount;
 			}
 		}
 	};
@@ -227,6 +252,7 @@ struct VsmrAviso::AvisoGlyphAnalyticRenderer::Impl
 	HRESULT error = S_OK;
 	std::string errorMessage;
 	bool ready = false;
+	Timings timings;
 
 	Mesh& GetMesh(ID2D1Factory* factory, ID2D1StrokeStyle* style, const Instance& instance)
 	{
@@ -241,20 +267,29 @@ struct VsmrAviso::AvisoGlyphAnalyticRenderer::Impl
 		replacement->outline = instance.outline;
 		replacement->style = style;
 		Check(instance.outline->GetBounds(nullptr, &replacement->bounds));
+		const auto fillStarted = std::chrono::steady_clock::now();
 		replacement->fill = Tessellate(instance.outline, MeshBudget);
+		timings.fillMilliseconds += std::chrono::duration<double,std::milli>(
+			std::chrono::steady_clock::now()-fillStarted).count();
 		const std::uint64_t fillBytes = replacement->Bytes();
 		if (fillBytes > MeshBudget) throw E_OUTOFMEMORY;
 		if (haloWidth > 0.0f)
 		{
+			const auto haloStarted = std::chrono::steady_clock::now();
 			ComPtr<ID2D1PathGeometry> halo;
 			Check(factory->CreatePathGeometry(halo.GetAddressOf()));
 			ComPtr<ID2D1GeometrySink> sink;
 			Check(halo->Open(sink.GetAddressOf()));
-			Check(instance.outline->Widen(haloWidth, style, nullptr, CurveTolerance, sink.Get()));
+			Check(instance.outline->Widen(haloWidth, style, nullptr, HaloWidenTolerance, sink.Get()));
 			Check(sink->Close());
-			replacement->halo = Tessellate(halo.Get(), MeshBudget - fillBytes);
+			replacement->halo = Tessellate(halo.Get(), MeshBudget - fillBytes, HaloTessellationTolerance);
+			timings.haloMilliseconds += std::chrono::duration<double,std::milli>(
+				std::chrono::steady_clock::now()-haloStarted).count();
 		}
+		const auto binsStarted = std::chrono::steady_clock::now();
 		replacement->BuildBins(haloWidth);
+		timings.binMilliseconds += std::chrono::duration<double,std::milli>(
+			std::chrono::steady_clock::now()-binsStarted).count();
 		const std::uint64_t bytes = replacement->Bytes();
 		if (bytes > MeshBudget) throw E_OUTOFMEMORY;
 		while (meshBytes > MeshBudget - bytes && !meshes.empty())
@@ -515,6 +550,14 @@ bool VsmrAviso::AvisoGlyphAnalyticRenderer::Render(ID3D11Device* device, ID3D11D
 	const std::vector<Instance>& instances) noexcept
 {
 	impl_->ready = false; impl_->error = S_OK; impl_->errorMessage.clear(); impl_->vertices.clear(); impl_->styles.clear(); impl_->frameWork=0.0;
+	impl_->timings = {};
+	auto checkpoint = std::chrono::steady_clock::now();
+	auto elapsed = [&]() {
+		const auto now = std::chrono::steady_clock::now();
+		const double milliseconds = std::chrono::duration<double,std::milli>(now-checkpoint).count();
+		checkpoint = now;
+		return milliseconds;
+	};
 	if (device == nullptr || immediate == nullptr || factory == nullptr || width == 0 || height == 0 ||
 		width > 6400 || height > 6400 || static_cast<std::uint64_t>(width) * height > 32000000ULL)
 	{ impl_->error = E_INVALIDARG; return false; }
@@ -522,6 +565,7 @@ bool VsmrAviso::AvisoGlyphAnalyticRenderer::Render(ID3D11Device* device, ID3D11D
 	{
 		impl_->EnsureDevice(device, immediate);
 		impl_->EnsureTarget(width, height);
+		impl_->timings.setupMilliseconds = elapsed();
 		for (const auto& instance : instances)
 		{
 			if (instance.outline == nullptr || !std::isfinite(instance.anchor.x) || !std::isfinite(instance.anchor.y) ||
@@ -530,6 +574,7 @@ bool VsmrAviso::AvisoGlyphAnalyticRenderer::Render(ID3D11Device* device, ID3D11D
 			if (instance.textColor.a <= 0.0f && (instance.haloColor.a <= 0.0f || instance.haloWidth <= 0.0f)) continue;
 			impl_->GetMesh(factory,haloStyle,instance);
 		}
+		impl_->timings.meshMilliseconds = elapsed();
 		impl_->PackTriangles();
 		for(const auto& instance:instances)
 		{
@@ -540,7 +585,9 @@ bool VsmrAviso::AvisoGlyphAnalyticRenderer::Render(ID3D11Device* device, ID3D11D
 			if (impl_->packedDirty) throw E_OUTOFMEMORY;
 			impl_->Append(mesh,instance);
 		}
+		impl_->timings.packMilliseconds = elapsed();
 		impl_->Draw(); impl_->ready = true;
+		impl_->timings.drawMilliseconds = elapsed();
 		return true;
 	}
 	catch (HRESULT error) { impl_->error = error; }
@@ -565,6 +612,8 @@ std::uint64_t VsmrAviso::AvisoGlyphAnalyticRenderer::GpuBufferBytes() const noex
 {
 	return impl_->vertexBufferBytes+impl_->trianglesBufferBytes+impl_->stylesBufferBytes+impl_->binsBufferBytes+impl_->idsBufferBytes;
 }
+
+const VsmrAviso::AvisoGlyphAnalyticRenderer::Timings& VsmrAviso::AvisoGlyphAnalyticRenderer::LastTimings() const noexcept { return impl_->timings; }
 
 bool VsmrAviso::AvisoGlyphAnalyticRenderer::GlyphAreaCentroid(ID2D1Factory* factory, ID2D1PathGeometry* outline,
 	D2D1_POINT_2F& centroid, double& area) noexcept
