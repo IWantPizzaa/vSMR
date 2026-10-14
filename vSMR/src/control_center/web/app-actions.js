@@ -16,7 +16,7 @@
     if (rules().length >= RULE_LIMITS.rules) { showToast("Use at most 256 rules per profile", "error"); return; }
     activeProfile().rules.version = 2;
     rules().push({ enabled: true, stop_processing: false, when: { all: [defaultRuleCondition()] },
-      effects: [defaultRuleEffect()], tag_type: "departure", statuses: RULE_STATUSES.slice(), detail: "any" });
+      effects: [defaultRuleEffect()], tag_type: "any", statuses: RULE_STATUSES.slice(), detail: "any" });
     state.ui.selectedRuleIndex = rules().length - 1;
     drafts.rule = null;
     clearUnappliedEditorSection($("#ruleName"));

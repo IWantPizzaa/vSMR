@@ -276,6 +276,82 @@ struct VsmrAviso::AvisoVectorRenderer::Impl
 		return path;
 	}
 
+	// Some Real palettes outline many polygons, including airport-wide paths
+	// with thousands of vertices. Direct2D's fixed-width stroke tessellation
+	// can stall the GPU when only a portion remains on screen. Build the
+	// visible runs in screen coordinates; their cut ends stay outside the
+	// viewport so joins and caps inside it remain unchanged.
+	template <typename Project>
+	ComPtr<ID2D1PathGeometry> ClippedPolygonOutline(const std::vector<AvisoPoint>& points,
+		int viewportWidth, int viewportHeight, float strokeWidth, Project&& project,
+		bool& allInside)
+	{
+		const float margin = (std::max)(strokeWidth * 2.0f, 4.0f);
+		const float left = -margin, top = -margin;
+		const float right = static_cast<float>(viewportWidth) + margin;
+		const float bottom = static_cast<float>(viewportHeight) + margin;
+		auto inside = [&](D2D1_POINT_2F point) {
+			return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
+		};
+		std::vector<D2D1_POINT_2F> projected;
+		projected.reserve(points.size());
+		allInside = true;
+		std::size_t firstOutside = 0;
+		for (const auto& point : points)
+		{
+			projected.push_back(project(point));
+			if (!inside(projected.back())) { allInside = false; firstOutside = projected.size() - 1; }
+		}
+		if (allInside) return {};
+		auto clip = [&](D2D1_POINT_2F a, D2D1_POINT_2F b,
+			D2D1_POINT_2F& start, D2D1_POINT_2F& end) {
+			const double dx = static_cast<double>(b.x) - a.x;
+			const double dy = static_cast<double>(b.y) - a.y;
+			double enter = 0.0, leave = 1.0;
+			auto edge = [&](double p, double q) {
+				if (p == 0.0) return q >= 0.0;
+				const double t = q / p;
+				if (p < 0.0) enter = (std::max)(enter, t);
+				else leave = (std::min)(leave, t);
+				return enter <= leave;
+			};
+			if (!edge(-dx, static_cast<double>(a.x) - left) ||
+				!edge(dx, static_cast<double>(right) - a.x) ||
+				!edge(-dy, static_cast<double>(a.y) - top) ||
+				!edge(dy, static_cast<double>(bottom) - a.y)) return false;
+			start = D2D1::Point2F(static_cast<float>(a.x + dx * enter), static_cast<float>(a.y + dy * enter));
+			end = D2D1::Point2F(static_cast<float>(a.x + dx * leave), static_cast<float>(a.y + dy * leave));
+			return start.x != end.x || start.y != end.y;
+		};
+		ComPtr<ID2D1PathGeometry> result;
+		Check(factory->CreatePathGeometry(result.GetAddressOf()));
+		ComPtr<ID2D1GeometrySink> sink;
+		Check(result->Open(sink.GetAddressOf()));
+		bool open = false;
+		bool hasSegment = false;
+		D2D1_POINT_2F previous{};
+		for (std::size_t step = 0; step < projected.size(); ++step)
+		{
+			const auto from = projected[(firstOutside + step) % projected.size()];
+			const auto to = projected[(firstOutside + step + 1) % projected.size()];
+			D2D1_POINT_2F start{}, end{};
+			if (!clip(from, to, start, end))
+			{
+				if (open) { sink->EndFigure(D2D1_FIGURE_END_OPEN); open = false; }
+				continue;
+			}
+			if (open && (previous.x != start.x || previous.y != start.y))
+			{ sink->EndFigure(D2D1_FIGURE_END_OPEN); open = false; }
+			if (!open) { sink->BeginFigure(start, D2D1_FIGURE_BEGIN_HOLLOW); open = true; }
+			sink->AddLine(end);
+			hasSegment = true;
+			previous = end;
+		}
+		if (open) sink->EndFigure(D2D1_FIGURE_END_OPEN);
+		Check(sink->Close());
+		return hasSegment ? result : ComPtr<ID2D1PathGeometry>{};
+	}
+
 	void Prepare(const AvisoRasterRenderRequest& request)
 	{
 		if (features == request.features && labels == request.labels) return;
@@ -609,8 +685,27 @@ std::unique_ptr<AvisoRasterRenderResult> VsmrAviso::AvisoVectorRenderer::Render(
 					}
 					else target->FillGeometry(path,impl_->brush.Get());
 				}
-				if (strokeVisible) { setGeometryColor(stroke); target->DrawGeometry(path,impl_->brush.Get(),strokeWidth,
-					feature.polygon ? impl_->polygonStyle.Get() : impl_->lineStyle.Get()); }
+				if (strokeVisible)
+				{
+					setGeometryColor(stroke);
+					const float clipMargin = (std::max)(strokeWidth * 2.0f, 4.0f);
+					if (feature.polygon && (left < -clipMargin || right > request.rasterWidth + clipMargin ||
+						top < -clipMargin || bottom > request.rasterHeight + clipMargin))
+					{
+						bool allInside = false;
+						const auto clipped = impl_->ClippedPolygonOutline(feature.paths[p], request.rasterWidth,
+							request.rasterHeight, strokeWidth,
+							[&](const AvisoPoint& point) { return project(point.longitude, point.latitude); }, allInside);
+						if (!allInside)
+						{
+							setGeometryTransform(D2D1::Matrix3x2F::Identity());
+							if (clipped) target->DrawGeometry(clipped.Get(), impl_->brush.Get(), strokeWidth, impl_->polygonStyle.Get());
+							continue;
+						}
+					}
+					target->DrawGeometry(path,impl_->brush.Get(),strokeWidth,
+						feature.polygon ? impl_->polygonStyle.Get() : impl_->lineStyle.Get());
+				}
 			}
 		}
 		impl_->timings.geometryMilliseconds = elapsed();
@@ -639,9 +734,12 @@ std::unique_ptr<AvisoRasterRenderResult> VsmrAviso::AvisoVectorRenderer::Render(
 				else
 				{
 					++impl_->stats.glyphCacheMisses;
+					const auto glyphStarted = std::chrono::steady_clock::now();
 					auto replacement = std::make_shared<Impl::LabelGeometry>();
 					replacement->path = impl_->Glyph(label,request.displayScale,replacement->points);
 					if (replacement->path) Check(replacement->path->GetBounds(nullptr,&replacement->bounds));
+					impl_->timings.glyphMilliseconds += std::chrono::duration<double,std::milli>(
+						std::chrono::steady_clock::now()-glyphStarted).count();
 					replacement->scale = request.displayScale;
 					if (replacement->path && replacement->points <= Impl::GlyphPointBudget - impl_->glyphPoints)
 					{
@@ -703,6 +801,14 @@ std::unique_ptr<AvisoRasterRenderResult> VsmrAviso::AvisoVectorRenderer::Render(
 			ID3D11Texture2D* overlay = nullptr;
 			ready = impl_->analyticGlyphs.Render(impl_->device.Get(),impl_->immediate.Get(),impl_->factory.Get(),
 				impl_->polygonStyle.Get(),request.rasterWidth,request.rasterHeight,impl_->meshInstances);
+			const auto& meshTimings = impl_->analyticGlyphs.LastTimings();
+			impl_->timings.meshSetupMilliseconds = meshTimings.setupMilliseconds;
+			impl_->timings.meshBuildMilliseconds = meshTimings.meshMilliseconds;
+			impl_->timings.meshPackMilliseconds = meshTimings.packMilliseconds;
+			impl_->timings.meshDrawMilliseconds = meshTimings.drawMilliseconds;
+			impl_->timings.meshFillMilliseconds = meshTimings.fillMilliseconds;
+			impl_->timings.meshHaloMilliseconds = meshTimings.haloMilliseconds;
+			impl_->timings.meshBinMilliseconds = meshTimings.binMilliseconds;
 			overlay = impl_->analyticGlyphs.Texture();
 			target->BeginDraw();
 			target->SetTransform(D2D1::Matrix3x2F::Identity());

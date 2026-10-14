@@ -195,6 +195,18 @@
     rulesTab?.click();
     const emptyRuleEditor = document.querySelector("#ruleEditorEmpty");
     const ruleEditorForm = document.querySelector("#ruleEditorForm");
+    const templateGroup = ruleEditorForm?.querySelector(".rule-templates-group");
+    const conditionsGroup = ruleEditorForm?.querySelector(".conditions-group");
+    const effectsGroup = ruleEditorForm?.querySelector(".output-group");
+    expect(Boolean(templateGroup && conditionsGroup && effectsGroup) &&
+      Boolean(templateGroup.compareDocumentPosition(conditionsGroup) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+      Boolean(conditionsGroup.compareDocumentPosition(effectsGroup) & Node.DOCUMENT_POSITION_FOLLOWING),
+      "Rules place a separate Templates section before Conditions and Effects");
+    expect(!document.querySelector(".rule-order-help") &&
+      !templateGroup?.querySelector(".rule-help") && !effectsGroup?.querySelector(".rule-help"),
+      "Rules omit the redundant explanatory paragraphs");
+    expect(Boolean(effectsGroup?.querySelector('legend [data-action="add-rule-effect"]')),
+      "Add effect is available in the Effects heading");
     const ruleNameWithoutSelection = document.querySelector("#ruleName");
     expect(Boolean(emptyRuleEditor) && !emptyRuleEditor.hidden && Boolean(ruleEditorForm?.hidden),
       "an empty rules list shows a dedicated non-editable state");
@@ -224,8 +236,14 @@
     const template = name => { document.querySelector("#ruleTemplate").value = name; document.querySelector('[data-action="apply-rule-template"]')?.click(); };
     expect(!document.querySelector("#ruleName")?.disabled && !ruleEditorForm?.hidden &&
       document.querySelectorAll("#criteriaList .criterion-row").length === 1, "creating a rule enables a complete condition editor");
+    expect(!document.querySelector("#ruleTagType") && currentRule()?.tag_type === "any" &&
+      document.querySelector("#ruleLegacyTagScope")?.hidden,
+      "new rules use Status without a separate Tag selector or hidden tag restriction");
     expect(ruleProfile()?.rules?.version === 2 && document.querySelectorAll(".rule-editor-summary-grid > fieldset").length === 2 &&
       document.querySelectorAll("#ruleEffectsList .rule-effect-row").length === 1, "new rules use v2 condition trees and an effects list");
+    expect(document.querySelector("#ruleConditionCount")?.textContent === "1" &&
+      document.querySelector("#ruleEffectCount")?.textContent === "1",
+      "Rules headings show current condition and effect counts");
     const availableRuleFields = Array.from(document.querySelectorAll('#criteriaList [data-field="field"] option')).map(option => option.value);
     expect(["cdm.tobt", "cdm.tobt_state", "flight.sid", "flight.deprwy", "flight.scratchpad", "flight.holdingpoint", "vsid.sid", "vsid.rwy", "vsid.cfl"]
       .every(field => availableRuleFields.includes(field)), "Rules expose CDM offsets, flight fields and vSID data");
@@ -240,6 +258,8 @@
     expect(currentRule()?.when?.all?.[0]?.min === -4 && document.querySelector("#ruleValidationMessage")?.hidden, "repairing a numeric draft saves without repainting the input");
     template("sid-runway");
     expect(currentRule()?.when?.all?.[0]?.field === "flight.sid" && currentRule()?.when?.all?.[1]?.field === "flight.deprwy", "SID/runway templates combine independent lists");
+    expect(document.querySelector("#ruleConditionCount")?.textContent === "2",
+      "applying a template updates the condition count");
     changeRuleControl('#criteriaList .criterion-row:nth-child(1) [data-field="values"]', "OPALE6B, LGL7A", "input");
     expect(currentRule()?.when?.all?.[0]?.values?.join(",") === "OPALE6B,LGL7A", "SID lists persist as structured values");
     changeRuleControl('#criteriaList .criterion-row:nth-child(1) [data-field="values"]', "", "input");
@@ -307,6 +327,12 @@
         currentRule()?.when?.all?.[1]?.token === "tobt" && currentRule()?.statuses?.join(",") === "default" &&
         currentRule()?.effects?.[0]?.color?.a === 255 && document.querySelectorAll(".rule-legacy-condition").length === 2,
         "legacy aliases migrate without changing prefix/list conditions or original status behavior");
+      expect(currentRule()?.tag_type === "departure" &&
+        document.querySelector("#ruleLegacyTagScope")?.textContent === "Departure tag" &&
+        !document.querySelector("#ruleLegacyTagScope")?.hidden,
+        "an older Tag restriction remains visible next to Status without changing its matching scope");
+      changeRuleControl("#ruleStatusAll", true);
+      expect(currentRule()?.tag_type === "departure", "editing Status preserves an older Tag restriction");
       injectedRuleClipboard = JSON.stringify({ when: { field: "flight.scratchpad", op: "equals", value: "READY" }, effects: [{ type: "field_blink", field: "callsign" }] });
       document.querySelector('[data-action="paste-rule"]')?.click();
       await waitFor(() => currentRule()?.when?.field === "flight.scratchpad", "native-compatible optional v2 defaults are accepted");
