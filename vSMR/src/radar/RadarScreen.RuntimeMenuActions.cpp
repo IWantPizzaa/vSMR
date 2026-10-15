@@ -4,6 +4,7 @@
 #include "insets/InsetWindow.hpp"
 #include "plugin/Plugin.hpp"
 #include "radar/RadarScreen.hpp"
+#include "radar/RadarScreen.Registry.hpp"
 #include "radar/RecentAirports.hpp"
 #include "shared/TextUtils.hpp"
 
@@ -87,7 +88,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		RuntimeMenuMinimized = !RuntimeMenuMinimized;
 		ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;
 		RuntimeMenuPopupScrollOffset = 0;
-		SaveRuntimeMenuPositionToAsr();
+		SaveRuntimeMenuMinimizedToAsr();
 		RequestRefresh();
 		return true;
 	}
@@ -495,7 +496,7 @@ bool CSMRRadar::HandleRuntimeMenuMove(int objectType, const char* objectId, POIN
 	ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;
 	RuntimeMenuPopupScrollOffset = 0;
 	if (released)
-		SaveRuntimeMenuPositionToAsr();
+		PublishSharedRuntimeMenuPosition(true);
 	RequestRefresh();
 	return true;
 }
@@ -514,7 +515,6 @@ std::string CSMRRadar::ShowInsetHostMenu()
 	if (!IsInsetsOnly())
 		return "Not a CoFrance inset host.";
 	RuntimeMenuMinimized = false;
-	RuntimeMenuPositionInitialized = false;
 	ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;
 	RuntimeMenuPopupScrollOffset = 0;
 	std::string phases;
@@ -527,17 +527,25 @@ std::string CSMRRadar::ShowInsetHostMenu()
 	const std::string status = "CoFrance inset host attached; received phases=" +
 		(phases.empty() ? "none" : phases) + "; radar area=" +
 		std::to_string(bounds.Width()) + "x" + std::to_string(bounds.Height()) +
-		". vSMR menu expanded and recentered.";
+		". vSMR menu expanded.";
 	Logger::info(status);
 	RequestRefresh();
 	return status;
 }
 
-void CSMRRadar::LoadRuntimeMenuPositionFromAsr()
+void CSMRRadar::LoadRuntimeMenuState()
 {
+	RuntimeMenuStateLoaded = true;
 	const char* minimizedText = GetDataFromAsr("RuntimeMenuMinimized");
 	RuntimeMenuMinimized = minimizedText != nullptr && std::atoi(minimizedText) != 0;
+	CSMRPlugin* plugin = static_cast<CSMRPlugin*>(GetPlugIn());
+	if (plugin != nullptr && plugin->TryGetSharedRuntimeMenuPosition(RuntimeMenuPosition))
+	{
+		RuntimeMenuPositionInitialized = true;
+		return;
+	}
 
+	// Migrate the first loaded ASR's old coordinates into the shared session.
 	LONG x = 0;
 	LONG y = 0;
 	const char* xText = GetDataFromAsr("RuntimeMenuX");
@@ -545,20 +553,36 @@ void CSMRRadar::LoadRuntimeMenuPositionFromAsr()
 	const char* yText = GetDataFromAsr("RuntimeMenuY");
 	const bool hasY = TryParseAsrCoordinate(yText, y);
 	if (!hasX || !hasY)
+	{
+		if (RuntimeMenuPositionInitialized)
+			PublishSharedRuntimeMenuPosition(false);
 		return;
+	}
 
 	RuntimeMenuPosition = { x, y };
 	RuntimeMenuPositionInitialized = true;
+	PublishSharedRuntimeMenuPosition(false);
 }
 
-void CSMRRadar::SaveRuntimeMenuPositionToAsr()
+void CSMRRadar::SaveRuntimeMenuMinimizedToAsr()
 {
-	const std::string x = std::to_string(RuntimeMenuPosition.x);
-	const std::string y = std::to_string(RuntimeMenuPosition.y);
-	SaveDataToAsr("RuntimeMenuX", "vSMR runtime menu X position", x.c_str());
-	SaveDataToAsr("RuntimeMenuY", "vSMR runtime menu Y position", y.c_str());
 	SaveDataToAsr(
 		"RuntimeMenuMinimized",
 		"vSMR runtime menu minimized state",
 		RuntimeMenuMinimized ? "1" : "0");
+}
+
+void CSMRRadar::PublishSharedRuntimeMenuPosition(bool persist)
+{
+	CSMRPlugin* plugin = static_cast<CSMRPlugin*>(GetPlugIn());
+	if (plugin != nullptr)
+		plugin->SetSharedRuntimeMenuPosition(RuntimeMenuPosition, persist);
+	for (CSMRRadar* radar : RadarScreensOpened)
+	{
+		if (radar == nullptr || radar == this || radar->IsShutdownRequested())
+			continue;
+		radar->RuntimeMenuPosition = RuntimeMenuPosition;
+		radar->RuntimeMenuPositionInitialized = true;
+		radar->RequestRefresh();
+	}
 }
