@@ -1280,7 +1280,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	ParseAsrInt(GetDataFromAsr("WeatherAllAirports"), 0, 1, allWeather);
 	WeatherAllAirports = allWeather != 0;
 
-	LoadRuntimeMenuPositionFromAsr();
+	LoadRuntimeMenuState();
 	LoadNorthIndicatorStateFromAsr();
 
 	ResetAllInsetWindowStates(false);
@@ -1335,7 +1335,7 @@ void CSMRRadar::OnAsrContentToBeSaved()
 		GetUiColorTheme().c_str());
 	SaveDataToAsr("WeatherAllAirports", "Show all open AVISO airports in METAR", WeatherAllAirports ? "1" : "0");
 
-	SaveRuntimeMenuPositionToAsr();
+	SaveRuntimeMenuMinimizedToAsr();
 	SaveNorthIndicatorStateToAsr();
 	if (!InitialInsetStateRestorePending)
 		SaveInsetStateToAsrForAirport(getActiveAirport());

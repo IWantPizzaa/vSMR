@@ -247,6 +247,7 @@ private:
 	std::string PendingGroundStatusCallsign;
 	POINT RuntimeMenuPosition = { 14, 100 };
 	bool RuntimeMenuPositionInitialized = false;
+	bool RuntimeMenuStateLoaded = false;
 	bool RuntimeMenuMinimized = false;
 	bool InitialInsetStateRestorePending = false;
 	CRect InitialInsetStateRestoreBounds = { 0, 0, 0, 0 };
@@ -525,8 +526,9 @@ public:
 	bool HandleRuntimeMenuClick(int objectType, const char* objectId, POINT point, RECT area, int button);
 	bool HandleRuntimeMenuMove(int objectType, const char* objectId, POINT point, RECT area, bool released);
 	void CloseRuntimeMenuPopup();
-	void LoadRuntimeMenuPositionFromAsr();
-	void SaveRuntimeMenuPositionToAsr();
+	void LoadRuntimeMenuState();
+	void SaveRuntimeMenuMinimizedToAsr();
+	void PublishSharedRuntimeMenuPosition(bool persist);
 	std::string DetectDefaultAirportFromAviso() const;
 	std::string ResolveAvisoGeoJsonPathForAirport(const std::string& airport) const;
 	std::string GetAvisoGeoJsonEditorPathForAirport(const std::string& airport) const;
