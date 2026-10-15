@@ -81,7 +81,11 @@ BOOL CVsmrControlCenterDialog::OnInitDialog()
 		SendJsonToWebView(json);
 	};
 	callbacks.closeWindow = [this]() {
-		OnClose();
+		// A bridge dispatch is still using Bridge until this callback returns.
+		// Close on the next UI message so OnDestroy can release it safely.
+		const HWND window = GetSafeHwnd();
+		if (::IsWindow(window))
+			::PostMessage(window, WM_CLOSE, 0, 0);
 	};
 	callbacks.beginWindowDrag = [this]() {
 		BeginNativeWindowDrag();
