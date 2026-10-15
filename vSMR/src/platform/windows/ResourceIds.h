@@ -44,6 +44,7 @@
 #define IDC_DATALINK_FREQ_LABEL         7041
 #define IDC_DATALINK_REQUEST_LABEL      7042
 #define IDC_DATALINK_ADDITIONAL_LABEL   7043
+#define IDC_DATALINK_TOBT_REMINDER       7044
 
 // Next default values for new objects
 // 
@@ -51,7 +52,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        7026
 #define _APS_NEXT_COMMAND_VALUE         32771
-#define _APS_NEXT_CONTROL_VALUE         7044
+#define _APS_NEXT_CONTROL_VALUE         7045
 #define _APS_NEXT_SYMED_VALUE           7000
 #endif
 #endif

@@ -239,9 +239,13 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 			}
 			dia.m_Req = msg.message.c_str();
 			CdmPilotData cdmPilot;
-			if (IsCdmBridgeReady() &&
+			const bool cdmReady = IsCdmBridgeReady();
+			// Offer the editable reminder unless CDM positively reports a TOBT.
+			dia.SetTobtMissing(true);
+			if (cdmReady &&
 				TryGetCdmPilotData(fpCallsign, cdmPilot))
 			{
+				dia.SetTobtMissing(!cdmPilot.hasTobt);
 				if (cdmPilot.hasTsat)
 					dia.m_TSAT = FormatUtcHhmm(cdmPilot.tsatUtc).c_str();
 				if (cdmPilot.hasCtot)
