@@ -525,6 +525,7 @@ namespace
 	{
 		return controlId == IDOK ||
 			controlId == IDCANCEL ||
+			controlId == IDC_DATALINK_TOBT_REMINDER ||
 			controlId == IDC_DATALINK_CLOSE;
 	}
 }
@@ -551,6 +552,7 @@ CDataLinkDialog::CDataLinkDialog(CWnd* pParent /*=NULL*/)
 	, m_Climb(_T(""))
 	, m_DialogMode(DialogMode::Auto)
 	, m_ResolvedMode(DialogMode::Pdc)
+	, m_TobtMissing(false)
 	, m_FullWindowWidth(0)
 	, m_FullWindowHeight(0)
 	, m_HotControlId(0)
@@ -561,6 +563,11 @@ CDataLinkDialog::CDataLinkDialog(CWnd* pParent /*=NULL*/)
 void CDataLinkDialog::SetDialogMode(DialogMode mode)
 {
 	m_DialogMode = mode;
+}
+
+void CDataLinkDialog::SetTobtMissing(bool missing)
+{
+	m_TobtMissing = missing;
 }
 
 CDataLinkDialog::~CDataLinkDialog()
@@ -589,6 +596,7 @@ void CDataLinkDialog::DoDataExchange(CDataExchange* pDX)
 BEGIN_MESSAGE_MAP(CDataLinkDialog, CDialogEx)
 	ON_BN_CLICKED(IDOK, &CDataLinkDialog::OnBnClickedOk)
 	ON_BN_CLICKED(IDC_DATALINK_CLOSE, &CDataLinkDialog::OnBnClickedClose)
+	ON_BN_CLICKED(IDC_DATALINK_TOBT_REMINDER, &CDataLinkDialog::OnBnClickedTobtReminder)
 	ON_WM_CTLCOLOR()
 	ON_WM_ERASEBKGND()
 	ON_WM_DRAWITEM()
@@ -661,7 +669,8 @@ BOOL CDataLinkDialog::OnInitDialog()
 	for (CWnd* child = GetWindow(GW_CHILD); child != nullptr; child = child->GetNextWindow())
 	{
 		const int id = child->GetDlgCtrlID();
-		if ((IsDatalinkEditControl(id) && (child->GetStyle() & ES_MULTILINE) == 0) || id == IDOK || id == IDCANCEL)
+		if ((IsDatalinkEditControl(id) && (child->GetStyle() & ES_MULTILINE) == 0) ||
+			id == IDOK || id == IDCANCEL || id == IDC_DATALINK_TOBT_REMINDER)
 		{
 			CRect bounds;
 			child->GetWindowRect(&bounds);
@@ -905,6 +914,8 @@ void CDataLinkDialog::ConfigureModeLayout()
 	SetDlgItemText(IDC_DATALINK_MESSAGE_PANEL, messageMode ? _T("Message") : _T("Request and message"));
 	SetDlgItemText(IDC_DATALINK_REQUEST_LABEL, messageMode ? _T("RECEIVED MESSAGE") : _T("PILOT REQUEST"));
 	SetDlgItemText(IDC_DATALINK_ADDITIONAL_LABEL, messageMode ? _T("REPLY") : _T("ADDITIONAL MESSAGE"));
+	if (CWnd* reminder = GetDlgItem(IDC_DATALINK_TOBT_REMINDER))
+		reminder->ShowWindow(!messageMode && m_TobtMissing ? SW_SHOW : SW_HIDE);
 
 	if (!messageMode)
 		return;
@@ -1308,6 +1319,11 @@ void CDataLinkDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 		DrawButton(lpDrawItemStruct, _T("Cancel"), false);
 		return;
 	}
+	if (nIDCtl == IDC_DATALINK_TOBT_REMINDER)
+	{
+		DrawButton(lpDrawItemStruct, _T("Insert TOBT reminder"), false);
+		return;
+	}
 
 	CDialogEx::OnDrawItem(nIDCtl, lpDrawItemStruct);
 }
@@ -1354,4 +1370,14 @@ void CDataLinkDialog::OnBnClickedOk()
 void CDataLinkDialog::OnBnClickedClose()
 {
 	OnCancel();
+}
+
+void CDataLinkDialog::OnBnClickedTobtReminder()
+{
+	if (m_ResolvedMode != DialogMode::Pdc || !m_TobtMissing)
+		return;
+	m_Message = _T("CONFIRM TOBT AT VATS.IM/VDGS");
+	SetDlgItemText(IDC_MESSAGE, m_Message);
+	if (CWnd* message = GetDlgItem(IDC_MESSAGE))
+		message->SetFocus();
 }
