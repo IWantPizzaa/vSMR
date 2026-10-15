@@ -277,7 +277,8 @@ void CVsmrControlCenterDialog::SaveWindowPlacement()
 void CVsmrControlCenterDialog::OnClose()
 {
 	SaveWindowPlacement();
-	ShowWindow(SW_HIDE);
+	// Release the popup and its browser resources when the user closes it.
+	DestroyWindow();
 	if (Owner != nullptr)
 		Owner->OnVsmrControlCenterWindowClosed();
 }
