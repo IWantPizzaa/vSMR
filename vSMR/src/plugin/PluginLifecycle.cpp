@@ -17,8 +17,61 @@
 #include "weather/WeatherStore.hpp"
 
 #include <atomic>
+#include <cstdlib>
 #include <filesystem>
 #include <vector>
+
+namespace
+{
+	bool ParseRuntimeMenuCoordinate(const char* text, LONG& value)
+	{
+		if (text == nullptr || text[0] == '\0')
+			return false;
+		char* end = nullptr;
+		const long parsed = std::strtol(text, &end, 10);
+		if (end == text || *end != '\0' || parsed < -100000 || parsed > 100000)
+			return false;
+		value = static_cast<LONG>(parsed);
+		return true;
+	}
+}
+
+bool CSMRPlugin::TryGetSharedRuntimeMenuPosition(POINT& position)
+{
+	if (!SharedRuntimeMenuPositionLoaded)
+	{
+		SharedRuntimeMenuPositionLoaded = true;
+		LONG x = 0;
+		LONG y = 0;
+		if (ParseRuntimeMenuCoordinate(GetDataFromSettings("RuntimeMenuX"), x) &&
+			ParseRuntimeMenuCoordinate(GetDataFromSettings("RuntimeMenuY"), y))
+		{
+			SharedRuntimeMenuPosition = { x, y };
+			SharedRuntimeMenuPositionKnown = true;
+		}
+	}
+	if (!SharedRuntimeMenuPositionKnown)
+		return false;
+	position = SharedRuntimeMenuPosition;
+	return true;
+}
+
+void CSMRPlugin::SetSharedRuntimeMenuPosition(POINT position, bool persist)
+{
+	SharedRuntimeMenuPositionLoaded = true;
+	SharedRuntimeMenuPositionKnown = true;
+	SharedRuntimeMenuPosition = position;
+	if (!persist)
+		return;
+	const std::string x = std::to_string(position.x);
+	const std::string y = std::to_string(position.y);
+	const char* savedX = GetDataFromSettings("RuntimeMenuX");
+	if (savedX == nullptr || x != savedX)
+		SaveDataToSettings("RuntimeMenuX", "vSMR menu X position", x.c_str());
+	const char* savedY = GetDataFromSettings("RuntimeMenuY");
+	if (savedY == nullptr || y != savedY)
+		SaveDataToSettings("RuntimeMenuY", "vSMR menu Y position", y.c_str());
+}
 
 CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 	EuroScopePlugIn::COMPATIBILITY_CODE,

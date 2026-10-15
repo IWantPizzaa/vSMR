@@ -1285,6 +1285,8 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		RuntimeMenuPosition.x = bounds.left + 14;
 		RuntimeMenuPosition.y = bounds.top + ((bounds.Height() - railHeight) / 2);
 		RuntimeMenuPositionInitialized = true;
+		if (RuntimeMenuStateLoaded)
+			PublishSharedRuntimeMenuPosition(false);
 	}
 
 	const LONG minLeft = bounds.left + 4;

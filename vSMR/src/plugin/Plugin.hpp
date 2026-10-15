@@ -81,6 +81,8 @@ public:
 	static void PublishActiveProfilesConfigPath(
 		const std::string& path,
 		bool claimSelection);
+	bool TryGetSharedRuntimeMenuPosition(POINT& position);
+	void SetSharedRuntimeMenuPosition(POINT position, bool persist);
 	bool QueueNetworkJob(std::function<void()> job);
 	void StopNetworkWorkers();
 	void StopWeatherFetchWorker();
@@ -135,6 +137,9 @@ private:
 	ProxyTimerState ProxyTimers;
 	ProxyDatalinkView ProxyDatalink;
 	bool DatalinkProxyClient = false;
+	bool SharedRuntimeMenuPositionLoaded = false;
+	bool SharedRuntimeMenuPositionKnown = false;
+	POINT SharedRuntimeMenuPosition = {};
 	void SynchronizeProxyDatalink();
 	VsmrProcessSync::Mutex DatalinkSessionLease;
 	void SynchronizeProxyRuntime();
