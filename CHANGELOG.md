@@ -2,6 +2,10 @@
 
 ## [2.0.1] - 2026-10-12
 
+- Shared the vSMR runtime-menu position across ASRs, so moving it in one view updates the others.
+- Added a PDC message shortcut for `CONFIRM TOBT AT VATS.IM/VDGS` when no TOBT is available.
+- Deferred Control Center creation until first use and released its popup when closed to improve startup and window lifecycle.
+
 - Added same-computer Proxy synchronization for timer start/reset/deadlines with one expiration alarm, shared RDF pending/reset indications and a single TrackAudio receiver with owner recovery. Missing radar data in one view no longer acknowledges a call in another instance; blinking follows the machine clock.
 - Added a local, bounded, read-only relay of vSID/CDM/Ramp Agent fields when companion plugins and EuroScopeBridge are loaded only in the primary. Validated vSID UI actions are routed to the primary once, with failure reporting and no automatic retry; stale/dead-owner snapshots are rejected.
 - Shared primary PDC/CPDLC connection and aircraft-status indications with Proxy clients. Hoppie connection/polling/sending and credentials remain primary-only; a per-logon process lease prevents competing consumers and stays held while requests drain. Secondary controls identify the primary and do not save stale credentials at shutdown.
