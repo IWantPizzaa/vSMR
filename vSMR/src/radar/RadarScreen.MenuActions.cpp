@@ -221,7 +221,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		CSMRPlugin* plugin = static_cast<CSMRPlugin*>(GetPlugIn());
 		if (plugin == nullptr)
 		{
-			showConfigError("The CPDLC service is unavailable.");
+			showConfigError("The PDC service is unavailable.");
 			return;
 		}
 		std::string error;

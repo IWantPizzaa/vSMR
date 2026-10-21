@@ -322,12 +322,12 @@ bool StartDatalinkPoll(bool reportStatus, std::string& error)
 		error.clear();
 		if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		{
-			error = "The CPDLC service is shutting down.";
+		error = "The PDC service is shutting down.";
 			return false;
 		}
 		if (!HoppieConnected.load(std::memory_order_acquire))
 		{
-			error = "CPDLC is not connected.";
+		error = "PDC is not connected.";
 			return false;
 		}
 
@@ -337,7 +337,7 @@ bool StartDatalinkPoll(bool reportStatus, std::string& error)
 			true,
 			std::memory_order_acq_rel))
 		{
-			error = "A CPDLC poll is already in progress.";
+		error = "A PDC poll is already in progress.";
 			return false;
 		}
 
@@ -345,7 +345,7 @@ bool StartDatalinkPoll(bool reportStatus, std::string& error)
 		if (plugin == nullptr)
 		{
 			HoppiePollInProgress.store(false, std::memory_order_release);
-			error = "The CPDLC service is unavailable.";
+		error = "The PDC service is unavailable.";
 			return false;
 		}
 		DatalinkPollRequest request;
@@ -360,7 +360,7 @@ bool StartDatalinkPoll(bool reportStatus, std::string& error)
 		{
 			if (request.pollGeneration == HoppiePollGeneration.load(std::memory_order_acquire))
 				HoppiePollInProgress.store(false, std::memory_order_release);
-			error = "CPDLC disconnected before the poll could start.";
+		error = "PDC disconnected before the poll could start.";
 			return false;
 		}
 
@@ -371,7 +371,7 @@ bool StartDatalinkPoll(bool reportStatus, std::string& error)
 		{
 			if (request.pollGeneration == HoppiePollGeneration.load(std::memory_order_acquire))
 				HoppiePollInProgress.store(false, std::memory_order_release);
-			error = "Unable to queue the CPDLC poll request.";
+		error = "Unable to queue the PDC poll request.";
 			if (reportStatus)
 				SetDatalinkStatusMessage(error);
 			return false;

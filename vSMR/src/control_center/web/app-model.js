@@ -44,7 +44,7 @@
     airarr_onrunway: "Arrival on runway"
   };
   const TAG_STATUS_ORDER = ["nofpl", "push", "stup", "taxi", "lnup", "depa", "airdep", "airdep_onrunway", "airarr", "airarr_onrunway"];
-  const COLOR_FAMILY_ORDER = ["Tags", "Targets", "RIMCAS", "SRW 1"];
+  const COLOR_FAMILY_ORDER = ["Tags", "Targets", "RIMCAS", "SRW"];
   const COLOR_SECTION_ORDER = ["Departure", "Arrival", "Uncorrelated", "Airborne", "General"];
   const TAG_STATUS_COLOR_KEYS = {
     departure: {

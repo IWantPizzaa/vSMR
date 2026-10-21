@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Restored EuroScope Assume/Handoff from the SRW inset's tag background.
+- Filtered TrackAudio calls by the RX frequencies open in each EuroScope instance, including Proxy views, so unrelated radio traffic no longer activates RDF `TX` or map rings.
+- Renamed the SRW 1 inset and user-facing CPDLC controls to SRW and PDC. The Hoppie CPDLC transport and installed audio filenames remain unchanged.
+
 ## [2.0.1] - 2026-10-12
 
 - Shared the vSMR runtime-menu position across ASRs, so moving it in one view updates the others.

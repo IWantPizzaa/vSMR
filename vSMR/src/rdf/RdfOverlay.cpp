@@ -28,6 +28,7 @@
 #include <exception>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <utility>
@@ -46,6 +47,22 @@ namespace
 	constexpr int RdfRingRadiusPixels = 20;
 
 	using FrequencyHz = std::int64_t;
+	using FrequencySet = std::set<FrequencyHz>;
+
+	FrequencySet OpenReceiveFrequencies(CSMRPlugin* plugin)
+	{
+		FrequencySet result;
+		if (plugin == nullptr) return result;
+		for (auto channel = plugin->GroundToArChannelSelectFirst(); channel.IsValid();
+			channel = plugin->GroundToArChannelSelectNext(channel))
+		{
+			if (!channel.GetIsTextReceiveOn() && !channel.GetIsVoiceReceiveOn()) continue;
+			const double frequencyMhz = channel.GetFrequency();
+			if (std::isfinite(frequencyMhz) && frequencyMhz > 0.0 && frequencyMhz < 10000.0)
+				result.insert(static_cast<FrequencyHz>(std::llround(frequencyMhz * 1000000.0)));
+		}
+		return result;
+	}
 
 	class InternetHandle final
 	{
@@ -119,10 +136,14 @@ namespace
 
 		void OnTimer()
 		{
+			FrequencySet receiveFrequencies;
 			{
 				std::lock_guard<std::mutex> lifecycleGuard(LifecycleMutex);
 				if (Plugin != nullptr)
+				{
 					EnsureWorkerLocked();
+					receiveFrequencies = OpenReceiveFrequencies(Plugin);
+				}
 			}
 
 			// Only the UI thread may resolve flight plans. Keep short calls even
@@ -131,8 +152,13 @@ namespace
 			std::vector<std::string> pending;
 			{
 				std::lock_guard<std::mutex> guard(TransmissionMutex);
-				if (SharedTransmissions.Active()) pending = SharedTransmissions.PendingCalls();
-				else pending.assign(Transmissions.PendingCalls().begin(), Transmissions.PendingCalls().end());
+				if (ReceiveFrequencies != receiveFrequencies)
+				{
+					ReceiveFrequencies = std::move(receiveFrequencies);
+					MarkChanged();
+				}
+				if (SharedTransmissions.Active()) pending = SharedTransmissions.PendingCalls(ReceiveFrequencies);
+				else pending = Transmissions.PendingCalls(ReceiveFrequencies);
 			}
 			if (Plugin != nullptr)
 			{
@@ -149,7 +175,8 @@ namespace
 			bool blinking = false;
 			{
 				std::lock_guard<std::mutex> guard(TransmissionMutex);
-				blinking = SharedTransmissions.Active() ? !SharedTransmissions.PendingCalls().empty() : !Transmissions.PendingCalls().empty();
+				blinking = SharedTransmissions.Active() ? !SharedTransmissions.PendingCalls(ReceiveFrequencies).empty() :
+					!Transmissions.PendingCalls(ReceiveFrequencies).empty();
 			}
 			const std::uint64_t generation =
 				SharedTransmissions.Active() ? SharedTransmissions.Revision() : Generation.load(std::memory_order_acquire);
@@ -185,7 +212,8 @@ namespace
 			status.enabled = Enabled.load(std::memory_order_acquire);
 			status.trackAudioConnected = SharedTransmissions.Active() ? SharedTransmissions.Connected() : Connected.load(std::memory_order_acquire);
 			std::lock_guard<std::mutex> transmissionGuard(TransmissionMutex);
-			status.activeTransmissionCount = !status.trackAudioConnected ? 0 : SharedTransmissions.Active() ? SharedTransmissions.Transmitting().size() : Transmissions.ActiveCalls().size();
+			status.activeTransmissionCount = !status.trackAudioConnected ? 0 : SharedTransmissions.Active() ?
+				SharedTransmissions.Transmitting(ReceiveFrequencies).size() : Transmissions.Transmitting(ReceiveFrequencies).size();
 			return status;
 		}
 
@@ -195,11 +223,8 @@ namespace
 			if (!Enabled.load(std::memory_order_acquire))
 				return result;
 			std::lock_guard<std::mutex> transmissionGuard(TransmissionMutex);
-			if (SharedTransmissions.Active()) return SharedTransmissions.Connected() ? SharedTransmissions.Transmitting() : result;
-			result.reserve(Transmissions.ActiveCalls().size());
-			for (const auto& entry : Transmissions.ActiveCalls())
-				result.push_back(entry.first);
-			return result;
+			if (SharedTransmissions.Active()) return SharedTransmissions.Connected() ? SharedTransmissions.Transmitting(ReceiveFrequencies) : result;
+			return Transmissions.Transmitting(ReceiveFrequencies);
 		}
 
 		bool IsCallPending(const char* rawCallsign) const
@@ -208,7 +233,8 @@ namespace
 				return false;
 			const auto callsign = NormalizeCallsign(rawCallsign, std::strlen(rawCallsign));
 			std::lock_guard<std::mutex> guard(TransmissionMutex);
-			return SharedTransmissions.Active() ? SharedTransmissions.Pending(callsign) : Transmissions.IsPending(callsign);
+			return SharedTransmissions.Active() ? SharedTransmissions.Pending(callsign, ReceiveFrequencies) :
+				Transmissions.IsPending(callsign, ReceiveFrequencies);
 		}
 
 		void ResetCall(const char* rawCallsign)
@@ -712,6 +738,7 @@ namespace
 		std::uint64_t LastUiGeneration = 0;
 		VsmrRdf::TransmissionState Transmissions;
 		ProxyRdfState SharedTransmissions;
+		FrequencySet ReceiveFrequencies; // UI-thread EuroScope channel snapshot, guarded by TransmissionMutex.
 		CSMRPlugin* Plugin = nullptr; // UI thread only; never read by the worker.
 		SharedInternetHandle ActiveWebSocket;
 	};
