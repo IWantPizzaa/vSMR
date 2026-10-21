@@ -1061,6 +1061,8 @@
         ?.targets?.symbol_scale === expectedDefault.targets.symbol_scale, "icons reset uses bundled profile defaults");
       await waitFor(() => outbound.slice(sectionStart).some(message => message.type === "state.save"),
         "scoped reset is automatically saved");
+      await waitFor(() => !document.querySelector("#reloadButton")?.disabled,
+        "icons reset save is acknowledged");
       expect(JSON.stringify(api.getState().profiles.find(profile => profile.name === defaultProfile.name)?.labels) === preservedLabels,
         "icons reset preserves tag customizations");
       expect(JSON.stringify(api.getState().aviso) === JSON.stringify(resetFixture.aviso),
@@ -1101,8 +1103,9 @@
       document.querySelector('[data-editor="alerts"][data-action="reset-editor-section"]').click();
       await waitFor(() => outbound.slice(alertResetStart).some(message => message.type === "state.save"), "alert reset is saved");
       await waitFor(() => !document.querySelector("#reloadButton")?.disabled, "alert reset save is acknowledged");
+      await waitFor(() => JSON.stringify(api.getState().profiles.find(profile => profile.name === defaultProfile.name).rimcas.timer)
+        === JSON.stringify(expectedDefault.rimcas.timer), "alert reset restores default timers");
       const afterAlertReset = api.getState().profiles.find(profile => profile.name === defaultProfile.name).rimcas;
-      expect(JSON.stringify(afterAlertReset.timer) === JSON.stringify(expectedDefault.rimcas.timer), "alert reset restores default timers");
       expect(JSON.stringify(afterAlertReset.runways) === JSON.stringify(beforeAlertReset.runways) &&
         afterAlertReset.visibility === beforeAlertReset.visibility, "alert reset preserves runway closures, assignments and LVP");
 

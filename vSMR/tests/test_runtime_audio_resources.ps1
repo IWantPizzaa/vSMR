@@ -50,6 +50,14 @@ try {
         finally { $hash.Dispose() }
         $expected = (Get-FileHash -LiteralPath (Join-Path $RepositoryRoot ('vSMR\data\Audio\' + $sound.File)) -Algorithm SHA256).Hash
         if ($actual -ne $expected) { throw "Built-in $($sound.File) differs from the bundled sound." }
+        if ($sound.File -eq 'timer_alarm.wav' -and (
+            [BitConverter]::ToUInt16($bytes, 20) -ne 1 -or
+            [BitConverter]::ToUInt16($bytes, 22) -ne 1 -or
+            [BitConverter]::ToUInt32($bytes, 24) -ne 44100 -or
+            [BitConverter]::ToUInt16($bytes, 34) -ne 16 -or
+            [Text.Encoding]::ASCII.GetString($bytes, 36, 4) -ne 'data')) {
+            throw 'Timer alarm must be canonical mono 44.1 kHz 16-bit PCM for legacy Windows playback.'
+        }
     }
 } finally {
     [void][VsmrAudioResourceTest]::FreeLibrary($module)
