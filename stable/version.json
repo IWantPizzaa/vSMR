@@ -1,12 +1,12 @@
 {
     "schema":  1,
-    "version":  "2.0.1",
-    "content_commit":  "59a6d7f742b863fda4b5e288c2b7f9c85698bcd7",
+    "version":  "2.0.2",
+    "content_commit":  "568a87e499256a713b19f5e85ecb6ef722ec353a",
     "minimum_loader_version":  "1.3.0",
     "runtime_abi":  1,
     "files":  {
                   "vSMR.dll":  {
-                                   "sha256":  "8dd6446fb97e6268aeabf9374dcfb1c21410fdd5848de073798abce500c0599a",
+                                   "sha256":  "aae92f4a818c0c2dd01c9f07b156a690aed9201242b7527be1abf0ad286baf79",
                                    "size":  760832
                                },
                   "vSMR_Data/aircraft_icons/a10.png":  {
@@ -1086,19 +1086,19 @@
                                                      "size":  6391
                                                  },
                   "vSMR_Data/Audio/Alarm.wav":  {
-                                                    "sha256":  "384609d0bca968b7b9b33cb71043f3f484aa22c45ed8b62a01e303ad5fc4a9eb",
-                                                    "size":  176492
+                                                    "sha256":  "85009594cd04fa8508ac40423f501ce94c3ea0cec7b36b2d360376eb26fb9f5e",
+                                                    "size":  88244
                                                 },
                   "vSMR_Data/Audio/Ding.wav":  {
                                                    "sha256":  "3d1b0d0ecb82900b8111aecff3f5d4bd78c21344272d8c16fd51aff2a6c5792a",
                                                    "size":  97716
                                                },
                   "vSMR_Data/AVISO-UPDATE-POLICY.json":  {
-                                                             "sha256":  "8071b42b9ac4f16d1dd01277f6b07fe51cbedd2db354e67a21d6bdcfa59ab5b6",
+                                                             "sha256":  "ca29f9316a65933318b2e19af29634dfaa1bec7da1cdce554993eb1cba4e99b8",
                                                              "size":  5641
                                                          },
                   "vSMR_Data/CrashReporter/vSMRCrashHandler.dll":  {
-                                                                       "sha256":  "7868878f41a72008eed56020b7e3ce8c515012d944626f6504420aa9222f098d",
+                                                                       "sha256":  "b90d1d6dab51e1638476401bd0524de573ba0d060930d74596f345c79318b2eb",
                                                                        "size":  158208
                                                                    },
                   "vSMR_Data/default.json":  {
@@ -1138,8 +1138,8 @@
                                                       "size":  35823
                                                   },
                   "vSMR_Data/Runtime/vSMR.Runtime.dll":  {
-                                                             "sha256":  "7b4cdd210d27a0376ed2677fbeb1c509a6f17d66a23b63ba257b580a95aad76e",
-                                                             "size":  2421760
+                                                             "sha256":  "16a2547ef6c7917758c593b5d5cd616f9ecd575de86363329474cc39b88f7f31",
+                                                             "size":  2338816
                                                          },
                   "vSMR_Data/Tools/install_vsmr.ps1":  {
                                                            "sha256":  "9cd040d62242ec0247df98bbd7387525a06a4cb371ad86d8288a740ae14875d5",
@@ -1162,12 +1162,12 @@
                                                                   "size":  18268
                                                               },
                   "vSMR_Data/Tools/vSMR.ApplyUpdate.exe":  {
-                                                               "sha256":  "652d25cd34c94aefc24b31467a761821806dfa90bb8fb004a4c38e19e869ed66",
-                                                               "size":  463872
+                                                               "sha256":  "fdf9f4ee4ad733b4a08350600893c288bfc04aeba2120120fd44032105ce4def",
+                                                               "size":  464384
                                                            },
                   "vSMR_Data/vSMR_webUI/app-bundle.js":  {
-                                                             "sha256":  "fa70b791124c303d118ad24330cf20fc066d811cd17df07b6121bc1481c050d9",
-                                                             "size":  368467
+                                                             "sha256":  "c2635b69560c3582504d60bd846b902b2064f83df30d403788189ceb5c8a59cb",
+                                                             "size":  368458
                                                          },
                   "vSMR_Data/vSMR_webUI/data.js":  {
                                                        "sha256":  "cc1598da56ee05566f6cc6371e026dc2b922ab2152c31c92c52aeb5cf26c7c19",
