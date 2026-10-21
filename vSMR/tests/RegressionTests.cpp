@@ -60,6 +60,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -1799,16 +1800,28 @@ void TestRdfCallAcknowledgements()
 	VsmrRdf::TransmissionState calls;
 	constexpr std::int64_t ground = 121800000;
 	constexpr std::int64_t tower = 119250000;
+	const std::set<std::int64_t> groundOnly{ ground };
+	const std::set<std::int64_t> towerOnly{ tower };
+	const std::set<std::int64_t> anotherFrequency{ 123000000 };
 	Expect(!calls.End("AFR101", ground), "RDF ignores an unmatched transmission end");
 	Expect(calls.Begin("AFR101", ground) && calls.Begin("EZY202", ground) &&
 		calls.Begin("BAW303", tower) && calls.PendingCalls().size() == 3 && calls.ActiveCalls().size() == 3,
 		"RDF remembers three simultaneous speakers independently across frequencies");
 	Expect(calls.End("AFR101", ground) && calls.IsPending("AFR101"),
 		"RDF retains even a short call after reception ends before the next UI tick");
+	Expect(calls.IsPending("AFR101", groundOnly) && !calls.IsPending("AFR101", towerOnly) &&
+		!calls.IsPending("AFR101", anotherFrequency) && calls.PendingCalls(towerOnly).size() == 1 &&
+		calls.Transmitting(groundOnly).size() == 1 && calls.Transmitting(towerOnly).size() == 1,
+		"RDF displays only calls heard on this EuroScope instance's open receive frequencies");
 	Expect(calls.Acknowledge("EZY202") && !calls.IsPending("EZY202") && calls.ActiveCalls().count("EZY202") == 1,
 		"RDF reset acknowledges only selected speaker and never hides its live ring");
 	Expect(!calls.Begin("EZY202", ground) && calls.Begin("EZY202", tower) && !calls.IsPending("EZY202"),
 		"RDF duplicate or second receiver does not relatch an acknowledged ongoing call");
+	Expect(calls.Begin("BAW303", ground) && calls.IsPending("BAW303", groundOnly) &&
+		calls.IsPending("BAW303", towerOnly),
+		"A pending call is attributed to a second receiver without forgetting its first frequency");
+	Expect(calls.End("BAW303", ground) && calls.IsPending("BAW303", groundOnly),
+		"RDF retains the received frequency after reception ends");
 	Expect(calls.End("EZY202", ground) && calls.ActiveCalls().count("EZY202") == 1 &&
 		!calls.End("EZY202", ground) && !calls.End("EZY202", 123000000),
 		"RDF receiver end and unknown ends do not stop another active receiver");
@@ -1954,11 +1967,37 @@ void TestProxyProcesses(const std::filesystem::path& repositoryRoot)
 	Expect(rdf.Open(identity) && rdf.BecomePublisher(), "Shared RDF state elects the test publisher");
 	rdf.SetConnected(true);
 	Expect(rdf.Event("TEST123", 121700000, true) && rdf.Pending("TEST123"), "RDF reception is pending in shared state");
+	Expect(rdf.Pending("TEST123", { 121700000 }) && !rdf.Pending("TEST123", { 119250000 }) &&
+		rdf.PendingCalls({ 121700000 }).size() == 1 && rdf.PendingCalls({ 119250000 }).empty() &&
+		rdf.Transmitting({ 121700000 }).size() == 1 && rdf.Transmitting({ 119250000 }).empty(),
+		"Proxy RDF reports TX only on a frequency opened in this EuroScope instance");
 	Expect(spawn(identity, L"rdf-reset", child) && finish(child) && !rdf.Pending("TEST123") && rdf.Transmitting().size() == 1,
 		"Reset from the second process clears TX everywhere without ending live reception");
 	Expect(spawn(identity, L"rdf-deny-write", child) && finish(child), "A follower process cannot duplicate a publisher's audio event");
 	Expect(rdf.Event("TEST123", 121700000, false) && rdf.Event("TEST123", 121700000, true) && rdf.Pending("TEST123"),
 		"A genuinely new transmission reactivates TX after cross-process reset");
+	{
+		ProxyRdfState boundedRdf;
+		Expect(boundedRdf.Open(identity + L"-rdf-pending-capacity") && boundedRdf.BecomePublisher(),
+			"Shared RDF history-capacity test has its own publisher");
+		boundedRdf.SetConnected(true);
+		constexpr std::int64_t ongoingFrequency = 121700000;
+		Expect(boundedRdf.Event("MIX123", ongoingFrequency, true),
+			"RDF keeps an original receiver active while other frequencies cycle");
+		for (int index = 0; index < 24; ++index) {
+			const std::int64_t frequency = 118000000 + static_cast<std::int64_t>(index) * 5000;
+			Expect(boundedRdf.Event("MIX123", frequency, true) &&
+				boundedRdf.Pending("MIX123", { frequency }) &&
+				boundedRdf.Transmitting({ frequency }).size() == 1 &&
+				boundedRdf.Event("MIX123", frequency, false) &&
+				boundedRdf.Pending("MIX123", { frequency }) &&
+				boundedRdf.Transmitting({ frequency }).empty(),
+				"RDF bounds pending frequency history while retaining the latest receiver");
+		}
+		Expect(boundedRdf.Pending("MIX123", { ongoingFrequency }) &&
+			boundedRdf.Transmitting({ ongoingFrequency }).size() == 1,
+			"RDF never evicts a still-active receiver when pending history fills");
+	}
 	Expect(spawn(identity, L"mutex-abandon", child) && finish(child) && mutex.Lock(), "An abandoned inter-process lease recovers after owner process exit");
 	mutex.Unlock();
 	{

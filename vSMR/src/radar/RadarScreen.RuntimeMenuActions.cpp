@@ -219,7 +219,7 @@ bool CSMRRadar::HandleRuntimeDatalinkClick(const char* id, RECT area)
 		return true;
 	}
 
-	// ----- Handling CPDLC and PDC actions -----
+	// ----- Handling PDC actions -----
 	CSMRPlugin* datalinkPlugin = static_cast<CSMRPlugin*>(GetPlugIn());
 	auto showDatalinkMessage = [&](const std::string& message, bool error)
 	{
@@ -227,7 +227,7 @@ bool CSMRRadar::HandleRuntimeDatalinkClick(const char* id, RECT area)
 		{
 			GetPlugIn()->DisplayUserMessage(
 				"vSMR",
-				"CPDLC / PDC",
+				"PDC",
 				message.c_str(),
 				true,
 				true,
@@ -242,7 +242,7 @@ bool CSMRRadar::HandleRuntimeDatalinkClick(const char* id, RECT area)
 	{
 		std::string error;
 		if (datalinkPlugin == nullptr || !datalinkPlugin->EditDatalinkCredentials(error))
-			showDatalinkMessage(error.empty() ? "The CPDLC service is unavailable." : error, true);
+			showDatalinkMessage(error.empty() ? "The PDC service is unavailable." : error, true);
 		RequestRefresh();
 		return true;
 	}
@@ -262,7 +262,7 @@ bool CSMRRadar::HandleRuntimeDatalinkClick(const char* id, RECT area)
 	{
 		std::string error;
 		if (datalinkPlugin == nullptr)
-			error = "The CPDLC service is unavailable.";
+			error = "The PDC service is unavailable.";
 		else
 		{
 			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
@@ -280,7 +280,7 @@ bool CSMRRadar::HandleRuntimeDatalinkClick(const char* id, RECT area)
 	{
 		std::string error;
 		if (datalinkPlugin == nullptr || !datalinkPlugin->PollDatalink(error))
-			showDatalinkMessage(error.empty() ? "The CPDLC service is unavailable." : error, true);
+			showDatalinkMessage(error.empty() ? "The PDC service is unavailable." : error, true);
 		RequestRefresh();
 		return true;
 	}

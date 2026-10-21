@@ -311,11 +311,13 @@ void CInsetWindow::renderSecondaryRadarTargets(CDC& dc, CSMRRadar* radar_screen,
 			continue;
 
 		m_TagAreas[rtCallsign] = painted.bounds;
+		m_SrwTagHits.Add(rtCallsign, DRAWING_TAG, painted.bounds, windowAreaCRect);
 		const CRect clippedTag = clipToWindowContent(painted.bounds);
 		if (!clippedTag.IsRectEmpty())
 			radar_screen->AddScreenObject(m_Id, rtCallsign.c_str(), clippedTag, true, getBottomLine());
 		for (const VsmrTagRendering::HitRegion& hit : painted.hitRegions)
 		{
+			m_SrwTagHits.Add(rtCallsign, hit.action, hit.area, windowAreaCRect);
 			const CRect clippedHit = clipToWindowContent(hit.area);
 			if (!clippedHit.IsRectEmpty())
 				radar_screen->AddScreenObject(hit.action, rtCallsign.c_str(), clippedHit, true, getBottomLine());
@@ -348,7 +350,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	if (this->m_Id == -1 || radar_screen == nullptr || radar_screen->CurrentConfig == nullptr || gdi == nullptr)
 		return;
 
-	const char* insetName = "SRW1";
+	const char* insetName = "SRW";
 	if (IsAvisoViewport())
 		insetName = "AVISO";
 	else if (IsWeather())
@@ -401,6 +403,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	m_AirportPositionValid = radar_screen->TryGetActiveAirportPosition(m_AirportPosition);
 	m_TargetPoints.clear();
 	m_TagAreas.clear();
+	m_SrwTagHits.Clear();
 
 	const Value& activeProfile = radar_screen->CurrentConfig->getActiveProfile();
 	const auto getProfileObjectSection = [&](const char* key) -> const Value*

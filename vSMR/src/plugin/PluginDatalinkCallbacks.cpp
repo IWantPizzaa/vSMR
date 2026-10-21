@@ -37,7 +37,7 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 {
 	(void)sItemString;
 	if (GetConnectionType() == CONNECTION_TYPE_VIA_PROXY) {
-		DisplayUserMessage("vSMR", "Proxy CPDLC", "Use the primary EuroScope instance for PDC/CPDLC actions. This instance displays shared status only.", true, true, true, false, false);
+		DisplayUserMessage("vSMR", "Proxy PDC", "Use the primary EuroScope instance for PDC actions. This instance displays shared status only.", true, true, true, false, false);
 		return;
 	}
 	// ----- Handling CPDLC tag actions -----
@@ -354,7 +354,7 @@ void CSMRPlugin::RunDatalinkTimerCycle()
 	}
 
 	if (HoppieConnected.load() && ConnectionMessage.load()) {
-		DisplayUserMessage("CPDLC", "Server", "Logged in!", true, true, false, true, false);
+		DisplayUserMessage("PDC", "Server", "Logged in!", true, true, false, true, false);
 		ConnectionMessage.store(false);
 	}
 
@@ -362,7 +362,7 @@ void CSMRPlugin::RunDatalinkTimerCycle()
 		std::string failureMessage = GetDatalinkStatusMessageCopy();
 		if (failureMessage.empty())
 			failureMessage = "Could not connect to Hoppie.";
-		DisplayUserMessage("CPDLC", "Server", failureMessage.c_str(), true, true, false, true, false);
+		DisplayUserMessage("PDC", "Server", failureMessage.c_str(), true, true, false, true, false);
 		FailedToConnectMessage.store(false);
 	}
 
@@ -372,7 +372,7 @@ void CSMRPlugin::RunDatalinkTimerCycle()
 		std::string disconnectError;
 		DisconnectDatalink(disconnectError);
 		SetDatalinkStatusMessage("Automatically disconnected because EuroScope is offline.");
-		DisplayUserMessage("CPDLC", "Server", "Automatically logged off!", true, true, false, true, false);
+		DisplayUserMessage("PDC", "Server", "Automatically logged off!", true, true, false, true, false);
 	}
 
 	// ----- Polling CPDLC -----

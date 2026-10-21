@@ -76,7 +76,7 @@
       return { family: "Targets", section, group: `Targets · ${section}` };
     }
     if (root === "rimcas") return { family: "RIMCAS", section: "", group: "RIMCAS" };
-    if (root === "approach_insets") return { family: "SRW 1", section: "", group: "SRW 1" };
+    if (root === "approach_insets") return { family: "SRW", section: "", group: "SRW" };
     const family = humanize(root);
     return { family, section: "", group: family };
   }

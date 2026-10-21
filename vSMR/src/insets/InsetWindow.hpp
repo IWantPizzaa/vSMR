@@ -85,6 +85,7 @@ public:
 	std::map<std::string, POINT> m_TargetPoints;
 	std::map<std::string, CRect> m_TagAreas;
 	VsmrTagRendering::ScreenHitMap m_AvisoTagHits;
+	VsmrTagRendering::ScreenHitMap m_SrwTagHits;
 	std::string m_TagBeingDragged;
 	std::set<std::string> m_DetailedTagCallsigns;
 

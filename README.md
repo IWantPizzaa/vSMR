@@ -1,6 +1,6 @@
 # vSMR 2.0 for EuroScope
 
-vSMR is a configurable surface-movement radar plug-in for 32-bit EuroScope. It provides airport surface displays, aircraft tags and symbols, AVISO maps, RIMCAS alerts, native inset windows, CDM data, and Hoppie CPDLC/PDC workflows.
+vSMR is a configurable surface-movement radar plug-in for 32-bit EuroScope. It provides airport surface displays, aircraft tags and symbols, AVISO maps, RIMCAS alerts, native inset windows, CDM data, and Hoppie PDC and message workflows over CPDLC.
 
 Current source version: **2.0.1**. Release artifacts are prepared from clean committed source. Bundled third-party assets retain the licenses and attributions in `vSMR/data/Licenses/`.
 
@@ -15,11 +15,11 @@ Current source version: **2.0.1**. Release artifacts are prepared from clean com
 - 160 bundled AVISO airport maps, with shared geometry/text editing and airport-specific palettes
 - Resolution presets for AVISO rendering and aircraft icons/tags, without resizing menus or other UI
 - Automatic RIMCAS runway assignment from EuroScope's active-airport runway selection
-- AVISO, SRW 1, METAR, and Timer inset windows
+- AVISO, SRW, METAR, and Timer inset windows; SRW tag-background right-click opens EuroScope's Assume/Handoff menu
 - METAR detail adapts automatically to the window size and number of airports, down to ICAO, wind and QNH at minimum size. Settings let you choose all open AVISO airports, including CoFrance insets, or one airport at a time. Title-bar arrows switch airport/page without resizing the window; the airport grouping choice is saved with the ASR.
 - Opening the HP tag editor immediately sets a ground aircraft to Taxi, even if the point selection is cancelled. Existing scratchpad text and real assigned speeds are preserved; EuroScope ownership restrictions still apply.
-- Timer and CPDLC sounds use the files in `vSMR_Data/Audio`, with built-in fallbacks if those files are missing or cannot be played. If alerts remain silent, check the Windows output device and EuroScope's volume/mute setting in the Volume Mixer; vSMR does not override them.
-- CDM bridge integration and Hoppie CPDLC/PDC support
+- Timer and PDC notification sounds use the files in `vSMR_Data/Audio`, with built-in fallbacks if those files are missing or cannot be played. If alerts remain silent, check the Windows output device and EuroScope's volume/mute setting in the Volume Mixer; vSMR does not override them.
+- CDM bridge integration and Hoppie PDC support
 - Optional vSID bridge data, tag tokens, rules, and Runtime Menu controls
 - Optional Ramp Agent stand and stand remark tag values through the plug-in bridge
 - Airport-scoped inset presets and independent active-profile selection for each ASR
@@ -27,11 +27,11 @@ Current source version: **2.0.1**. Release artifacts are prepared from clean com
 
 ## 2.0.0 behavior and compatibility
 
-- **Resolution:** Settings offers 1080p (100%), 2K (133%), and 4K (200%). These scale AVISO labels/lines and aircraft icons, trails, tags, and their hit areas in the main view and radar insets. They do not resize the Control Center, Runtime Menu, inset controls, weather/timer panels, or FPS display, and do not change geographic positions or radar zoom.
+- **Resolution:** Settings offers 1080p (100%), 2K (133%), and 4K (200%). These scale AVISO labels/lines and aircraft icons, trails, tags, and their hit areas in the main view and radar insets. They do not resize the Control Center, Runtime Menu, inset controls, or weather/timer panels, and do not change geographic positions or radar zoom.
 - **Interface theme:** Night/Day UI colors are independent of the AVISO palette and also affect Timer and METAR insets. Dark/Light palettes are available in the current bundled maps; Real is available for LFBO, LFLL, LFML, LFMN, LFPG, LFPO, and LFSB. Other maps may offer different palettes.
-- **Target presentation:** Tag label font size is edited in pixels (6-72) instead of preset numbers 1-5. Diamond trails use more closely spaced samples while preserving the selected point count. METAR shows a prominent QNH strip and an inward-fading wind-from indicator. PDC/CPDLC composers distinguish editable light-grey fields from dark read-only fields; X uses the Cancel action.
+- **Target presentation:** Tag label font size is edited in pixels (6-72) instead of preset numbers 1-5. Diamond trails use more closely spaced samples while preserving the selected point count. METAR shows a prominent QNH strip and an inward-fading wind-from indicator. PDC and message composers distinguish editable light-grey fields from dark read-only fields; X uses the Cancel action.
 - **ASR profiles:** Each radar screen keeps its own active profile. Profile definitions and the profiles-file source remain shared; save the ASR to retain its selection.
-- **CDM:** The bridge-enabled CDM plug-in replaces the retired vACDM HTTP integration. The old CDM Auto/reminder workflow, timer, and message queue are no longer present. Manual Hoppie CPDLC/PDC workflows remain available.
+- **CDM:** The bridge-enabled CDM plug-in replaces the retired vACDM HTTP integration. The old CDM Auto/reminder workflow, timer, and message queue are no longer present. Manual Hoppie PDC and message workflows remain available.
 - **Stand data:** `uk_stand` and `remark` come from Ramp Agent through EuroScope Plugin Bridge, not flight strip annotations 3 and 4. Missing providers leave their related values unavailable without disabling the rest of vSMR.
 - **Configuration recovery:** The Control Center has Revert and Bundled defaults. The old Undo/Redo controls and legacy profile `.bak` restoration are no longer available. Keep your own configuration backups.
 
@@ -202,7 +202,7 @@ Rules live under the profile's `rules: { "version": 2, "items": [...] }` section
 | AVISO maps, palettes, groups, and editing | [AVISO](https://github.com/IWantPizzaa/vSMR/wiki/Control-Center-AVISO) |
 | RIMCAS alerts | [RIMCAS](https://github.com/IWantPizzaa/vSMR/wiki/RIMCAS) |
 | Native inset windows | [Insets](https://github.com/IWantPizzaa/vSMR/wiki/Insets) |
-| CDM bridge data and manual CPDLC/PDC | [Datalink](https://github.com/IWantPizzaa/vSMR/wiki/Datalink), [current bridge fields](https://github.com/IWantPizzaa/vSMR/wiki/Integrations) |
+| CDM bridge data and manual PDC/messages | [Datalink](https://github.com/IWantPizzaa/vSMR/wiki/Datalink), [current bridge fields](https://github.com/IWantPizzaa/vSMR/wiki/Integrations) |
 | Optional providers and bridge setup | [Integrations](https://github.com/IWantPizzaa/vSMR/wiki/Integrations) |
 | Manual Paris vSID configuration | [Paris configuration](https://github.com/IWantPizzaa/vSMR/wiki/Paris-vSID-Configuration) |
 | Commands, logs, and problem reports | [Troubleshooting](https://github.com/IWantPizzaa/vSMR/wiki/Commands-and-Troubleshooting) |
@@ -212,7 +212,7 @@ Rules live under the profile's `rules: { "version": 2, "items": [...] }` section
 
 With TrackAudio running, vSMR provides an optional EuroScope list item **RDF**, including when `.smr rdf off` hides the map overlay. In the departure-list column setup, select the vSMR **RDF** item, set the width to **2**, and bind its left-click action to vSMR **RDF reset**. vSMR does not rewrite your EuroScope list layout or mouse bindings.
 
-`TX` blinks yellow/grey for each ground aircraft heard transmitting, including simultaneous speakers. It stays pending after the call ends until clicked, so brief calls are not lost between refreshes. Reset acknowledges only the selected aircraft in the local TrackAudio session (shared by same-computer vSMR instances), without changing its flight plan or the live RDF ring. A new transmission activates it again; duplicate events or reception on another frequency during the same call do not undo a reset. Ground filtering follows vSMR's departure-tag speed threshold (reported ground speed at most 50 kt); an uncorrelated aircraft has no indication. Aircraft disconnect/takeoff clear pending indications; temporarily missing radar data in a Proxy view does not. Disabling Native RDF only hides the map overlay: list detection, blinking and reset remain active, even when starting with the overlay off. A TrackAudio reconnect clears live rings but preserves known ground calls awaiting acknowledgement.
+`TX` blinks yellow/grey for each ground aircraft heard transmitting on a frequency open for reception in the current EuroScope instance (`RCV TXT` or `RCV VOICE`). The same per-instance filter applies to native RDF rings, including in Proxy views: an instance without the frequency open shows neither indication for that call. Simultaneous eligible speakers are tracked independently. `TX` stays pending after the call ends until clicked, so brief calls are not lost between refreshes. Reset acknowledges only the selected aircraft in the local TrackAudio session, without changing its flight plan or a live RDF ring. A new eligible transmission activates it again; duplicate events during the same call do not undo a reset. Ground filtering follows vSMR's departure-tag speed threshold (reported ground speed at most 50 kt); an uncorrelated aircraft has no indication. Aircraft disconnect/takeoff clear pending indications; temporarily missing radar data in a Proxy view does not. Disabling Native RDF only hides the map overlay: list detection, blinking and reset remain active, even when starting with the overlay off. A TrackAudio reconnect clears live rings but preserves known ground calls awaiting acknowledgement.
 
 ### Two EuroScope instances through Proxy
 
@@ -221,9 +221,9 @@ Use the same vSMR build in both instances, on the same computer and Windows sess
 | State | Behavior between instances |
 | --- | --- |
 | Timers | Shared start/reset/deadlines; one expiration alarm; survive closing one participant while the other remains connected. |
-| RDF | One TrackAudio receiver with takeover on exit; TX/reset shared even with the overlay off; overlay visibility remains local. |
+| RDF | One TrackAudio receiver with takeover on exit; each instance filters TX/rings by its own open RX frequencies. Reset state is synchronized, while overlay visibility remains local. |
 | Companion fields and Rules | vSID/CDM/Ramp snapshots relayed from the primary; updates reach the secondary on its next timer tick. vSID buttons send validated actions to the primary, never the secondary command line. |
-| PDC/CPDLC | Primary connection/status flags displayed in both instances. Connection, credentials, polling and sending stay in the primary; the secondary shows **Primary** with write controls disabled. No automatic takeover/reconnection. |
+| PDC | Primary connection/status flags displayed in both instances. Hoppie connection, credentials, polling and sending stay in the primary; the secondary shows **Primary** with write controls disabled. No automatic takeover/reconnection. |
 | User configuration | Shared when using the same configuration/data paths. Saves are serialized and stale edits rejected; other instances reload persisted changes. Independent installation folders do not merge configurations automatically. |
 | ASR, airport selection, layouts, zoom, manual display choices | Remain per view. Explicit Apply to all terrains is persisted and propagated through shared configuration. |
 | Ground status, HP, scratchpad, SID, runway, flight plans | Use EuroScope's normal Proxy transport and permissions; vSMR adds no new synchronization markers to flight plans. Active runways continue to come from EuroScope's committed operational sector. |
@@ -308,7 +308,7 @@ vSMR also attaches to the geo-referenced `CoFrance radar display` type. CoFrance
 
 Load vSMR together with CoFrance, then reopen a CoFrance ASR (an already-open screen must be recreated). The vSMR rail starts expanded on a new CoFrance view: select the airport, then open **Insets** and enable the desired windows. `.smr insets` expands and recenters the rail on all attached CoFrance views and reports received refresh phases and radar bounds; if no view is attached, it reports that explicitly. `.smr editor` opens the Control Center. Saving the ASR stores vSMR's inset state in its own plugin namespace. Keep a backup/test copy of the ASR and test disconnected from VATSIM first.
 
-The adapter skips the main vSMR map, targets, tags, RDF, RIMCAS panels and FPS overlay. AVISO presets cannot recenter the CoFrance map, and linked main/inset movement is unavailable on this host. The shared vSMR profiles and maps remain available to the insets. Custom displays with `DisplayTypeNeedRadarContent:0` use EuroScope's before-TAG phase rather than depending on native TAG/list phases; hosts enabling native radar content use the after-lists phase. If the rail is missing, enable `.smr log normal`, reopen the ASR, run `.smr insets`, and export `.smr diagnostics`. This feature is integrated in `dev` for the upcoming release; integration does not publish a release or update feed.
+The adapter skips the main vSMR map, targets, tags, RDF and RIMCAS panels. AVISO presets cannot recenter the CoFrance map, and linked main/inset movement is unavailable on this host. The shared vSMR profiles and maps remain available to the insets. Custom displays with `DisplayTypeNeedRadarContent:0` use EuroScope's before-TAG phase rather than depending on native TAG/list phases; hosts enabling native radar content use the after-lists phase. If the rail is missing, enable `.smr log normal`, reopen the ASR, run `.smr insets`, and export `.smr diagnostics`. This feature is integrated in `dev` for the upcoming release; integration does not publish a release or update feed.
 
 ## License
 
