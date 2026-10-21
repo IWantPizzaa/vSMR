@@ -187,7 +187,7 @@
     groupsButton.setAttribute("aria-label", `Groups: ${visibleGroups} of ${groups.length || 0} visible`);
     profileButton.title = `Profile · ${profile?.name || "Profile"}`;
     profileButton.setAttribute("aria-label", `Profile: ${profile?.name || "Profile"}`);
-    insetButton.title = `Insets · AVISO ${insetState("aviso") ? "on" : "off"}, SRW1 ${insetState("srw1") ? "on" : "off"}, Weather ${insetState("weather") ? "on" : "off"}, Timer ${insetState("timer") ? "on" : "off"}${preset ? ` · ${preset.name}` : ""}`;
+    insetButton.title = `Insets · AVISO ${insetState("aviso") ? "on" : "off"}, SRW ${insetState("srw1") ? "on" : "off"}, Weather ${insetState("weather") ? "on" : "off"}, Timer ${insetState("timer") ? "on" : "off"}${preset ? ` · ${preset.name}` : ""}`;
     insetButton.setAttribute("aria-label", insetButton.title);
     insetButton.classList.toggle("active", anyInset);
     ["aviso", "srw1", "weather", "timer"].forEach(kind => {
@@ -266,7 +266,7 @@
       const store = airportAvisoPresetStore();
       const insetRows = [
         ["aviso", "AVISO inset"],
-        ["srw1", "SRW 1"],
+        ["srw1", "SRW"],
         ["weather", "Weather"],
         ["timer", "Timer"]
       ].map(([id, label]) => {

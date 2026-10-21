@@ -455,7 +455,7 @@ void CSMRRadar::PublishCrashRadarState(
 			switch (display.first)
 			{
 			case APPWINDOW_ONE - APPWINDOW_BASE:
-				appendInset("SRW1");
+				appendInset("SRW");
 				break;
 			case APPWINDOW_AVISO - APPWINDOW_BASE:
 				appendInset("AVISO");

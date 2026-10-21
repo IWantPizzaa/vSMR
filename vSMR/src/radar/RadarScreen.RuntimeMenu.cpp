@@ -686,7 +686,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 
 	void DrawCpdlc()
 	{
-		// Drawing CPDLC and PDC controls
+		// Drawing PDC controls
 		CSMRPlugin* plugin = static_cast<CSMRPlugin*>(radar.GetPlugIn());
 		const DatalinkControlState& state = datalinkState;
 
@@ -716,7 +716,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			"Login",
 			"runtime.datalink.callsign",
 			state.logonCallsign.empty() ? "Set..." : state.logonCallsign,
-			"Edit the CPDLC login callsign");
+			"Edit the PDC login callsign");
 		drawCredentialRow(
 			"Password",
 			"runtime.datalink.credentials",
@@ -742,7 +742,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			plugin != nullptr && !state.remoteSession && (state.connected || state.connecting || canConnect),
 			!state.connected && !state.connecting,
 			state.connected,
-			state.connected || state.connecting ? "Disconnect CPDLC" : "Connect CPDLC");
+			state.connected || state.connecting ? "Disconnect PDC" : "Connect PDC");
 		contentTop += kPopupActionHeight + 3;
 	}
 
@@ -838,7 +838,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			int appWindowId;
 		} insetRows[] = {
 			{ "runtime.inset.aviso", "runtime.inset.reset.aviso", "AVISO", avisoWindowId },
-			{ "runtime.inset.srw1", "runtime.inset.reset.srw1", "SRW 1", 1 },
+			{ "runtime.inset.srw1", "runtime.inset.reset.srw1", "SRW", 1 },
 			{ "runtime.inset.weather", nullptr, "Weather", weatherWindowId },
 			{ "runtime.inset.timer", nullptr, "Timer", timerWindowId }
 		};
@@ -1081,7 +1081,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		DrawPopup(left, top);
 		const CRect vsidArea = radar.RuntimeMenuPopupArea;
 		cpdlcPanel = true;
-		title = "CPDLC";
+		title = "PDC";
 		popupHeight = kCpdlcPopupHeight;
 		DrawPopup(stacked ? left : left + popupWidth + kIntegrationPopupGap,
 			stacked ? top + firstHeight + kIntegrationPopupGap : top);
@@ -1152,7 +1152,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		{
 			contentTop = titleArea.top;
 			if (cpdlcPanel)
-				drawIntegrationTitle("CPDLC", datalinkState.connected ? "Online" : (datalinkState.connecting ? "Connecting" : "Offline"),
+				drawIntegrationTitle("PDC", datalinkState.connected ? "Online" : (datalinkState.connecting ? "Connecting" : "Offline"),
 					datalinkState.connecting ? std::optional<bool>{} : std::optional<bool>{datalinkState.connected});
 			else
 				drawIntegrationTitle("vSID", vsidState.providerReady ? "Online" : "Offline", vsidState.providerReady);
@@ -1414,7 +1414,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		{ "runtime.button.groups", "groups", "Groups", RuntimeMenuPopup::Groups },
 		{ "runtime.button.insets", "insets", "Insets", RuntimeMenuPopup::Insets },
 		{ "runtime.button.profile", "profile", "Profile", RuntimeMenuPopup::Profile },
-		{ "runtime.button.datalink", "vsid", "vSID / CPDLC", RuntimeMenuPopup::Datalink },
+		{ "runtime.button.datalink", "vsid", "vSID / PDC", RuntimeMenuPopup::Datalink },
 		{ "runtime.button.control-center", "settings", "Open Control Center", RuntimeMenuPopup::None }
 	};
 
@@ -1442,7 +1442,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			CRect cpdlcLabel = buttonArea;
 			cpdlcLabel.top = vsidLabel.bottom;
 			DrawTextEllipsis(hdc, vsidLabel, "vSID", foreground, DT_CENTER);
-			DrawTextEllipsis(hdc, cpdlcLabel, "CPDLC", foreground, DT_CENTER);
+			DrawTextEllipsis(hdc, cpdlcLabel, "PDC", foreground, DT_CENTER);
 			if (previousFont != nullptr)
 				::SelectObject(hdc, previousFont);
 		}

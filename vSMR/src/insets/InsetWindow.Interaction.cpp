@@ -41,6 +41,7 @@ using VsmrInsetWindowInternal::kTimerContentWidth;
 void CInsetWindow::ResetAvisoInteractionState(bool releaseRendering)
 {
 	m_AvisoTagHits.Clear();
+	m_SrwTagHits.Clear();
 	m_AvisoRightPanning = false;
 	m_AvisoPanClickPending = false;
 	m_AvisoScrollSelected = false;
