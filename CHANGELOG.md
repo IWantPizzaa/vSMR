@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## [2.0.2] - 2026-10-21
 
 - Restored EuroScope Assume/Handoff from the SRW inset's tag background.
 - Filtered TrackAudio calls by the RX frequencies open in each EuroScope instance, including Proxy views, so unrelated radio traffic no longer activates RDF `TX` or map rings.
 - Renamed the SRW 1 inset and user-facing CPDLC controls to SRW and PDC. The Hoppie CPDLC transport and installed audio filenames remain unchanged.
+- Re-encoded the timer alarm as mono PCM for reliable Windows playback and logged successful timer and PDC notification playback to aid sound diagnosis.
 
 ## [2.0.1] - 2026-10-12
 
