@@ -117,6 +117,8 @@ try {
     & (Join-Path $packageData 'Tools/install_vsmr.ps1') -DestinationDirectory $destination -WhatIf
     Check (-not (Test-Path (Join-Path $destination 'vSMR_Backups'))) 'WhatIf has no installation side effects'
     Install-TestPackage
+    Check (-not (Test-Path (Join-Path $installedData 'DATA-UPDATE-REPORT.json'))) 'no empty data report on a clean install'
+    Check (-not (Test-Path (Join-Path $installedData 'AVISO-UPDATE-REPORT.json'))) 'no routine AVISO report on a clean install'
     Check (Test-Path (Join-Path $installedData 'UpdateBaselines/AVISO/AAAA.geojson')) 'fresh install seeds full baseline'
     Write-TestFile (Join-Path $installedData 'AVISO/AAAA.geojson') '{"color":2,"size":1}'
     Write-TestFile (Join-Path $installedData 'vSMR_Profiles.json') '[{"name":"Default","color":2,"size":1},{"name":"Custom","size":9}]'
