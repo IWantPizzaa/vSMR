@@ -6,7 +6,7 @@ param(
     [string]$BuildOutputDirectory = "",
     [string]$ArtifactsDirectory = "",
     [ValidatePattern("^\d+\.\d+\.\d+(?:-beta\.\d+)?$")]
-    [string]$Version = "2.0.2",
+    [string]$Version = "2.0.3",
     [string]$Configuration = "Release",
     [string]$Platform = "Win32",
     [ValidatePattern("^(auto|v\d+)$")]
