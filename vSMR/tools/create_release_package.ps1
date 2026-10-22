@@ -356,6 +356,12 @@ try {
 
     Copy-Item -LiteralPath $dllPath -Destination (Join-Path $packageStage "vSMR.dll")
     Copy-Item -LiteralPath $dataPath -Destination (Join-Path $packageStage "vSMR_Data") -Recurse
+    # These source templates are already compiled into default.json. Keep the
+    # compatibility reader for existing installations, but do not ship copies.
+    foreach ($legacyName in @('vSMR_Profiles.json', 'runway_group_visibility.json', 'profile_templates.json')) {
+        $legacyPath = Join-Path $packageStage ("vSMR_Data/" + $legacyName)
+        if (Test-Path -LiteralPath $legacyPath -PathType Leaf) { Remove-Item -LiteralPath $legacyPath -Force }
+    }
     # Fresh installations start with an empty user layer. The installer keeps
     # an existing config.json unless ReplaceUserData was explicitly requested.
     [IO.File]::WriteAllText((Join-Path $packageStage 'vSMR_Data/config.json'), "{}`n", [Text.UTF8Encoding]::new($false))
