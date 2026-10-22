@@ -1176,7 +1176,11 @@ std::string CSMRRadar::setActiveAirport(
 
 	VsmrRadar::RememberAirport(RecentAirports, ActiveAirport);
 	VsmrRadar::RememberAirport(RecentAirports, airport);
+	const std::string previousDefaultPalette = GetGlobalAvisoPalette().first;
 	ActiveAirport = airport;
+	const std::string airportDefaultPalette = GetGlobalAvisoPalette().first;
+	if (!airportDefaultPalette.empty() && AvisoPreferredColorPalette == previousDefaultPalette)
+		SetAvisoColorPalette(airportDefaultPalette, false);
 	EnsureAvisoColorPaletteAvailable(switchInsetContext);
 	MarkPerformanceRefreshReason(
 		VsmrPerformance::FrameRefreshReason::AirportUpdate);
