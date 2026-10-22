@@ -125,7 +125,7 @@ if ($Phase -eq 'Prepare') {
         if ($installedNames.ContainsKey($relative)) { $relative = $installedNames[$relative] }
         # The visibility template is compiled into default.json. Like legacy
         # profiles, its editable standalone copy is not an updater-owned file.
-        if ($relative -match '(?i)(^|/)(config\.json|vSMR_Profiles\.json|runway_group_visibility\.json|UserData|UpdateBaselines|\.update|version\.json)(/|$)' -or
+        if ($relative -match '(?i)(^|/)(config\.json|vSMR_Profiles\.json|profile_templates\.json|runway_group_visibility\.json|UserData|UpdateBaselines|\.update|version\.json)(/|$)' -or
             $relative -match '^AVISO/.*\.geojson$|^AVISO/version\.txt$') { continue }
         [void]$managed.Add('vSMR_Data/' + $relative)
     }
