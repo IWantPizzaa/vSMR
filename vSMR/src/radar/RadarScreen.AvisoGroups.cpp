@@ -233,7 +233,7 @@ std::pair<std::string, std::string> CSMRRadar::GetGlobalAvisoPalette() const
 	const auto config = VsmrAvisoSharedConfig::Read(fs::u8path(DataPath));
 	const auto* appearance = config.document ? VsmrAviso::RuleMember(*config.document, "aviso_display_defaults") : nullptr;
 	const auto* palette = appearance ? VsmrAviso::RuleMember(*appearance, "palette") : nullptr;
-	const auto* airportPalettes = appearance ? VsmrAviso::RuleMember(*appearance, "airport_palettes") : nullptr;
+	const auto* airportPalettes = config.document ? VsmrAviso::RuleMember(*config.document, "aviso_airport_palette_defaults") : nullptr;
 	const auto* airportPalette = airportPalettes && airportPalettes->IsObject()
 		? VsmrAviso::RuleMember(*airportPalettes, getActiveAirport().c_str()) : nullptr;
 	const auto* generation = appearance ? VsmrAviso::RuleMember(*appearance, "generation") : nullptr;
