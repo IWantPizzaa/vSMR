@@ -635,10 +635,18 @@ else {
 
 Complete-UserDataMerge
 
-[System.IO.File]::WriteAllText(
-    (Join-Path $stageData 'AVISO-UPDATE-REPORT.json'),
-    ((ConvertTo-Json $avisoReport -Depth 8) + "`n"),
-    $Utf8NoBom)
+$avisoNeedsReview = @(
+    $avisoReport.preserved_modified, $avisoReport.merged,
+    $avisoReport.merge_conflicts, $avisoReport.preserved_user_deleted,
+    $avisoReport.deleted, $avisoReport.preserved_deleted_modified,
+    $avisoReport.custom_preserved
+    ) | Where-Object { @($_).Count -gt 0 }
+if ($avisoNeedsReview.Count -gt 0) {
+    [System.IO.File]::WriteAllText(
+        (Join-Path $stageData 'AVISO-UPDATE-REPORT.json'),
+        ((ConvertTo-Json $avisoReport -Depth 8) + "`n"),
+        $Utf8NoBom)
+}
 
 $installationMetadata = [ordered]@{
     schema_version = 1
