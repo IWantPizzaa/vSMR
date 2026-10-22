@@ -29,7 +29,7 @@ foreach ($entry in $mapping.SelectNodes("//*[local-name()='VsmrRenamedData']")) 
         throw "Source-only name leaked into the distribution: $source"
     }
 }
-if ($sources.Count -ne 6) { throw 'Expected six compatibility aliases.' }
+if ($sources.Count -ne 5) { throw 'Expected five compatibility aliases.' }
 if ((Get-FileHash -LiteralPath (Join-Path $RepositoryRoot 'vSMR/data/profile_templates.json')).Hash -ne
     (Get-FileHash -LiteralPath (Join-Path $RepositoryRoot 'Release/vSMR_Data/vSMR_webUI/defaults/vSMR_Profiles.json')).Hash) {
     throw 'The Control Center legacy defaults alias is stale.'

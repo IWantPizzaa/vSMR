@@ -10,10 +10,6 @@
       <SourceName>holding_points.json</SourceName>
       <InstallName>airports_hp.json</InstallName>
     </VsmrRenamedData>
-    <VsmrRenamedData Include="$(MSBuildThisFileDirectory)data\profile_templates.json">
-      <SourceName>profile_templates.json</SourceName>
-      <InstallName>vSMR_Profiles.json</InstallName>
-    </VsmrRenamedData>
     <VsmrRenamedData Include="$(MSBuildThisFileDirectory)data\aviso_update_policy.json">
       <SourceName>aviso_update_policy.json</SourceName>
       <InstallName>AVISO-UPDATE-POLICY.json</InstallName>
