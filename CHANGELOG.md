@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.0.3] - 2026-10-22
+
+- Fixed AVISO loading and Apply to all terrains validation while setting Light by default and Real for LFMN, LFML and LFPO.
+- Removed redundant top-level legacy profile and runway-visibility templates from new packages while preserving migration for existing users.
+- Kept routine update reports out of clean installations and removed obsolete profile baselines.
+
 ## [2.0.2] - 2026-10-21
 
 - Restored EuroScope Assume/Handoff from the SRW inset's tag background.
