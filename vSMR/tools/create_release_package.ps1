@@ -356,8 +356,11 @@ try {
 
     Copy-Item -LiteralPath $dllPath -Destination (Join-Path $packageStage "vSMR.dll")
     Copy-Item -LiteralPath $dataPath -Destination (Join-Path $packageStage "vSMR_Data") -Recurse
+    # Fresh installations start with an empty user layer. The installer keeps
+    # an existing config.json unless ReplaceUserData was explicitly requested.
+    [IO.File]::WriteAllText((Join-Path $packageStage 'vSMR_Data/config.json'), "{}`n", [Text.UTF8Encoding]::new($false))
     foreach ($item in @(Get-ChildItem -LiteralPath (Join-Path $packageStage 'vSMR_Data') -Force -Recurse)) {
-        if ($item.Name -ieq 'config.json' -or $item.Name -ieq 'UserData' -or $item.Name -ieq '.update') {
+        if (($item.Name -ieq 'config.json' -and $item.FullName -ne (Join-Path $packageStage 'vSMR_Data/config.json')) -or $item.Name -ieq 'UserData' -or $item.Name -ieq '.update') {
             throw "User-owned configuration or updater state must never enter a release package: $($item.Name)"
         }
     }
