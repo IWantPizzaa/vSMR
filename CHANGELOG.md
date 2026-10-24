@@ -7,6 +7,7 @@
 - Allow acquiring uncorrelated tags and prevent false runway-incursion alerts during line-up or departure.
 - Fix CDM click-through and show ATIS in the Weather inset.
 - Accept legacy automatic-update settings in the Control Center and restore Runtime menu clicks after returning to EuroScope.
+- Place Display and Data files in equal-sized Settings cards, with Automatic updates spanning the row below.
 
 ## [2.0.3] - 2026-10-22
 

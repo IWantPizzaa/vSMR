@@ -65,8 +65,7 @@
   .aviso-toolbar-palette { width: 145px; }
   .settings-page .settings-layout {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: max-content max-content;
-    overflow-y: auto;
+    grid-template-rows: max-content max-content minmax(max-content, 1fr);
   }
 }
 
