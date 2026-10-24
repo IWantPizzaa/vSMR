@@ -937,6 +937,16 @@
       Math.abs(updaterBounds.left - displayBounds.left) < 1 &&
       Math.abs(updaterBounds.right - filesBounds.right) < 1,
       "Automatic updates spans the full row below Display and Data files");
+    const displayLabel = document.querySelector(".settings-page .display-group .check-field");
+    const updaterLabel = document.querySelector(".settings-page .updater-general-group .check-field");
+    const updaterVersion = document.querySelector(".settings-page .updater-general-heading > span");
+    const updaterNotice = document.querySelector(".settings-page .update-notice");
+    const displayTextSize = displayLabel
+      ? Number.parseFloat(getComputedStyle(displayLabel).fontSize) : NaN;
+    expect(Boolean(displayLabel && updaterLabel && updaterVersion && updaterNotice) &&
+      [updaterLabel, updaterVersion, updaterNotice].every(element =>
+      Math.abs(Number.parseFloat(getComputedStyle(element).fontSize) - displayTextSize) < .5),
+      "Automatic update labels, version and notice match the Settings text size");
     if (settingsLayout) {
       settingsLayout.scrollTop = settingsLayout.scrollHeight;
       const actionsBottom = document.querySelector(".settings-page .updater-general-actions")
