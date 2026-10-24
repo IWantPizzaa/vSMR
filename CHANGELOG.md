@@ -6,6 +6,7 @@
 - Optionally keep the AVISO window placement when switching or opening airports.
 - Allow acquiring uncorrelated tags and prevent false runway-incursion alerts during line-up or departure.
 - Fix CDM click-through and show ATIS in the Weather inset.
+- Accept legacy automatic-update settings in the Control Center and restore Runtime menu clicks after returning to EuroScope.
 
 ## [2.0.3] - 2026-10-22
 

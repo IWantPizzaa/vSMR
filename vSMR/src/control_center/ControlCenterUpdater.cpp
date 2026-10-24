@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "shared/JsonDocument.hpp"
 #include "control_center/ControlCenterUpdater.hpp"
+#include "control_center/UpdaterConfigSchema.hpp"
 
 #include "crash/CrashReportSupport.hpp"
 #include "plugin/PluginMetadata.hpp"
@@ -301,8 +302,8 @@ namespace
 			BuildDefaultUpdaterConfig(config);
 			return true;
 		}
-		if (!config.HasMember("schema_version") || !config["schema_version"].IsInt() ||
-			config["schema_version"].GetInt() != 1)
+		bool migrated = false;
+		if (!VsmrUpdaterConfig::NormalizeSchema(config, migrated))
 		{
 			BuildDefaultUpdaterConfig(config);
 			writable = false;

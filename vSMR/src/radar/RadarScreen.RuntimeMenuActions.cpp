@@ -549,7 +549,8 @@ bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, 
 		return false;
 	POINT point{};
 	const HWND foreground = ::GetForegroundWindow();
-	if (!TagHoverPointer.Resolve(screenPoint, sourceWindow, foreground, point))
+	if (!TagHoverPointer.Resolve(screenPoint, sourceWindow, foreground, point) &&
+		!TagHoverPointer.ResolveOwnedMessage(screenPoint, sourceWindow, point))
 	{
 		const HWND renderWindow = AvisoRefreshHostWindow.load(std::memory_order_acquire);
 		if (renderWindow == nullptr || !::IsWindow(renderWindow) ||
@@ -572,6 +573,12 @@ bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, 
 	{
 		if (!overMenu)
 			return false;
+		// The WH_MOUSE hook consumes menu clicks before EuroScope receives them.
+		// On the first click back from another application, activate its window
+		// explicitly so later input does not remain attached to the old foreground.
+		const HWND root = ::GetAncestor(sourceWindow, GA_ROOT);
+		if (root != nullptr && ::GetAncestor(foreground, GA_ROOT) != root)
+			::SetForegroundWindow(root);
 		RuntimeMenuPress = {};
 		RuntimeMenuPress.active = true;
 		RuntimeMenuPress.button = isLeftDown ? BUTTON_LEFT : BUTTON_RIGHT;

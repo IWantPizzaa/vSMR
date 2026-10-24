@@ -55,8 +55,19 @@ namespace VsmrRadarInteraction
 		bool Resolve(POINT screenPoint, HWND underCursor, HWND foreground, POINT& radarPoint) const
 		{
 			if (window_ == nullptr || !::IsWindow(window_) || foreground == nullptr ||
-				(underCursor != window_ && !::IsChild(window_, underCursor)) ||
-				::GetAncestor(foreground, GA_ROOT) != ::GetAncestor(window_, GA_ROOT) ||
+				::GetAncestor(foreground, GA_ROOT) != ::GetAncestor(window_, GA_ROOT))
+				return false;
+			return ResolveOwnedMessage(screenPoint, underCursor, radarPoint);
+		}
+
+		// A WH_MOUSE callback already belongs to the target window's UI thread.
+		// Its first click after Alt+Tab can precede foreground activation; requiring
+		// the old foreground window here would swallow that click indefinitely.
+		bool ResolveOwnedMessage(POINT screenPoint, HWND messageWindow, POINT& radarPoint) const
+		{
+			if (window_ == nullptr || !::IsWindow(window_) || messageWindow == nullptr ||
+				!::IsWindow(messageWindow) ||
+				(messageWindow != window_ && !::IsChild(window_, messageWindow)) ||
 				!::ScreenToClient(window_, &screenPoint))
 				return false;
 			radarPoint = { screenPoint.x + offset_.x, screenPoint.y + offset_.y };
