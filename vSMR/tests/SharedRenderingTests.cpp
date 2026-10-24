@@ -253,13 +253,20 @@ namespace
 			::ClientToScreen(view, &screenPoint);
 			Check(pointer.Resolve(screenPoint, view, frame, result) && result.x == 100 && result.y == 130,
 				"moving the frame preserves the calibrated radar origin", failures);
+			Check(!pointer.Resolve(screenPoint, view, otherFrame, result) &&
+				pointer.ResolveOwnedMessage(screenPoint, view, result) && result.x == 100 && result.y == 130,
+				"a radar-targeted first click maps correctly before Alt+Tab foreground activation", failures);
+			Check(!pointer.ResolveOwnedMessage(screenPoint, sibling, result) &&
+				!pointer.ResolveOwnedMessage(screenPoint, otherFrame, result),
+				"owned clicks never map a sibling radar view or another application", failures);
 			Check(!pointer.Resolve(screenPoint, sibling, frame, result) &&
 				!pointer.Resolve(screenPoint, otherFrame, frame, result) &&
 				!pointer.Resolve(screenPoint, view, otherFrame, result) &&
 				!pointer.Resolve(screenPoint, nullptr, frame, result),
 				"other views, covered radar and focus loss cannot retain hover", failures);
 			::DestroyWindow(view);
-			Check(!pointer.Resolve(screenPoint, view, frame, result),
+			Check(!pointer.Resolve(screenPoint, view, frame, result) &&
+				!pointer.ResolveOwnedMessage(screenPoint, view, result),
 				"destroyed radar window cannot retain hover", failures);
 		}
 		if (frame) ::DestroyWindow(frame);

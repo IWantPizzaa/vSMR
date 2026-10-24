@@ -1,4 +1,5 @@
 #include "UpdaterUrlPolicyTests.hpp"
+#include "control_center/UpdaterConfigSchema.hpp"
 #include "updater/UpdaterCore.Internal.hpp"
 #include "updater/UpdaterReleaseModel.hpp"
 #include "updater/UpdaterTransport.hpp"
@@ -26,6 +27,28 @@ std::vector<std::string> RunUpdaterUrlPolicyTests()
 	using vsmr::updater::url_policy::TryResolveAllowedRedirect;
 
 	std::vector<std::string> failures;
+	rapidjson::Document legacyConfig;
+	legacyConfig.Parse(R"json({"auto_check":false,"auto_download":true,"auto_install":false,"skipped_version":"2.0.2"})json");
+	bool migrated = false;
+	Check(VsmrUpdaterConfig::NormalizeSchema(legacyConfig, migrated) && migrated &&
+		legacyConfig.HasMember("schema_version") && legacyConfig["schema_version"].GetInt() == 1 &&
+		!legacyConfig["auto_check"].GetBool() && !legacyConfig["auto_install"].GetBool() &&
+		std::string(legacyConfig["skipped_version"].GetString()) == "2.0.2",
+		"schema-less updater settings migrate without losing user preferences", failures);
+	migrated = true;
+	Check(VsmrUpdaterConfig::NormalizeSchema(legacyConfig, migrated) && !migrated,
+		"current updater settings do not migrate again", failures);
+	for (const char* unsupported : {
+		R"json({"schema_version":2,"auto_check":false})json",
+		R"json({"schema_version":"1","auto_check":false})json" })
+	{
+		rapidjson::Document futureConfig;
+		futureConfig.Parse(unsupported);
+		migrated = false;
+		Check(!VsmrUpdaterConfig::NormalizeSchema(futureConfig, migrated) && !migrated &&
+			futureConfig["auto_check"].GetBool() == false,
+			"unsupported updater schemas remain untouched", failures);
+	}
 	const std::array<std::wstring, 6> allowedUrls = {
 		L"https://api.github.com/repos/IWantPizzaa/vSMR/releases?per_page=30",
 		L"https://github.com/IWantPizzaa/vSMR/releases/download/v1/package.zip",

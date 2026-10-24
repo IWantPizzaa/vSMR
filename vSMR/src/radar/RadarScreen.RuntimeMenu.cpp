@@ -1254,8 +1254,6 @@ void CSMRRadar::RepaintRuntimeMenuAfterHost(HWND window) noexcept
 
 void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 {
-	if (!RuntimeMenuPaintOnly)
-		RuntimeMenuHitTargets.clear();
 	if (hdc == nullptr)
 		return;
 	graphics.Flush(Gdiplus::FlushIntentionSync);
@@ -1285,6 +1283,10 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	const int railHeight = RuntimeMenuMinimized ? kDragHeight : kRailHeight;
 	if (bounds.Width() < kRailWidth + 8 || bounds.Height() < railHeight + 8)
 		return;
+	// A transient invalid/undersized host DC during activation must not leave
+	// an already visible rail with no clickable targets until an SDK hover.
+	if (!RuntimeMenuPaintOnly)
+		RuntimeMenuHitTargets.clear();
 
 	if (!RuntimeMenuPositionInitialized)
 	{
