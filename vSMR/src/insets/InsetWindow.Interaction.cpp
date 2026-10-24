@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "insets/InsetWindow.hpp"
 #include "insets/InsetWindow.Internal.hpp"
+#include "insets/AvisoWindowPlacement.hpp"
 #include "insets/WeatherInsetLayout.hpp"
 #include "aviso/AvisoProjection.hpp"
 #include <algorithm>
@@ -348,6 +349,7 @@ bool CInsetWindow::EndWindowMove(POINT Pt, const RECT* layoutBounds)
 	m_SnapPreviewMode = AvisoLayoutMode::Floating;
 	m_SnapPreviewArea = { 0, 0, 0, 0 };
 	m_Grip = false;
+	VsmrAvisoWindowPlacement::Remember(*this);
 	return true;
 }
 
@@ -524,6 +526,7 @@ bool CInsetWindow::EndWindowResize(POINT Pt, const RECT* layoutBounds)
 	m_WindowResizeRegion = ResizeRegion::None;
 	m_WindowInteractionMoved = false;
 	m_Grip = false;
+	VsmrAvisoWindowPlacement::Remember(*this);
 	return true;
 }
 

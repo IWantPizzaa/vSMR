@@ -1185,7 +1185,11 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 
 void CSMRRadar::AddRuntimeMenuObject(int type, const char* id, RECT area, bool movable, const char* message)
 {
-	if (!RuntimeMenuPaintOnly) AddScreenObject(type, id, area, movable, message);
+	if (!RuntimeMenuPaintOnly)
+	{
+		RuntimeMenuHitTargets.push_back({ type, id != nullptr ? id : "", area });
+		AddScreenObject(type, id, area, movable, message);
+	}
 }
 
 void CSMRRadar::ProtectRuntimeMenuDuringHostPaint(HWND window, HDC eraseDc) const noexcept
@@ -1250,6 +1254,8 @@ void CSMRRadar::RepaintRuntimeMenuAfterHost(HWND window) noexcept
 
 void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 {
+	if (!RuntimeMenuPaintOnly)
+		RuntimeMenuHitTargets.clear();
 	if (hdc == nullptr)
 		return;
 	graphics.Flush(Gdiplus::FlushIntentionSync);

@@ -107,7 +107,7 @@ void CSMRPlugin::OnTimer(int Counter)
 		Logger::info(std::string(__FUNCSIG__));
 	BLINK = (::GetTickCount64() / 1000U) % 2U != 0; // common phase across same-PC instances
 	SynchronizeProxyRuntime();
-	SyncPdcLogonWithControllerPosition();
+	SyncPdcLogonWithSelectedAirport();
 	VsmrRdf::OnTimer();
 
 	// Consume runway notifications after EuroScope's dialog callback has returned.

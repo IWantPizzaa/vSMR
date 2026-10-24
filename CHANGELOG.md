@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.4] - 2026-10-24
+
+- Use the active runtime-menu airport for PDC and add ready-startup details to LFPG's custom profile.
+- Optionally keep the AVISO window placement when switching or opening airports.
+- Allow acquiring uncorrelated tags and prevent false runway-incursion alerts during line-up or departure.
+- Fix CDM click-through and show ATIS in the Weather inset.
+
 ## [2.0.3] - 2026-10-22
 
 - Fixed AVISO loading and Apply to all terrains validation while setting Light by default and Real for LFMN, LFML and LFPO.

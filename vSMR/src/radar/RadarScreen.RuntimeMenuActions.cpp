@@ -2,6 +2,7 @@
 #include "control_center/ControlCenterDialog.hpp"
 #include "integrations/VsidBridgeClient.hpp"
 #include "insets/InsetWindow.hpp"
+#include "insets/AvisoWindowPlacement.hpp"
 #include "plugin/Plugin.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
@@ -10,6 +11,8 @@
 
 #include <cstdlib>
 #include <limits>
+
+extern CPoint mouseLocation;
 
 namespace
 {
@@ -369,6 +372,13 @@ bool CSMRRadar::HandleRuntimeInsetClick(const char* id)
 		if (display != appWindowDisplays.end())
 		{
 			display->second = !display->second;
+			if (display->second && KeepAvisoWindowPlacement &&
+				appWindowId == APPWINDOW_AVISO - APPWINDOW_BASE)
+			{
+				const auto window = appWindows.find(appWindowId);
+				if (window != appWindows.end() && window->second != nullptr)
+					VsmrAvisoWindowPlacement::Remember(*window->second);
+			}
 			if (!display->second)
 			{
 				auto window = appWindows.find(appWindowId);
@@ -383,6 +393,12 @@ bool CSMRRadar::HandleRuntimeInsetClick(const char* id)
 	auto resetInsetWindow = [&](int appWindowId)
 	{
 		ResetInsetWindowState(appWindowId, true);
+		if (KeepAvisoWindowPlacement && appWindowId == APPWINDOW_AVISO - APPWINDOW_BASE)
+		{
+			const auto window = appWindows.find(appWindowId);
+			if (window != appWindows.end() && window->second != nullptr)
+				VsmrAvisoWindowPlacement::Remember(*window->second);
+		}
 		SaveInsetStateToAsrForAirport(getActiveAirport());
 		SyncRuntimeMenuControlCenter();
 		RequestRefresh();
@@ -499,6 +515,127 @@ bool CSMRRadar::HandleRuntimeMenuMove(int objectType, const char* objectId, POIN
 		PublishSharedRuntimeMenuPosition(true);
 	RequestRefresh();
 	return true;
+}
+
+bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, UINT message)
+{
+	if (IsShutdownRequested() || sourceWindow == nullptr || !::IsWindow(sourceWindow))
+		return false;
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+
+	// The Control Center is a native popup containing a WebView on another STA.
+	// Its own messages must reach that window. If EuroScope receives a mouse
+	// message underneath the visible popup, however, do not let a CDM screen
+	// object at the same coordinates act on that click.
+	if (VsmrControlCenterDialog != nullptr)
+	{
+		const HWND dialog = VsmrControlCenterDialog->GetSafeHwnd();
+		if (::IsWindow(dialog) && ::IsWindowVisible(dialog))
+		{
+			if (sourceWindow == dialog || ::IsChild(dialog, sourceWindow))
+				return false;
+			RECT dialogBounds{};
+			if (::GetWindowRect(dialog, &dialogBounds) &&
+				::PtInRect(&dialogBounds, screenPoint))
+			{
+				return message == WM_LBUTTONDOWN || message == WM_LBUTTONUP ||
+					message == WM_LBUTTONDBLCLK || message == WM_RBUTTONDOWN ||
+					message == WM_RBUTTONUP || message == WM_RBUTTONDBLCLK;
+			}
+		}
+	}
+
+	if (RuntimeMenuHitTargets.empty())
+		return false;
+	POINT point{};
+	const HWND foreground = ::GetForegroundWindow();
+	if (!TagHoverPointer.Resolve(screenPoint, sourceWindow, foreground, point))
+	{
+		const HWND renderWindow = AvisoRefreshHostWindow.load(std::memory_order_acquire);
+		if (renderWindow == nullptr || !::IsWindow(renderWindow) ||
+			(sourceWindow != renderWindow && !::IsChild(renderWindow, sourceWindow)))
+			return false;
+		point = screenPoint;
+		if (!::ScreenToClient(renderWindow, &point))
+			return false;
+		point.x -= RuntimeMenuDcOrigin.x;
+		point.y -= RuntimeMenuDcOrigin.y;
+	}
+
+	const bool overMenu = RuntimeMenuArea.PtInRect(point) != FALSE ||
+		(ActiveRuntimeMenuPopup != RuntimeMenuPopup::None &&
+			(RuntimeMenuPopupArea.PtInRect(point) != FALSE ||
+				RuntimeMenuSecondaryPopupArea.PtInRect(point) != FALSE));
+	const bool isLeftDown = message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK;
+	const bool isRightDown = message == WM_RBUTTONDOWN || message == WM_RBUTTONDBLCLK;
+	if (isLeftDown || isRightDown)
+	{
+		if (!overMenu)
+			return false;
+		RuntimeMenuPress = {};
+		RuntimeMenuPress.active = true;
+		RuntimeMenuPress.button = isLeftDown ? BUTTON_LEFT : BUTTON_RIGHT;
+		RuntimeMenuPress.startPoint = point;
+		for (auto it = RuntimeMenuHitTargets.rbegin(); it != RuntimeMenuHitTargets.rend(); ++it)
+		{
+			if (::PtInRect(&it->area, point))
+			{
+				RuntimeMenuPress.target = *it;
+				break;
+			}
+		}
+		return true;
+	}
+	if (message == WM_MOUSEMOVE && RuntimeMenuPress.active &&
+		RuntimeMenuPress.button == BUTTON_LEFT &&
+		RuntimeMenuPress.target.id == "runtime.drag")
+	{
+		const LONG deltaX = point.x - RuntimeMenuPress.startPoint.x;
+		const LONG deltaY = point.y - RuntimeMenuPress.startPoint.y;
+		if (!RuntimeMenuPress.dragging &&
+			(std::abs(deltaX) >= 3 || std::abs(deltaY) >= 3))
+			RuntimeMenuPress.dragging = true;
+		if (RuntimeMenuPress.dragging)
+		{
+			RECT area = RuntimeMenuPress.target.area;
+			::OffsetRect(&area, deltaX, deltaY);
+			HandleRuntimeMenuMove(RUNTIME_MENU_RAIL, "runtime.drag", point, area, false);
+		}
+		mouseLocation = point;
+		return true;
+	}
+	if (message == WM_MOUSEMOVE && overMenu)
+	{
+		if (mouseLocation.x != point.x || mouseLocation.y != point.y)
+		{
+			mouseLocation = point;
+			RequestRefresh();
+		}
+		return true;
+	}
+	const bool isLeftUp = message == WM_LBUTTONUP;
+	const bool isRightUp = message == WM_RBUTTONUP;
+	if (isLeftUp || isRightUp)
+	{
+		if (!RuntimeMenuPress.active || RuntimeMenuPress.button != (isLeftUp ? BUTTON_LEFT : BUTTON_RIGHT))
+			return overMenu;
+		const RuntimeMenuPointerPress press = std::move(RuntimeMenuPress);
+		RuntimeMenuPress = {};
+		if (press.dragging)
+		{
+			RECT area = press.target.area;
+			::OffsetRect(&area, point.x - press.startPoint.x, point.y - press.startPoint.y);
+			HandleRuntimeMenuMove(RUNTIME_MENU_RAIL, "runtime.drag", point, area, true);
+		}
+		else if (!press.target.id.empty() && ::PtInRect(&press.target.area, point))
+		{
+			mouseLocation = point;
+			HandleRuntimeMenuClick(press.target.type, press.target.id.c_str(), point,
+				press.target.area, press.button);
+		}
+		return true;
+	}
+	return false;
 }
 
 void CSMRRadar::CloseRuntimeMenuPopup()

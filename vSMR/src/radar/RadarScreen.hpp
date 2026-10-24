@@ -113,6 +113,9 @@ public:
 		bool persistToAsr = true);
 	void RefreshAfterAirportRunwayActivityChange();
 	bool IsAppWindowDisplayed(int appWindowId) const;
+	// Claim mouse input over the painted runtime menu and modeless Control
+	// Center before a later-rendering plugin can activate covered objects.
+	bool HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, UINT message);
 
 private:
 	// These collaborators implement tightly coupled rendering or same-screen
@@ -250,14 +253,32 @@ private:
 	bool RuntimeMenuStateLoaded = false;
 	bool RuntimeMenuMinimized = false;
 	bool InitialInsetStateRestorePending = false;
+	bool InitialAvisoPlacementShared = false;
 	CRect InitialInsetStateRestoreBounds = { 0, 0, 0, 0 };
 	int InitialInsetStateRestoreStableFrames = 0;
 	unsigned long InitialInsetStateRestoreBoundsChangedTick = 0;
 	CRect RuntimeMenuArea = { 0, 0, 0, 0 };
 	CRect RuntimeMenuPopupArea = { 0, 0, 0, 0 };
 	CRect RuntimeMenuSecondaryPopupArea = { 0, 0, 0, 0 };
+	struct RuntimeMenuHitTarget
+	{
+		int type = 0;
+		std::string id;
+		RECT area{};
+	};
+	std::vector<RuntimeMenuHitTarget> RuntimeMenuHitTargets;
+	struct RuntimeMenuPointerPress
+	{
+		bool active = false;
+		bool dragging = false;
+		int button = 0;
+		RuntimeMenuHitTarget target;
+		POINT startPoint{};
+	};
+	RuntimeMenuPointerPress RuntimeMenuPress;
 	int RuntimeMenuPopupScrollOffset = 0;
 	bool ShowNorthIndicator = true;
+	bool KeepAvisoWindowPlacement = true;
 	POINT NorthIndicatorOffset = { -1, -1 };
 	void LoadNorthIndicatorStateFromAsr();
 	void SaveNorthIndicatorStateToAsr();
@@ -308,6 +329,7 @@ private:
 
 
 	std::string ActiveAirport = "EGKK";
+	bool ActiveAirportChosen = false;
 	bool WeatherAllAirports = true;
 	char CrashActiveProfile[96] = "unavailable";
 	mutable char CrashLastAirport[16]{};

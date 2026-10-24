@@ -763,6 +763,7 @@
         uiColorTheme: "night",
         weatherAllAirports: true,
         showNorthIndicator: true,
+        keepAvisoWindowPlacement: true,
         avisoColorPalette: "light",
         avisoColorPalettes: ["dark", "light", "real"],
         dataHealth: {

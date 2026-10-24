@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstddef>
 #include <string>
 
 class PdcLogonSync
@@ -8,14 +7,11 @@ class PdcLogonSync
 public:
 	void MarkManualEdit() noexcept { manualOverride = true; }
 
-	std::string Resolve(bool controllerConnected, int facility,
-		const std::string& position, std::size_t avisoCount) const
+	static std::string NormalizeAirport(const std::string& selectedAirport)
 	{
-		// VATSIM facilities: 2 delivery, 3 ground, 4 tower.
-		if (manualOverride || !controllerConnected || facility < 2 || facility > 4 ||
-			avisoCount != 1 || position.size() < 6 || position[4] != '_')
+		if (selectedAirport.size() != 4)
 			return {};
-		std::string airport = position.substr(0, 4);
+		std::string airport = selectedAirport;
 		for (char& c : airport)
 		{
 			if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
@@ -24,7 +20,12 @@ public:
 		return airport;
 	}
 
+	std::string Resolve(const std::string& selectedAirport) const
+	{
+		return manualOverride ? std::string() : NormalizeAirport(selectedAirport);
+	}
+
 private:
-	// Lifetime is the plugin session, deliberately not a network connection.
+	// A manual PDC login remains authoritative for the whole plugin session.
 	bool manualOverride = false;
 };
