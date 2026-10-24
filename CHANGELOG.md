@@ -8,6 +8,7 @@
 - Fix CDM click-through and show ATIS in the Weather inset.
 - Accept legacy automatic-update settings in the Control Center and restore Runtime menu clicks after returning to EuroScope.
 - Place Display and Data files in equal-sized Settings cards, with Automatic updates spanning the row below.
+- Match Automatic updates typography and spacing to the rest of Settings, using the full height of its card.
 
 ## [2.0.3] - 2026-10-22
 
