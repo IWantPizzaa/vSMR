@@ -53,7 +53,7 @@ std::atomic<bool> ConnectionMessage(false);
 std::atomic<bool> FailedToConnectMessage(false);
 
 std::string logonCode = "";
-std::string logonCallsign = "EGKK";
+std::string logonCallsign;
 
 std::string DatalinkStatusMessage = "Disconnected.";
 std::mutex DatalinkControlMutex;

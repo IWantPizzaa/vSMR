@@ -94,29 +94,24 @@ DatalinkControlState CSMRPlugin::GetDatalinkControlState() const
 	return state;
 }
 
-void CSMRPlugin::SyncPdcLogonWithControllerPosition()
+void CSMRPlugin::SetPdcSelectedAirport(const std::string& airport)
+{
+	const std::string normalized = PdcLogonSync::NormalizeAirport(airport);
+	if (normalized.empty())
+		return;
+	PdcSelectedAirport = normalized;
+	SyncPdcLogonWithSelectedAirport();
+}
+
+void CSMRPlugin::SyncPdcLogonWithSelectedAirport()
 {
 	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
 		HoppieConnected.load(std::memory_order_acquire) ||
 		HoppieConnecting.load(std::memory_order_acquire))
 		return;
-	const int connectionType = GetConnectionType();
-	if (connectionType != CONNECTION_TYPE_DIRECT)
+	if (GetConnectionType() == CONNECTION_TYPE_VIA_PROXY)
 		return;
-	const CController controller = ControllerMyself();
-	if (!controller.IsValid() || !controller.IsController())
-		return;
-	const char* callsignText = controller.GetCallsign();
-	const std::string position = callsignText != nullptr ? callsignText : "";
-	std::size_t avisoCount = 0;
-	for (CSMRRadar* radar : RadarScreensOpened)
-	{
-		if (radar != nullptr && !radar->IsShutdownRequested() &&
-			(!radar->IsInsetsOnly() || radar->IsAppWindowDisplayed(APPWINDOW_AVISO - APPWINDOW_BASE)))
-			++avisoCount;
-	}
-	const std::string airport = PdcLogonSynchronization.Resolve(
-		true, controller.GetFacility(), position, avisoCount);
+	const std::string airport = PdcLogonSynchronization.Resolve(PdcSelectedAirport);
 	if (airport.empty())
 		return;
 	{
@@ -220,7 +215,7 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 
 bool CSMRPlugin::ConnectDatalink(std::string& error)
 {
-	SyncPdcLogonWithControllerPosition();
+	SyncPdcLogonWithSelectedAirport();
 	error.clear();
 	if (GetConnectionType() == CONNECTION_TYPE_VIA_PROXY) {
 		error = "Connect PDC in the primary EuroScope instance."; return false;
@@ -379,7 +374,8 @@ void CSMRPlugin::ResetDatalinkRuntime()
 	FailedToConnectMessage.store(false, std::memory_order_relaxed);
 	{
 		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
-		logonCallsign = "EGKK";
+		logonCallsign.clear();
+		PdcSelectedAirport.clear();
 		logonCode.clear();
 		DatalinkStatusMessage = "Disconnected.";
 	}

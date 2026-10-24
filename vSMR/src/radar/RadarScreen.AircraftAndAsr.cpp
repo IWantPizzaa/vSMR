@@ -5,7 +5,9 @@
 #include "radar/RadarScreen.Registry.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
 #include "insets/InsetWindow.hpp"
+#include "insets/AvisoWindowPlacement.hpp"
 #include "insets/AvisoViewportCenter.hpp"
+#include "plugin/Plugin.hpp"
 #include "insets/WeatherInsetLayout.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashRuntime.hpp"
@@ -1166,12 +1168,26 @@ std::string CSMRRadar::setActiveAirport(
 	bool syncControlCenter)
 {
 	const std::string airport = NormalizeInsetAirport(value);
-	if (airport.empty() || _stricmp(ActiveAirport.c_str(), airport.c_str()) == 0)
+	if (airport.empty())
+		return ActiveAirport;
+	ActiveAirportChosen = true;
+	if (switchInsetContext)
+		SaveDataToAsr("AirportSelected", "Airport explicitly selected in vSMR", "1");
+	if (auto* plugin = static_cast<CSMRPlugin*>(GetPlugIn()))
+		plugin->SetPdcSelectedAirport(airport);
+	if (_stricmp(ActiveAirport.c_str(), airport.c_str()) == 0)
 		return ActiveAirport;
 
 	if (switchInsetContext && !ActiveAirport.empty())
 	{
 		SaveInsetStateToAsrForAirport(ActiveAirport);
+		if (KeepAvisoWindowPlacement &&
+			appWindowDisplays[APPWINDOW_AVISO - APPWINDOW_BASE])
+		{
+			const auto aviso = appWindows.find(APPWINDOW_AVISO - APPWINDOW_BASE);
+			if (aviso != appWindows.end() && aviso->second != nullptr)
+				VsmrAvisoWindowPlacement::Remember(*aviso->second);
+		}
 	}
 
 	VsmrRadar::RememberAirport(RecentAirports, ActiveAirport);
@@ -1194,10 +1210,24 @@ std::string CSMRRadar::setActiveAirport(
 
 	if (switchInsetContext)
 	{
+		const bool avisoWasVisible = KeepAvisoWindowPlacement &&
+			appWindowDisplays[APPWINDOW_AVISO - APPWINDOW_BASE];
 		ResetAllInsetWindowStates(false);
 		ResetAvisoPresetStateForActiveAirport(false);
 		if (!LoadInsetStateFromAsrForAirport(ActiveAirport, false))
 			ApplyDefaultAvisoPresetIfConfigured();
+		if (KeepAvisoWindowPlacement)
+		{
+			const auto aviso = appWindows.find(APPWINDOW_AVISO - APPWINDOW_BASE);
+			if (aviso != appWindows.end() && aviso->second != nullptr)
+			{
+				VsmrAvisoWindowPlacement::Restore(*aviso->second);
+				aviso->second->m_AvisoViewInitialized = false;
+				aviso->second->m_AvisoCenterContext.clear();
+				aviso->second->ClearAvisoViewportCache();
+			}
+			appWindowDisplays[APPWINDOW_AVISO - APPWINDOW_BASE] = avisoWasVisible;
+		}
 		SaveDataToAsr("Airport", "Active airport", ActiveAirport.c_str());
 		if (syncControlCenter && VsmrControlCenterDialog != nullptr)
 			VsmrControlCenterDialog->SyncFromRadar();
@@ -1222,13 +1252,23 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	// ReSharper disable CppZeroConstantCanBeReplacedWithNullptr
 	if ((p_value = GetDataFromAsr("Airport")) != NULL)
 	{
-		setActiveAirport(p_value, false);
+		const std::string savedAirport = p_value;
+		const char* savedSelection = GetDataFromAsr("AirportSelected");
+		// EGKK was the old sentinel in ASRs without a selected AVISO airport.
+		// A controller may still explicitly select EGKK from the runtime menu.
+		const bool explicitlySaved = savedSelection != nullptr && strcmp(savedSelection, "1") == 0;
+		if (_stricmp(savedAirport.c_str(), "EGKK") != 0 || explicitlySaved ||
+			(ActiveAirportChosen && _stricmp(ActiveAirport.c_str(), "EGKK") == 0))
+			setActiveAirport(savedAirport, false);
 		Logger::info("OnAsrContentLoaded: active airport from ASR=" + getActiveAirport());
 	}
 	else
 	{
 		Logger::info("OnAsrContentLoaded: no ASR Airport value; active airport=" + getActiveAirport());
 	}
+	if (ActiveAirportChosen)
+		if (auto* plugin = static_cast<CSMRPlugin*>(GetPlugIn()))
+			plugin->SetPdcSelectedAirport(ActiveAirport);
 
 	const char* savedProfilesPath = GetDataFromAsr("ProfilesFile");
 	if (savedProfilesPath != NULL && savedProfilesPath[0] != '\0')
@@ -1291,6 +1331,23 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	ResetAvisoPresetStateForActiveAirport(false);
 	if (!LoadInsetStateFromAsrForAirport(getActiveAirport(), true))
 		ApplyDefaultAvisoPresetIfConfigured();
+	InitialAvisoPlacementShared = false;
+	if (KeepAvisoWindowPlacement)
+	{
+		const auto aviso = appWindows.find(APPWINDOW_AVISO - APPWINDOW_BASE);
+		if (aviso != appWindows.end() && aviso->second != nullptr)
+		{
+			InitialAvisoPlacementShared = VsmrAvisoWindowPlacement::Restore(*aviso->second);
+			if (InitialAvisoPlacementShared)
+			{
+				aviso->second->m_AvisoViewInitialized = false;
+				aviso->second->m_AvisoCenterContext.clear();
+				aviso->second->ClearAvisoViewportCache();
+			}
+			else if (appWindowDisplays[APPWINDOW_AVISO - APPWINDOW_BASE])
+				VsmrAvisoWindowPlacement::Remember(*aviso->second);
+		}
+	}
 	SaveInsetStateToAsrForAirport(getActiveAirport());
 	InitialInsetStateRestorePending = true;
 	InitialInsetStateRestoreBounds.SetRectEmpty();
@@ -1322,6 +1379,7 @@ void CSMRRadar::OnAsrContentToBeSaved()
 	Logger::info(std::string(__FUNCSIG__));
 
 	SaveDataToAsr("Airport", "Active airport for RIMCAS", getActiveAirport().c_str());
+	SaveDataToAsr("AirportSelected", "Airport explicitly selected in vSMR", ActiveAirportChosen ? "1" : "0");
 
 	SaveActiveProfileToAsr();
 	SaveDataToAsr("ProfilesFile", "Active vSMR profiles file", ConfigPath.c_str());

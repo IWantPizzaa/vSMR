@@ -1250,6 +1250,38 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		StartTagFunction(rtCallsign, NULL, tagItemType, rtCallsign, menuContext, tagMenu, Pt, Area);
 		return true;
 	};
+	// A system-id tag is still a clickable aircraft even when vSMR's display
+	// correlation rules classify it as uncorrelated. Route clicks on any part of
+	// that tag to EuroScope's Assume/Handoff menu when a flight plan exists, or
+	// its correlation chooser when the radar target has no matching plan yet.
+	if ((Button == BUTTON_LEFT || Button == BUTTON_RIGHT) && hasObjectId &&
+		(ObjectType == DRAWING_TAG ||
+			(ObjectType >= TAG_CITEM_NO && ObjectType <= TAG_CITEM_READY_STARTUP)))
+	{
+		const VsmrScene::RadarScene* scene = GetCurrentRadarScene();
+		const VsmrScene::Target* sceneTarget = scene != nullptr ? scene->FindTarget(objectId) : nullptr;
+		if (sceneTarget != nullptr && sceneTarget->role == VsmrScene::TargetRole::Uncorrelated)
+		{
+			CRadarTarget target = GetPlugIn()->RadarTargetSelect(objectId);
+			if (target.IsValid())
+			{
+				const char* callsign = target.GetCallsign();
+				if (callsign != nullptr && callsign[0] != '\0')
+				{
+					CFlightPlan flightPlan = target.GetCorrelatedFlightPlan();
+					if (!flightPlan.IsValid())
+						flightPlan = GetPlugIn()->FlightPlanSelect(callsign);
+					GetPlugIn()->SetASELAircraft(flightPlan);
+					StartTagFunction(callsign, NULL, TAG_ITEM_TYPE_CALLSIGN, callsign, NULL,
+						flightPlan.IsValid() ? TAG_ITEM_FUNCTION_HANDOFF_POPUP_MENU
+							: TAG_ITEM_FUNCTION_CORRELATE_POPUP,
+						Pt, Area);
+					RequestRefresh();
+					return;
+				}
+			}
+		}
+	}
 	auto openGroundStatusPopup = [&]() -> bool
 	{
 		CRadarTarget rt = selectAseAndGetTarget();

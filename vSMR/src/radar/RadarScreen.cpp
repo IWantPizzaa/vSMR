@@ -220,6 +220,9 @@ CSMRRadar::CSMRRadar(bool insetsOnly, bool needRadarContent)
 		CurrentConfig = std::make_unique<CConfig>(ConfigPath, mapsPath);
 	if (CurrentConfig->isLayeredConfig())
 		ConfigPath = CurrentConfig->getConfigPath();
+	if (auto* plugin = GetPlugIn())
+		if (const char* savedPlacement = plugin->GetDataFromSettings("KeepAvisoWindowPlacement"))
+			KeepAvisoWindowPlacement = strcmp(savedPlacement, "0") != 0;
 	const auto canonicalConfig = fs::absolute(fs::u8path(DataPath) / "config.json").lexically_normal();
 	const auto selectedConfig = fs::absolute(fs::u8path(CurrentConfig->getConfigPath())).lexically_normal();
 	if (CurrentConfig->isLayeredConfig() && _wcsicmp(canonicalConfig.c_str(), selectedConfig.c_str()) == 0)
@@ -251,6 +254,7 @@ CSMRRadar::CSMRRadar(bool insetsOnly, bool needRadarContent)
 	if (!avisoDefaultAirport.empty())
 	{
 		ActiveAirport = avisoDefaultAirport;
+		ActiveAirportChosen = true;
 		Logger::info("CSMRRadar::CSMRRadar() default active airport from AVISO file=" + ActiveAirport);
 	}
 	// Set up the native inset windows.
@@ -1270,6 +1274,26 @@ LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
 {
 	if (VsmrRadarInteraction::IsActionableMouseHook(code) && IsMouseButtonDownMessage(wParam))
 		ClearAvisoWheelRoutingState();
+
+	if (VsmrRadarInteraction::IsActionableMouseHook(code) && lParam != 0 &&
+		(wParam == WM_MOUSEMOVE || wParam == WM_LBUTTONDOWN || wParam == WM_LBUTTONUP ||
+			wParam == WM_LBUTTONDBLCLK || wParam == WM_RBUTTONDOWN || wParam == WM_RBUTTONUP ||
+			wParam == WM_RBUTTONDBLCLK))
+	{
+		const auto* mouseData = reinterpret_cast<const MOUSEHOOKSTRUCT*>(lParam);
+		for (HWND window = mouseData->hwnd; window != nullptr && ::IsWindow(window);
+			window = ::GetParent(window))
+		{
+			const auto active = gInsetWindowActiveRadarScreen.find(window);
+			if (active == gInsetWindowActiveRadarScreen.end())
+				continue;
+			if (active->second != nullptr &&
+				active->second->HandleOverlayMouseMessage(mouseData->hwnd, mouseData->pt,
+					static_cast<UINT>(wParam)))
+				return 1;
+			break;
+		}
+	}
 
 	if (VsmrRadarInteraction::IsActionableMouseHook(code) && wParam == WM_MOUSEWHEEL && lParam != 0)
 	{

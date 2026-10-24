@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "insets/AvisoWindowPlacement.hpp"
 #include "platform/windows/ResourceIds.h"
 #include "radar/RadarScreen.hpp"
 #include "radar/InsetHostPolicy.hpp"
@@ -330,6 +331,18 @@ void CSMRRadar::PrepareRefreshInsetLayout(CRect& insetLayoutBounds)
 				const std::string activePresetName = ActiveAvisoPresetName;
 				LoadAvisoPreset(activePresetName);
 			}
+			if (KeepAvisoWindowPlacement && InitialAvisoPlacementShared)
+			{
+				const auto aviso = appWindows.find(APPWINDOW_AVISO - APPWINDOW_BASE);
+				if (aviso != appWindows.end() && aviso->second != nullptr)
+				{
+					VsmrAvisoWindowPlacement::Restore(*aviso->second);
+					aviso->second->m_AvisoViewInitialized = false;
+					aviso->second->m_AvisoCenterContext.clear();
+					aviso->second->ClearAvisoViewportCache();
+				}
+			}
+			InitialAvisoPlacementShared = false;
 			InitialInsetStateRestorePending = false;
 			InitialInsetStateRestoreStableFrames = 0;
 			InitialInsetStateRestoreBoundsChangedTick = 0;

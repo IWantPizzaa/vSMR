@@ -2,7 +2,7 @@
 
 vSMR is a configurable surface-movement radar plug-in for 32-bit EuroScope. It provides airport surface displays, aircraft tags and symbols, AVISO maps, RIMCAS alerts, native inset windows, CDM data, and Hoppie PDC and message workflows over CPDLC.
 
-Current source version: **2.0.3**. Release artifacts are prepared from clean committed source. Bundled third-party assets retain the licenses and attributions in `vSMR/data/Licenses/`.
+Current source version: **2.0.4**. Release artifacts are prepared from clean committed source. Bundled third-party assets retain the licenses and attributions in `vSMR/data/Licenses/`.
 
 > Verify the active airport, profile, AVISO map, runway configuration, and alerts before controlling. Development and validation-only packages are not official releases.
 
@@ -15,11 +15,12 @@ Current source version: **2.0.3**. Release artifacts are prepared from clean com
 - 160 bundled AVISO airport maps, with shared geometry/text editing and airport-specific palettes
 - Resolution presets for AVISO rendering and aircraft icons/tags, without resizing menus or other UI
 - Automatic RIMCAS runway assignment from EuroScope's active-airport runway selection
-- AVISO, SRW, METAR, and Timer inset windows; SRW tag-background right-click opens EuroScope's Assume/Handoff menu
-- METAR detail adapts automatically to the window size and number of airports, down to ICAO, wind and QNH at minimum size. Settings let you choose all open AVISO airports, including CoFrance insets, or one airport at a time. Title-bar arrows switch airport/page without resizing the window; the airport grouping choice is saved with the ASR.
+- AVISO, SRW, Weather, and Timer inset windows; uncorrelated tags can open EuroScope's acquisition or correlation menu with either mouse button.
+- The Control Center's **Keep AVISO window placement** option keeps its screen position and size when switching airports or opening another ASR; the map recenters on the new airport. The option is saved in EuroScope's vSMR settings.
+- Weather detail adapts automatically to the window size and number of airports, with the live ATIS letter and frequency when available. Settings let you choose all open AVISO airports, including CoFrance insets, or one airport at a time. Title-bar arrows switch airport/page without resizing the window; the airport grouping choice is saved with the ASR.
 - Opening the HP tag editor immediately sets a ground aircraft to Taxi, even if the point selection is cancelled. Existing scratchpad text and real assigned speeds are preserved; EuroScope ownership restrictions still apply.
 - Timer and PDC notification sounds use the files in `vSMR_Data/Audio`, with built-in fallbacks if those files are missing or cannot be played. If alerts remain silent, check the Windows output device and EuroScope's volume/mute setting in the Volume Mixer; vSMR does not override them.
-- CDM bridge integration and Hoppie PDC support
+- CDM bridge integration and Hoppie PDC support; PDC uses the ICAO selected in the runtime menu unless its login was edited manually.
 - Optional vSID bridge data, tag tokens, rules, and Runtime Menu controls
 - Optional Ramp Agent stand and stand remark tag values through the plug-in bridge
 - Airport-scoped inset presets and independent active-profile selection for each ASR
@@ -262,9 +263,9 @@ After building the native test executable, run the regression suite independentl
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tests\run_tests.ps1
 ```
 
-Release-input checks enforce matching 2.0.3 versions, the reviewed hashes of all 161 AVISO files (including the separate LFPO_Work variant), and an update policy that never deletes a bundled airport. LFPG contains 1,470 ungrouped features, including the two 60 m limit lines, plus six grouped features carrying 89 East arrows and 97 West arrows, independently controlled through the **East Arrows** and **West Arrows** groups. The hash manifest records these committed geometries.
+Release-input checks enforce matching 2.0.4 versions, the reviewed hashes of all 161 AVISO files (including the separate LFPO_Work variant), and an update policy that never deletes a bundled airport. LFPG contains 1,470 ungrouped features, including the two 60 m limit lines, plus six grouped features carrying 89 East arrows and 97 West arrows, independently controlled through the **East Arrows** and **West Arrows** groups. The hash manifest records these committed geometries.
 
-Publishable artifacts require a clean source commit and passing release checks. Signing is optional; configuring a signing certificate/pin or `-RequireSignature` enforces signed binaries and the matching detached update signature. The packager, binary product versions, and AppVeyor settings target 2.0.3; loader version remains 1.3.0 and runtime ABI remains 1. Local validation packages are not distributable releases. Publication of the GitHub release and update feed remains an explicit maintainer action.
+Publishable artifacts require a clean source commit and passing release checks. Signing is optional; configuring a signing certificate/pin or `-RequireSignature` enforces signed binaries and the matching detached update signature. The packager, binary product versions, and AppVeyor settings target 2.0.4; loader version remains 1.3.0 and runtime ABI remains 1. Local validation packages are not distributable releases. Publication of the GitHub release and update feed remains an explicit maintainer action.
 
 ### Per-file update feed
 
