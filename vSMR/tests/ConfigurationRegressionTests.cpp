@@ -36,6 +36,32 @@ namespace
 
 	void TestProfiles(const std::filesystem::path& repositoryRoot)
 	{
+		const auto matchesLfpgDetailedRows = [](const rapidjson::Value& profile)
+		{
+			if (!profile.IsObject() || !profile.HasMember("labels") ||
+				!profile["labels"].IsObject() || !profile["labels"].HasMember("departure"))
+				return false;
+			const auto& departure = profile["labels"]["departure"];
+			const auto matchesRows = [](const rapidjson::Value& rows)
+			{
+				const auto isToken = [](const rapidjson::Value& value, const char* expected)
+				{
+					return value.IsString() && std::string(value.GetString()) == expected;
+				};
+				return rows.IsArray() && rows.Size() == 3U &&
+					rows[0].IsArray() && rows[0].Size() == 1U && isToken(rows[0][0], "b:callsign") &&
+					rows[1].IsArray() && rows[1].Size() == 2U && isToken(rows[1][0], "actype") && isToken(rows[1][1], "deprwy") &&
+					rows[2].IsArray() && rows[2].Size() == 2U && isToken(rows[2][0], "ready_startup") && isToken(rows[2][1], "scratchpad");
+			};
+			return departure.IsObject() && departure.HasMember("definition_detailed") &&
+				departure.HasMember("status_definitions") &&
+				departure["status_definitions"].IsObject() &&
+				departure["status_definitions"].HasMember("stup") &&
+				departure["status_definitions"]["stup"].IsObject() &&
+				departure["status_definitions"]["stup"].HasMember("definition_detailed") &&
+				matchesRows(departure["definition_detailed"]) &&
+				matchesRows(departure["status_definitions"]["stup"]["definition_detailed"]);
+		};
 		const std::filesystem::path profilePath = repositoryRoot / "vSMR" / "data" / "profile_templates.json";
 		const std::string profileJson = ReadTextFile(profilePath);
 		Expect(!profileJson.empty(), "default profiles file is readable");
@@ -91,6 +117,8 @@ namespace
 				Expect(name != "LFLL" && name.find("Custom LF") != 0,
 					"No standalone LFLL or Custom-prefixed airport profiles remain");
 				lfpgProfileFound = lfpgProfileFound || name == "LFPG";
+				if (name == "LFPG")
+					Expect(matchesLfpgDetailedRows(original), "LFPG template shows Ready Startup in Default and Startup detailed tags");
 				lfmnProfileFound = lfmnProfileFound || name == "LFMN";
 			}
 			rapidjson::Document normalized;
@@ -103,6 +131,14 @@ namespace
 		}
 		Expect(lfboProfileFound, "LFBO / LFLL retains the LFBO profile configuration");
 		Expect(lfpgProfileFound && lfmnProfileFound, "Airport profiles use LFPG and LFMN names");
+		const std::string managedProfileJson = ReadTextFile(repositoryRoot / "vSMR" / "data" / "default.json");
+		rapidjson::Document managedProfiles;
+		managedProfiles.Parse<0>(managedProfileJson.c_str());
+		Expect(!managedProfiles.HasParseError() && managedProfiles.IsObject() &&
+			managedProfiles.HasMember("profiles") && managedProfiles["profiles"].IsObject() &&
+			managedProfiles["profiles"].HasMember("builtin-lfpg") &&
+			matchesLfpgDetailedRows(managedProfiles["profiles"]["builtin-lfpg"]),
+			"Managed LFPG profile matches the Ready Startup template");
 
 		bool migrated = false;
 		std::string error;

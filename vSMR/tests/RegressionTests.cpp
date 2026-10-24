@@ -754,6 +754,17 @@ namespace
 		Expect(!VsmrRimcasLogic::IsRunwayOccupancyMonitored(false, false), "RIMCAS ignores disabled runway");
 		Expect(VsmrRimcasLogic::HasApproachingConflict(1), "RIMCAS detects occupied approach conflict");
 		Expect(!VsmrRimcasLogic::HasApproachingConflict(0), "RIMCAS accepts empty runway");
+		using VsmrRimcasLogic::ResolveRunwayMovementState;
+		Expect(ResolveRunwayMovementState("TAXI", 10, "TAXI", 10, true, 70, true) == GroundStateCategory::Lnup,
+			"RIMCAS keeps an on-runway lineup clearance after the tag airborne speed threshold");
+		Expect(ResolveRunwayMovementState("TAXI", 10, "TAXI", 10, true, 70, false) == GroundStateCategory::Taxi,
+			"RIMCAS does not extend an old lineup marker off the runway");
+		Expect(ResolveRunwayMovementState("TAXI", 0, "DEPA", 0, true, 25, true) == GroundStateCategory::Depa,
+			"RIMCAS follows the visible departure status during a flight-plan handle mismatch");
+		Expect(ResolveRunwayMovementState("DEPA", 0, "TAXI", 0, true, 25, true) == GroundStateCategory::Taxi,
+			"RIMCAS does not suppress an incursion when the visible status changes back to taxi");
+		Expect(ResolveRunwayMovementState("DEPA", 0, "", 0, true, 25, true) == GroundStateCategory::Depa,
+			"RIMCAS retains the correlated departure status if the selected plan has no status");
 	}
 
 	void TestTargetRoleThresholds()
@@ -775,27 +786,16 @@ namespace
 	void TestPdcLogonSynchronization()
 	{
 		PdcLogonSync sync;
-		for (int facility : { 2, 3, 4 })
-			Expect(sync.Resolve(true, facility, "LFPG_N_TWR", 1) == "LFPG",
-				"single AVISO logon follows delivery, ground and tower position airport");
-		Expect(sync.Resolve(true, 4, "lfbo_twr", 1) == "LFBO", "logon ICAO is normalized");
-		for (int facility : { 0, 1, 5, 6 })
-			Expect(sync.Resolve(true, facility, "LFPG_APP", 1).empty(),
-				"observer, FSS, approach and center positions do not synchronize PDC logon");
-		Expect(sync.Resolve(false, 4, "LFPG_TWR", 1).empty(), "disconnected positions do not synchronize");
-		for (std::size_t count : { 0U, 2U, 3U })
-			Expect(sync.Resolve(true, 4, "LFPG_TWR", count).empty(), "only one AVISO context permits synchronization");
-		for (const char* position : { "", "LFPG", "LFPG-TWR", "LFP_TWR", "12PG_TWR" })
-			Expect(sync.Resolve(true, 4, position, 1).empty(), "invalid position airport prefixes are rejected");
-		Expect(sync.Resolve(true, 4, "LFSB_TWR", 1) == "LFSB", "position changes synchronize before manual edit");
+		Expect(sync.Resolve("LFPG") == "LFPG", "PDC login follows the selected airport");
+		Expect(sync.Resolve("lfbo") == "LFBO", "selected airport ICAO is normalized");
+		for (const char* airport : { "", "LFP", "LFPG_TWR", "12PG", "LFPG " })
+			Expect(sync.Resolve(airport).empty(), "invalid selected airports cannot become PDC logins");
+		Expect(sync.Resolve("LFSB") == "LFSB", "airport changes synchronize before manual edit");
 		sync.MarkManualEdit();
-		Expect(sync.Resolve(true, 4, "LFBO_TWR", 1).empty(), "manual edit locks logon synchronization");
-		(void)sync.Resolve(false, 4, "LFBO_TWR", 1);
-		Expect(sync.Resolve(true, 3, "LFPG_GND", 1).empty(), "manual override survives network reconnects");
-		(void)sync.Resolve(true, 4, "LFBO_TWR", 2);
-		Expect(sync.Resolve(true, 4, "LFBO_TWR", 1).empty(), "closing other AVISOs does not clear manual override");
+		Expect(sync.Resolve("LFBO").empty(), "manual PDC login edit locks airport synchronization");
+		Expect(sync.Resolve("LFPG").empty(), "manual override survives airport changes");
 		PdcLogonSync newSession;
-		Expect(newSession.Resolve(true, 4, "LFBO_TWR", 1) == "LFBO", "a new plugin session permits synchronization again");
+		Expect(newSession.Resolve("LFBO") == "LFBO", "a new plugin session permits synchronization again");
 	}
 
 	void TestAvisoViewportCenters()
@@ -1380,6 +1380,31 @@ namespace
 			"METAR parser handles CAVOK and negative temperatures");
 	}
 
+	void TestAtisFeed()
+	{
+		std::vector<VsmrWeather::AtisSnapshot> atis;
+		const std::string feed = R"([{"callsign":"LFPG_D_ATIS","atis_code":"B","frequency":"127.455"},{"callsign":"LFPG_ATIS","atis_code":"A","frequency":"125.125"},{"callsign":"LFPG_A_ATIS","atis_code":"B","frequency":"124.250"},{"callsign":"LFLL_ATIS","atis_code":"C","frequency":"126.180"},{"callsign":"BAD_ATIS","atis_code":"D"}])";
+		Expect(VsmrWeather::ParseAtisFeed(feed, atis, std::time(nullptr)),
+			"official ATIS feed parses without touching METAR snapshots");
+		Expect(atis.size() == 2 && atis[0].icao == "LFLL" && atis[0].information == "C" &&
+			atis[1].icao == "LFPG" && atis[1].information == "A/B" &&
+			atis[1].frequencyMHz == "125.125",
+			"ATIS letters are airport-scoped, deduplicated and prefer the airport-wide frequency");
+		VsmrWeather::ReplaceAtis(atis);
+		VsmrWeather::AtisSnapshot selected;
+		Expect(VsmrWeather::TryGetAtis("lfpg", selected) && selected.information == "A/B",
+			"Weather can read the currently published airport ATIS");
+		Expect(!VsmrWeather::ParseAtisFeed("not JSON", atis),
+			"invalid ATIS feed cannot clear valid cached information");
+		Expect(VsmrWeather::TryGetAtis("LFPG", selected),
+			"previous ATIS remains available after a malformed response");
+		Expect(VsmrWeather::ParseAtisFeed("[]", atis) && atis.empty(),
+			"a valid empty feed explicitly reports no online ATIS");
+		VsmrWeather::ReplaceAtis(atis);
+		Expect(!VsmrWeather::TryGetAtis("LFPG", selected),
+			"offline ATIS is removed from the Weather panel");
+	}
+
 
 
 	void TestSharedRenderingProjectIntegration(const std::filesystem::path& repositoryRoot)
@@ -1719,6 +1744,7 @@ void TestWeatherInsetLayout()
 	VsmrWeather::Snapshot weather;
 	Expect(VsmrWeather::ParseReport("LFPG", "LFPG 041200Z 03009KT CAVOK 18/09 Q1027", weather), "parse compact METAR fixture");
 	Expect(CompactText("LFPG", weather) == "LFPG 03009KT Q1027", "compact METAR contains only ICAO, wind and QNH");
+	Expect(CompactText("LFPG", weather, "A") == "LFPG ATIS A 03009KT Q1027", "compact Weather shows the ATIS information letter");
 	weather.windVariable = true;
 	weather.hasWindGust = true;
 	weather.windGustKnots = 22;
@@ -2091,6 +2117,7 @@ int wmain(int argc, wchar_t** argv)
 	TestAvisoViewportCenters();
 	TestPdcLogonSynchronization();
 	TestWeatherParsing();
+	TestAtisFeed();
 	TestRuntimeReleaseLifecycle();
 	for (const std::string& failure : RunAvisoRasterPipelineTests())
 		Expect(false, failure);

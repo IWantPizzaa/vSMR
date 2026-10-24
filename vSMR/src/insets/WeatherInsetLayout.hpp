@@ -69,9 +69,14 @@ namespace VsmrWeatherInset
 		}
 		return wind;
 	}
-	inline std::string CompactText(const std::string& station, const VsmrWeather::Snapshot& weather)
+	inline std::string CompactText(
+		const std::string& station,
+		const VsmrWeather::Snapshot& weather,
+		const std::string& atisInformation = "")
 	{
-		return (station.empty() ? "----" : station) + " " + WindText(weather) + " Q" +
+		return (station.empty() ? "----" : station) +
+			(atisInformation.empty() ? "" : " ATIS " + atisInformation) +
+			" " + WindText(weather) + " Q" +
 			(weather.hasQnh ? std::to_string(weather.qnhHpa) : "----");
 	}
 

@@ -6,6 +6,8 @@
 #include "config/LayeredConfig.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
+#include "insets/AvisoWindowPlacement.hpp"
+#include "plugin/Plugin.hpp"
 #include "rdf/RdfOverlay.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "shared/logging/Logger.hpp"
@@ -47,6 +49,8 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 
 	bool hasStagedShowNorthIndicator = false;
 	bool stagedShowNorthIndicator = Owner->ShowNorthIndicator;
+	bool hasStagedKeepAvisoWindowPlacement = false;
+	bool stagedKeepAvisoWindowPlacement = Owner->KeepAvisoWindowPlacement;
 	bool hasStagedRdfEnabled = false;
 	bool stagedRdfEnabled = VsmrRdf::GetStatus().enabled;
 	bool hasStagedAvisoColorPalette = false;
@@ -80,6 +84,16 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 			}
 			hasStagedShowNorthIndicator = true;
 			stagedShowNorthIndicator = settings["showNorthIndicator"].GetBool();
+		}
+		if (settings.HasMember("keepAvisoWindowPlacement"))
+		{
+			if (!settings["keepAvisoWindowPlacement"].IsBool())
+			{
+				error = "AVISO window placement must be a boolean setting.";
+				return false;
+			}
+			hasStagedKeepAvisoWindowPlacement = true;
+			stagedKeepAvisoWindowPlacement = settings["keepAvisoWindowPlacement"].GetBool();
 		}
 		if (settings.HasMember("rdfEnabled"))
 		{
@@ -503,6 +517,24 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 	{
 		Owner->ShowNorthIndicator = stagedShowNorthIndicator;
 		Owner->SaveNorthIndicatorStateToAsr();
+	}
+	if (hasStagedKeepAvisoWindowPlacement &&
+		stagedKeepAvisoWindowPlacement != Owner->KeepAvisoWindowPlacement)
+	{
+		if (CSMRPlugin* plugin = OwnerPlugin())
+			plugin->SaveDataToSettings(
+				"KeepAvisoWindowPlacement",
+				"Keep AVISO window placement across airports and views",
+				stagedKeepAvisoWindowPlacement ? "1" : "0");
+		for (CSMRRadar* radar : RadarScreensOpened)
+			if (radar != nullptr)
+				radar->KeepAvisoWindowPlacement = stagedKeepAvisoWindowPlacement;
+		if (stagedKeepAvisoWindowPlacement)
+		{
+			const auto aviso = Owner->appWindows.find(APPWINDOW_AVISO - APPWINDOW_BASE);
+			if (aviso != Owner->appWindows.end() && aviso->second != nullptr)
+				VsmrAvisoWindowPlacement::Remember(*aviso->second);
+		}
 	}
 	// A full editor snapshot contains the displayed fallback palette too.
 	// Saving unrelated geometry/text must not replace a remembered Real choice.

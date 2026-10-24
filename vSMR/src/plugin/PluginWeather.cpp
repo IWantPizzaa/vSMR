@@ -15,6 +15,8 @@
 namespace
 {
 	const size_t WeatherResponseLimitBytes = 4096U;
+	const size_t AtisResponseLimitBytes = 2U * 1024U * 1024U;
+	constexpr std::time_t AtisRefreshIntervalSeconds = 2 * 60;
 }
 
 void CSMRPlugin::StopWeatherFetchWorker()
@@ -25,6 +27,7 @@ void CSMRPlugin::StopWeatherFetchWorker()
 		WeatherFetchStop = true;
 		WeatherFetchQueue.clear();
 		WeatherFetchQueued.clear();
+		AtisFetchQueued = false;
 	}
 	WeatherFetchCondition.notify_all();
 	if (WeatherFetchThread.joinable())
@@ -58,15 +61,18 @@ void CSMRPlugin::QueueWeatherFetch(const std::string& rawStation)
 	const std::time_t refreshInterval = hasSnapshot ? 5 * 60 : 60;
 
 	std::lock_guard<std::mutex> guard(WeatherFetchMutex);
-	if (WeatherFetchStop || WeatherFetchQueued.find(station) != WeatherFetchQueued.end())
+	if (WeatherFetchStop)
 		return;
 
 	const auto lastAttempt = WeatherLastAttemptUtc.find(station);
-	if (lastAttempt != WeatherLastAttemptUtc.end() &&
-		now >= lastAttempt->second && now - lastAttempt->second < refreshInterval)
-	{
+	const bool weatherDue = WeatherFetchQueued.find(station) == WeatherFetchQueued.end() &&
+		(lastAttempt == WeatherLastAttemptUtc.end() || now < lastAttempt->second ||
+			now - lastAttempt->second >= refreshInterval);
+	const bool atisDue = !AtisFetchQueued &&
+		(AtisLastAttemptUtc == 0 || now < AtisLastAttemptUtc ||
+			now - AtisLastAttemptUtc >= AtisRefreshIntervalSeconds);
+	if (!weatherDue && !atisDue)
 		return;
-	}
 
 	if (!WeatherFetchThread.joinable())
 	{
@@ -77,14 +83,26 @@ void CSMRPlugin::QueueWeatherFetch(const std::string& rawStation)
 		}
 		catch (const std::system_error&)
 		{
-			WeatherLastAttemptUtc[station] = now;
+			if (weatherDue) WeatherLastAttemptUtc[station] = now;
+			if (atisDue) AtisLastAttemptUtc = now;
 			return;
 		}
 	}
 
-	WeatherLastAttemptUtc[station] = now;
-	WeatherFetchQueued.insert(station);
-	WeatherFetchQueue.push_back(station);
+	if (weatherDue)
+	{
+		WeatherLastAttemptUtc[station] = now;
+		WeatherFetchQueued.insert(station);
+		WeatherFetchQueue.push_back(station);
+	}
+	if (atisDue)
+	{
+		AtisLastAttemptUtc = now;
+		AtisFetchQueued = true;
+		// One empty queue key represents the entire ATIS feed. It is fetched
+		// after a due METAR so a stalled feed cannot delay current weather.
+		WeatherFetchQueue.emplace_back();
+	}
 	WeatherFetchCondition.notify_one();
 }
 
@@ -106,6 +124,7 @@ void CSMRPlugin::WeatherFetchThreadMain()
 		for (;;)
 		{
 			std::string station;
+			bool fetchAtis = false;
 			{
 				std::unique_lock<std::mutex> lock(WeatherFetchMutex);
 				WeatherFetchCondition.wait(lock, [this]() {
@@ -116,7 +135,9 @@ void CSMRPlugin::WeatherFetchThreadMain()
 
 				station = std::move(WeatherFetchQueue.front());
 				WeatherFetchQueue.pop_front();
-				WeatherFetchQueued.erase(station);
+				fetchAtis = station.empty();
+				if (fetchAtis) AtisFetchQueued = false;
+				else WeatherFetchQueued.erase(station);
 				++WeatherFetchesInFlight;
 			}
 			struct InFlightWeatherGuard
@@ -134,6 +155,22 @@ void CSMRPlugin::WeatherFetchThreadMain()
 			try
 			{
 				const std::time_t requestStartedUtc = std::time(nullptr);
+				if (fetchAtis)
+				{
+					const std::string feed = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
+						"https://data.vatsim.net/v3/afv-atis-data.json",
+						3500,
+						&WeatherFetchCancellationRequested,
+						AtisResponseLimitBytes);
+					if (!PluginShutdownRequested.load(std::memory_order_relaxed) &&
+						!feed.empty() && feed.size() <= AtisResponseLimitBytes)
+					{
+						std::vector<VsmrWeather::AtisSnapshot> snapshots;
+						if (VsmrWeather::ParseAtisFeed(feed, snapshots, requestStartedUtc))
+							VsmrWeather::ReplaceAtis(snapshots);
+					}
+					continue;
+				}
 				const std::string url =
 					"https://metar.vatsim.net/metar.php?id=" + station;
 				const std::string report = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(

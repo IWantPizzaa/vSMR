@@ -368,6 +368,7 @@ void VsmrControlCenterBridgeImpl::BuildSettings(
 		Owner->GetSmallTargetIconBoostResolutionPreset(),
 		allocator);
 	settings.AddMember("showNorthIndicator", Owner->ShowNorthIndicator, allocator);
+	settings.AddMember("keepAvisoWindowPlacement", Owner->KeepAvisoWindowPlacement, allocator);
 	settings.AddMember("weatherAllAirports", Owner->WeatherAllAirports, allocator);
 	// The RDF worker is plug-in wide, so the Control Center also reflects a state
 	// set through .smr rdf on|off.

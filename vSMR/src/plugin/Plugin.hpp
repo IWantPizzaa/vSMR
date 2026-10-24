@@ -65,6 +65,7 @@ public:
 	void ChangeTimerCountdown(int durationMinutes, bool reset);
 
 	DatalinkControlState GetDatalinkControlState() const;
+	void SetPdcSelectedAirport(const std::string& airport);
 	bool UpdateDatalinkControlSettings(
 		const std::string& callsign,
 		const std::string& password,
@@ -132,7 +133,8 @@ public:
 
 private:
 	PdcLogonSync PdcLogonSynchronization;
-	void SyncPdcLogonWithControllerPosition();
+	std::string PdcSelectedAirport;
+	void SyncPdcLogonWithSelectedAirport();
 	TimerCountdownState TimerCountdowns;
 	ProxyTimerState ProxyTimers;
 	ProxyDatalinkView ProxyDatalink;
@@ -193,6 +195,8 @@ private:
 	std::size_t WeatherFetchesInFlight = 0;
 	std::set<std::string> WeatherFetchQueued;
 	std::map<std::string, std::time_t> WeatherLastAttemptUtc;
+	bool AtisFetchQueued = false;
+	std::time_t AtisLastAttemptUtc = 0;
 };
 
 // Called by the runtime ABI when EuroScope unloads the plug-in. Returns true

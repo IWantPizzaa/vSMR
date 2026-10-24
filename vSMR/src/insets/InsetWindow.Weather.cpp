@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <string>
 
@@ -221,6 +222,12 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 
 		VsmrWeather::Snapshot weather;
 		const bool hasSnapshot = !station.empty() && VsmrWeather::TryGet(station, weather);
+		VsmrWeather::AtisSnapshot atis;
+		const bool hasAtis = !station.empty() && VsmrWeather::TryGetAtis(station, atis);
+		const std::string atisValue = hasAtis
+			? (atis.information.empty() ? "---" : "INFO " + atis.information) +
+				(atis.frequencyMHz.empty() ? "" : "  " + atis.frequencyMHz)
+			: "---";
 		const bool hasWeather = hasSnapshot && (weather.hasWind || weather.hasQnh);
 		const std::time_t now = std::time(nullptr);
 		const bool stale = hasWeather && weather.updatedUtc > 0 && now > weather.updatedUtc &&
@@ -312,7 +319,8 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 			dc.FillSolidRect(content, palette.surface);
 			CRect line(content);
 			line.DeflateRect(6, 2);
-			const std::string text = VsmrWeatherInset::CompactText(station, weather);
+			const std::string text = VsmrWeatherInset::CompactText(
+				station, weather, hasAtis ? atis.information : "");
 			int pixels = std::clamp(line.Height(), 10, 20);
 			HFONT compactFont = nullptr;
 			SIZE extent{};
@@ -481,6 +489,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 				{ "CLD", weather.cloudSummary.empty() ? "---" : weather.cloudSummary },
 				{ "TEMP", FormatTemperature(weather.hasTemperature, weather.temperatureCelsius) },
 				{ "DEW", FormatTemperature(weather.hasDewPoint, weather.dewPointCelsius) },
+				{ "ATIS", atisValue },
 				{ "RWY", runwayReference.valid ? runwayReference.name : "---" },
 				{ "HEAD", headValue + " KT" },
 				{ "XWIND", crossValue + " KT" }
@@ -496,7 +505,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 				const int top = rowsTop + rowsHeight * index / static_cast<int>(rows.size());
 				const int bottom = rowsTop + rowsHeight * (index + 1) / static_cast<int>(rows.size());
 				CRect row(dataArea.left + 1, top, dataArea.right, bottom);
-				if (index == 4)
+				if (std::strcmp(rows[index].label, "ATIS") == 0)
 					dc.FillSolidRect(CRect(row.left, row.top, row.right, row.top + 1), palette.divider);
 				const int labelWidth = std::clamp(static_cast<int>(std::lround(row.Width() * 0.37)), 28, 46);
 				drawText(CRect(row.left + 4, row.top, row.left + labelWidth, row.bottom),

@@ -2,6 +2,7 @@
 
 #include <ctime>
 #include <string>
+#include <vector>
 
 namespace VsmrWeather
 {
@@ -54,6 +55,16 @@ namespace VsmrWeather
 		std::string cloudSummary;
 	};
 
+	struct AtisSnapshot
+	{
+		std::string icao;
+		// Several stations can publish arrival/departure ATIS for one airport.
+		// Distinct information letters are shown together in a stable order.
+		std::string information;
+		std::string frequencyMHz;
+		std::time_t receivedUtc = 0;
+	};
+
 	// Trim and uppercase a four-character ICAO station identifier. Invalid
 	// identifiers return an empty string.
 	std::string NormalizeIcao(const std::string& icao);
@@ -81,6 +92,14 @@ namespace VsmrWeather
 
 	// Readers receive an independent copy and never retain cache-owned storage.
 	bool TryGet(const std::string& icao, Snapshot& snapshot);
+	// Parse the official VATSIM AFV ATIS list. A successful empty list clears
+	// previous ATIS; a malformed response never changes the live cache.
+	bool ParseAtisFeed(
+		const std::string& json,
+		std::vector<AtisSnapshot>& snapshots,
+		std::time_t receivedUtc = 0);
+	void ReplaceAtis(const std::vector<AtisSnapshot>& snapshots);
+	bool TryGetAtis(const std::string& icao, AtisSnapshot& snapshot);
 
 	void Erase(const std::string& icao);
 	void Clear();

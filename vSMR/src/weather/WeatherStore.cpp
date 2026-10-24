@@ -1,9 +1,13 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "weather/WeatherStore.hpp"
 
+#include "shared/JsonDocument.hpp"
+
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <sstream>
 #include <unordered_map>
@@ -21,6 +25,12 @@ namespace
 	std::unordered_map<std::string, VsmrWeather::Snapshot>& WeatherCache()
 	{
 		static std::unordered_map<std::string, VsmrWeather::Snapshot> cache;
+		return cache;
+	}
+
+	std::unordered_map<std::string, VsmrWeather::AtisSnapshot>& AtisCache()
+	{
+		static std::unordered_map<std::string, VsmrWeather::AtisSnapshot> cache;
 		return cache;
 	}
 
@@ -512,6 +522,115 @@ namespace VsmrWeather
 		return true;
 	}
 
+	bool ParseAtisFeed(
+		const std::string& json,
+		std::vector<AtisSnapshot>& snapshots,
+		std::time_t receivedUtc)
+	{
+		rapidjson::Document document;
+		VsmrJson::ParseDocument(document, json);
+		if (document.HasParseError() || !document.IsArray())
+			return false;
+
+		struct Candidate
+		{
+			std::string callsign;
+			std::string information;
+			std::string frequencyMHz;
+		};
+		std::map<std::string, std::vector<Candidate>> byAirport;
+		for (const auto& entry : document.GetArray())
+		{
+			if (!entry.IsObject() || !entry.HasMember("callsign") || !entry["callsign"].IsString())
+				continue;
+			const std::string callsign = UpperAscii(entry["callsign"].GetString());
+			if (callsign.size() < 9 || callsign[4] != '_' ||
+				callsign.compare(callsign.size() - 5, 5, "_ATIS") != 0)
+				continue;
+			const std::string airport = NormalizeIcao(callsign.substr(0, 4));
+			if (airport.empty())
+				continue;
+			Candidate candidate;
+			candidate.callsign = callsign;
+			if (entry.HasMember("atis_code") && entry["atis_code"].IsString())
+			{
+				const std::string code = UpperAscii(TrimAsciiWhitespace(entry["atis_code"].GetString()));
+				if (code.size() == 1 && code[0] >= 'A' && code[0] <= 'Z')
+					candidate.information = code;
+			}
+			if (entry.HasMember("frequency") && entry["frequency"].IsString())
+			{
+				const std::string frequency = TrimAsciiWhitespace(entry["frequency"].GetString());
+				if (frequency.size() >= 5 && frequency.size() <= 8 &&
+					std::all_of(frequency.begin(), frequency.end(), [](unsigned char character)
+					{
+						return std::isdigit(character) != 0 || character == '.';
+					}))
+					candidate.frequencyMHz = frequency;
+			}
+			byAirport[airport].push_back(std::move(candidate));
+		}
+
+		std::vector<AtisSnapshot> parsed;
+		parsed.reserve(byAirport.size());
+		for (auto& airport : byAirport)
+		{
+			auto& candidates = airport.second;
+			std::sort(candidates.begin(), candidates.end(), [&](const Candidate& a, const Candidate& b)
+			{
+				const bool aPrimary = a.callsign == airport.first + "_ATIS";
+				const bool bPrimary = b.callsign == airport.first + "_ATIS";
+				return aPrimary != bPrimary ? aPrimary : a.callsign < b.callsign;
+			});
+			AtisSnapshot summary;
+			summary.icao = airport.first;
+			summary.receivedUtc = receivedUtc > 0 ? receivedUtc : std::time(nullptr);
+			for (const Candidate& candidate : candidates)
+			{
+				if (summary.frequencyMHz.empty() && !candidate.frequencyMHz.empty())
+					summary.frequencyMHz = candidate.frequencyMHz;
+				if (!candidate.information.empty() &&
+					summary.information.find(candidate.information) == std::string::npos)
+				{
+					if (!summary.information.empty()) summary.information += '/';
+					summary.information += candidate.information;
+				}
+			}
+			parsed.push_back(std::move(summary));
+		}
+		snapshots = std::move(parsed);
+		return true;
+	}
+
+	void ReplaceAtis(const std::vector<AtisSnapshot>& snapshots)
+	{
+		std::unordered_map<std::string, AtisSnapshot> replacement;
+		for (const auto& snapshot : snapshots)
+		{
+			if (NormalizeIcao(snapshot.icao) == snapshot.icao)
+				replacement[snapshot.icao] = snapshot;
+		}
+		std::lock_guard<std::mutex> guard(WeatherCacheMutex());
+		AtisCache().swap(replacement);
+	}
+
+	bool TryGetAtis(const std::string& icao, AtisSnapshot& snapshot)
+	{
+		const std::string normalized = NormalizeIcao(icao);
+		if (normalized.empty())
+			return false;
+		std::lock_guard<std::mutex> guard(WeatherCacheMutex());
+		const auto found = AtisCache().find(normalized);
+		if (found == AtisCache().end())
+			return false;
+		const std::time_t now = std::time(nullptr);
+		if (found->second.receivedUtc <= 0 || now < found->second.receivedUtc ||
+			now - found->second.receivedUtc > 15 * 60)
+			return false;
+		snapshot = found->second;
+		return true;
+	}
+
 	void Erase(const std::string& icao)
 	{
 		const std::string normalized = NormalizeIcao(icao);
@@ -526,5 +645,6 @@ namespace VsmrWeather
 	{
 		std::lock_guard<std::mutex> guard(WeatherCacheMutex());
 		WeatherCache().clear();
+		AtisCache().clear();
 	}
 }
