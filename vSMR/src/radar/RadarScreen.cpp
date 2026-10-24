@@ -1070,6 +1070,17 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 
 	switch (uMsg)
 	{
+	case WM_MOUSEACTIVATE:
+	case WM_SETFOCUS:
+	{
+		// An Alt+Tab return can repaint the host before EuroScope emits another
+		// screen-object hover. Rebuild the menu and its hit targets on activation.
+		const auto active = gInsetWindowActiveRadarScreen.find(hwnd);
+		if (active != gInsetWindowActiveRadarScreen.end() && active->second != nullptr &&
+			!active->second->IsShutdownRequested())
+			active->second->RequestRefresh();
+		break;
+	}
 	case WM_MOUSEMOVE:
 	case WM_MOUSELEAVE:
 	case WM_LBUTTONUP:
