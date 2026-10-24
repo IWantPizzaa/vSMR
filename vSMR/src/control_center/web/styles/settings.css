@@ -21,14 +21,6 @@
   border-top-color: var(--ui-outer-border);
 }
 
-.settings-column {
-  min-width: 0;
-  display: grid;
-  grid-auto-rows: max-content;
-  align-content: start;
-  gap: 4px;
-}
-
 .settings-file-heading {
   min-width: 0;
   display: flex;
@@ -262,8 +254,6 @@
   text-decoration: none;
 }
 
-.settings-page .settings-column { gap: 3px; }
-
 .settings-page .settings-file-list { gap: 0; }
 
 .settings-page .settings-file-row {
@@ -278,31 +268,26 @@
   gap: 3px;
 }
 
-.settings-page .updater-general-group > .check-field:nth-of-type(2) { grid-column: 1 / -1; }
-
 .settings-page .settings-layout {
   gap: 3px;
   padding: var(--ui-page-padding);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1fr);
-  align-items: start;
+  grid-template-rows: max-content minmax(max-content, 1fr);
+  align-items: stretch;
   align-content: stretch;
 }
 
-.settings-page .settings-primary-column,
-.settings-page .settings-data-column {
+.settings-page .settings-layout > fieldset {
   min-width: 0;
-  display: grid;
-  grid-auto-rows: max-content;
-  align-content: start;
-  gap: 3px;
+  align-self: stretch;
 }
 
 .settings-page .display-group {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  align-items: end;
+  align-content: start;
   gap: 5px;
 }
 
@@ -318,6 +303,7 @@
 }
 
 .settings-page .updater-general-group {
+  grid-column: 1 / -1;
   align-self: stretch;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 5px 8px;
@@ -328,13 +314,13 @@
   margin: 0;
   font-size: 8px;
   line-height: 1.15;
-  grid-column: 1 / -1 !important;
+  grid-column: auto;
 }
 
 .settings-page .updater-general-group .update-channel-field {
   min-width: 0;
   grid-template-columns: minmax(0, 1fr) 76px;
-  grid-column: 1 / -1 !important;
+  grid-column: 2;
 }
 
 .settings-page .update-notice {
@@ -345,7 +331,7 @@
 
 .settings-page .updater-general-heading {
   min-width: 0;
-  grid-column: 1 / -1 !important;
+  grid-column: 1;
   min-height: 16px;
   padding: 0 2px;
 }

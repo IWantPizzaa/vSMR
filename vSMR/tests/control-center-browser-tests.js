@@ -919,8 +919,33 @@
     expect(document.documentElement.dataset.uiTheme === originalUiTheme,
       "switching back restores the original UI theme");
 
-    const settingsLeft = document.querySelector(".settings-page .display-group")
-      ?.getBoundingClientRect().left;
+    const settingsLayout = document.querySelector(".settings-page .settings-layout");
+    const displayBounds = document.querySelector(".settings-page .display-group")
+      ?.getBoundingClientRect();
+    const filesBounds = document.querySelector(".settings-page .files-group")
+      ?.getBoundingClientRect();
+    const updaterBounds = document.querySelector(".settings-page .updater-general-group")
+      ?.getBoundingClientRect();
+    const settingsLeft = displayBounds?.left;
+    expect(Boolean(displayBounds && filesBounds && updaterBounds) &&
+      Math.abs(displayBounds.top - filesBounds.top) < 1 &&
+      Math.abs(displayBounds.width - filesBounds.width) < 1 &&
+      Math.abs(displayBounds.height - filesBounds.height) < 1,
+      "Display and Data files form equal-sized cards on the top row");
+    expect(Boolean(displayBounds && filesBounds && updaterBounds) &&
+      updaterBounds.top >= Math.max(displayBounds.bottom, filesBounds.bottom) &&
+      Math.abs(updaterBounds.left - displayBounds.left) < 1 &&
+      Math.abs(updaterBounds.right - filesBounds.right) < 1,
+      "Automatic updates spans the full row below Display and Data files");
+    if (settingsLayout) {
+      settingsLayout.scrollTop = settingsLayout.scrollHeight;
+      const actionsBottom = document.querySelector(".settings-page .updater-general-actions")
+        ?.getBoundingClientRect().bottom;
+      expect(Number.isFinite(actionsBottom) &&
+        actionsBottom <= settingsLayout.getBoundingClientRect().bottom + 1,
+        "Automatic update actions remain reachable when Settings scrolls");
+      settingsLayout.scrollTop = 0;
+    }
     groupsButton?.click();
     const groupsLeft = document.querySelector(".groups-page .master-panel")
       ?.getBoundingClientRect().left;
