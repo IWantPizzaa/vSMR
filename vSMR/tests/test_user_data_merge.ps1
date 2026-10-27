@@ -113,6 +113,7 @@ try {
     foreach ($name in @('vSMR.dll', 'vSMR_Data/Runtime/vSMR.Runtime.dll', 'vSMR_Data/CrashReporter/vSMRCrashHandler.dll')) {
         [IO.File]::WriteAllBytes((Join-Path $package $name), $header)
     }
+    Write-TestFile (Join-Path $packageData 'Audio/Alarm.wav') 'bundled-alarm-v1'
     Update-TestPackage '{"color":1,"size":1}' '[{"name":"Default","color":1,"size":1}]'
     & (Join-Path $packageData 'Tools/install_vsmr.ps1') -DestinationDirectory $destination -WhatIf
     Check (-not (Test-Path (Join-Path $destination 'vSMR_Backups'))) 'WhatIf has no installation side effects'
@@ -126,7 +127,9 @@ try {
     Write-TestFile (Join-Path $installedData 'default.json') '{"obsolete_default":true}'
     Write-TestFile (Join-Path $installedData 'config.json') '{"user_override":"keep exactly"}'
     Write-TestFile (Join-Path $installedData 'UserData/Maps/custom.geojson') '{"custom_geometry":true}'
+    Write-TestFile (Join-Path $installedData 'Audio/Custom.wav') 'my-own-sound'
     Write-TestFile (Join-Path $installedData 'version.json') '{"old_manifest":true}'
+    Write-TestFile (Join-Path $packageData 'Audio/Alarm.wav') 'bundled-alarm-v2'
     Update-TestPackage '{"color":1,"size":3}' '[{"name":"Default","color":1,"size":3}]'
     Write-TestFile (Join-Path $installedData '.update/journal.json') '{"phase":"applying"}'
     $pendingRejected = $false
@@ -140,14 +143,19 @@ try {
     Check ((Get-FileHash (Join-Path $installedData 'default.json')).Hash -eq (Get-FileHash (Join-Path $packageData 'default.json')).Hash) 'complete package replaces defaults instead of restoring obsolete ones'
     Check ([IO.File]::ReadAllText((Join-Path $installedData 'config.json')) -eq '{"user_override":"keep exactly"}') 'complete package preserves sparse config bytes'
     Check ([IO.File]::ReadAllText((Join-Path $installedData 'UserData/Maps/custom.geojson')) -eq '{"custom_geometry":true}') 'complete package preserves user-owned geometry'
+    Check ([IO.File]::ReadAllText((Join-Path $installedData 'Audio/Alarm.wav')) -eq 'bundled-alarm-v2') 'unmodified bundled alarm receives the new release sound'
+    Check ([IO.File]::ReadAllText((Join-Path $installedData 'Audio/Custom.wav')) -eq 'my-own-sound') 'custom sound remains installed'
     Check (-not (Test-Path (Join-Path $installedData 'version.json')) -and -not (Test-Path (Join-Path $installedData '.update'))) 'complete package does not carry stale file manifests or staging state'
     $map = Get-Content (Join-Path $installedData 'AVISO/AAAA.geojson') -Raw | ConvertFrom-Json
     $profiles = Get-Content (Join-Path $installedData 'vSMR_Profiles.json') -Raw | ConvertFrom-Json
     Check ($map.color -eq 2 -and $map.size -eq 3) 'installer merges AVISO defaults and user edits'
     Check ($profiles[0].color -eq 2 -and $profiles[0].size -eq 3 -and $profiles[1].name -eq 'Custom') 'installer merges profiles and retains custom profiles'
     Check (Test-Path (Join-Path $installedData 'AVISO/BBBB.geojson')) 'custom airport retained'
+    Write-TestFile (Join-Path $installedData 'Audio/Alarm.wav') 'my-custom-alarm'
+    Write-TestFile (Join-Path $packageData 'Audio/Alarm.wav') 'bundled-alarm-v3'
     Update-TestPackage '{"color":4,"size":5}' '[{"name":"Default","color":4,"size":5}]'
     Install-TestPackage
+    Check ([IO.File]::ReadAllText((Join-Path $installedData 'Audio/Alarm.wav')) -eq 'my-custom-alarm') 'modified alarm remains user-owned'
     $map = Get-Content (Join-Path $installedData 'AVISO/AAAA.geojson') -Raw | ConvertFrom-Json
     Check ($map.color -eq 2 -and $map.size -eq 5) 'second update uses upstream baseline, not previous merged result'
     $restoreBackup = (Get-Content (Join-Path $installedData 'INSTALLATION.json') -Raw | ConvertFrom-Json).rollback_backup
