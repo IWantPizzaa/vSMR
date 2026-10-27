@@ -4,6 +4,7 @@
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
+#include "aviso/AvisoPalettePreference.hpp"
 #include "aviso/AvisoRunwayVisibility.hpp"
 #include "bootstrap/loader/RuntimeReleaseState.hpp"
 #include "config/RuntimeConfig.hpp"
@@ -22,6 +23,7 @@
 #include "datalink/ProxyDatalinkView.hpp"
 #include "insets/WeatherInsetLayout.hpp"
 #include "radar/RecentAirports.hpp"
+#include "radar/RuntimeMenuInputPolicy.hpp"
 #include "radar/DisplayModeVisibility.hpp"
 #include "radar/RadarScreenTypes.hpp"
 #include "radar/RadarGeometry.hpp"
@@ -77,6 +79,21 @@ namespace
 
 		++FailureCount;
 		std::cerr << "FAILED: " << name << '\n';
+	}
+
+	void TestAirportPaletteAndEditorInput()
+	{
+		// A previously saved Dark choice wins even when the bundled airport
+		// default was changed to Real after that ASR was written.
+		Expect(VsmrAvisoPalettePreference::InitialPalette("dark", "real") == "dark",
+			"saved AVISO palette takes priority over a newer airport default");
+		Expect(VsmrAvisoPalettePreference::InitialPalette(nullptr, "real") == "real" &&
+			VsmrAvisoPalettePreference::InitialPalette("", "light") == "light",
+			"new AVISO views use the configured airport palette");
+		Expect(VsmrRuntimeMenuInput::IsRepeatedAirportEdit(1200, 1000, 500) &&
+			!VsmrRuntimeMenuInput::IsRepeatedAirportEdit(1600, 1000, 500) &&
+			!VsmrRuntimeMenuInput::IsRepeatedAirportEdit(1200, 0, 500),
+			"ICAO editor opens once per double-click interval");
 	}
 
 	std::string ReadTextFile(const std::filesystem::path& path)
@@ -2110,6 +2127,7 @@ int wmain(int argc, wchar_t** argv)
 	TestTagTokens();
 	TestVsidBridgeData();
 	TestRecentAirports();
+	TestAirportPaletteAndEditorInput();
 	TestCdmBridgeData();
 	TestRimcasRules();
 	TestTargetRoleThresholds();
