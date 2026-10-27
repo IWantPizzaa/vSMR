@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.0.5] - 2026-10-27
+
 - Prefill PDC TSAT only for the departure airports listed in `default.json` (`pdc.tsat_prefill_airports`); other airports keep the field empty.
 - Make the timer alarm three audible pulses and retry briefly if Windows rejects playback.
 - Play the timer alarm on its own audio stream so later EuroScope or plugin sounds cannot cut it off; log when playback finishes or is interrupted.
