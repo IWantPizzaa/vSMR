@@ -55,8 +55,9 @@ try {
             [BitConverter]::ToUInt16($bytes, 22) -ne 1 -or
             [BitConverter]::ToUInt32($bytes, 24) -ne 44100 -or
             [BitConverter]::ToUInt16($bytes, 34) -ne 16 -or
-            [Text.Encoding]::ASCII.GetString($bytes, 36, 4) -ne 'data')) {
-            throw 'Timer alarm must be canonical mono 44.1 kHz 16-bit PCM for legacy Windows playback.'
+            [Text.Encoding]::ASCII.GetString($bytes, 36, 4) -ne 'data' -or
+            [BitConverter]::ToUInt32($bytes, 40) -lt (2 * 44100 * 2))) {
+            throw 'Timer alarm must be at least two seconds of canonical mono 44.1 kHz 16-bit PCM.'
         }
     }
 } finally {

@@ -13,6 +13,7 @@
 #include "radar/RadarUiSupport.hpp"
 #include "Mmsystem.h"
 #include <chrono>
+#include <cstdint>
 #include <thread>
 #include <condition_variable>
 #include <ctime>
@@ -136,6 +137,7 @@ private:
 	std::string PdcSelectedAirport;
 	void SyncPdcLogonWithSelectedAirport();
 	TimerCountdownState TimerCountdowns;
+	std::uint64_t TimerAlarmRetryUntil = 0;
 	ProxyTimerState ProxyTimers;
 	ProxyDatalinkView ProxyDatalink;
 	bool DatalinkProxyClient = false;
