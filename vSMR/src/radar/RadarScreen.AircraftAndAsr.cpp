@@ -2,6 +2,7 @@
 #include "radar/RecentAirports.hpp"
 #include "shared/JsonDocument.hpp"
 #include "radar/RadarScreen.hpp"
+#include "aviso/AvisoPalettePreference.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
 #include "insets/InsetWindow.hpp"
@@ -1308,13 +1309,13 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	AvisoColorPalette = "light";
 	AvisoPreferredColorPalette = "light";
 	const auto globalPalette = GetGlobalAvisoPalette();
-	const char* savedGeneration = GetDataFromAsr("AvisoAppearanceGeneration");
-	if (!globalPalette.first.empty() && (savedGeneration == nullptr || globalPalette.second != savedGeneration))
-	{
-		if (!SetAvisoColorPalette(globalPalette.first, false)) SetAvisoColorPalette("light", false);
-	}
-	else if ((p_value = GetDataFromAsr("AvisoColorPalette")) != NULL)
-		SetAvisoColorPalette(p_value, false);
+	// The airport palette is an initial default. An ASR selection is the
+	// controller's choice and must survive later default-generation changes.
+	const std::string initialPalette = VsmrAvisoPalettePreference::InitialPalette(
+		GetDataFromAsr("AvisoColorPalette"), globalPalette.first);
+	if (!SetAvisoColorPalette(initialPalette, false))
+		if (!SetAvisoColorPalette(globalPalette.first, false))
+			SetAvisoColorPalette("light", false);
 	EnsureAvisoColorPaletteAvailable(false);
 
 	UiUseDayColorTheme = false;
