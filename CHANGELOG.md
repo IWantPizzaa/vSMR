@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-- Prevent a double-click on the Runtime Menu airport ICAO from opening overlapping EuroScope edit popups.
+- Route Runtime Menu airport editing through EuroScope's screen-object callback and suppress repeated edits during a double-click.
 - Restore the controller's saved AVISO palette before applying airport defaults, and keep that selection through configuration reloads.
 - Check France-Ground-Layouts AVISO in the background after runtime activation so a cold download cannot freeze EuroScope startup.
 
