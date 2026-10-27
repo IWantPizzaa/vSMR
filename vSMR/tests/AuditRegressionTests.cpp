@@ -70,6 +70,22 @@ void TestRuntimeAudioFallback(std::vector<std::string>& failures)
 	check(PlayWithFallback(nullptr, module, 0, shouldNotPlay) == PlaybackSource::Failed &&
 		PlayWithFallback(nullptr, nullptr, IDR_TIMER_ALARM_WAVE, shouldNotPlay) == PlaybackSource::Failed &&
 		unexpectedCalls == 0, "unknown or unavailable resources do not trigger arbitrary system sounds");
+	const unsigned char smallWave[] = {
+		'R','I','F','F',38,0,0,0,'W','A','V','E',
+		'f','m','t',' ',16,0,0,0,1,0,1,0,0x44,0xac,0,0,0x88,0x58,1,0,2,0,16,0,
+		'd','a','t','a',2,0,0,0,0,0
+	};
+	std::vector<char> waveBytes(reinterpret_cast<const char*>(smallWave),
+		reinterpret_cast<const char*>(smallWave) + sizeof(smallWave));
+	PcmWave parsed;
+	check(ParsePcmWave(waveBytes, parsed) && parsed.samples.size() == 2 &&
+		parsed.format.nSamplesPerSec == 44100 && parsed.format.wBitsPerSample == 16,
+		"independent timer output accepts a valid PCM WAV");
+	waveBytes[20] = 3;
+	check(!ParsePcmWave(waveBytes, parsed), "independent timer output rejects unsupported WAV formats");
+	waveBytes[20] = 1;
+	waveBytes.pop_back();
+	check(!ParsePcmWave(waveBytes, parsed), "independent timer output rejects a truncated WAV");
 }
 
 void TestProfileMigration(std::vector<std::string>& failures)
