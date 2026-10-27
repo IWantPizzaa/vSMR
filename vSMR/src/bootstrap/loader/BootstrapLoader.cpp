@@ -46,6 +46,7 @@ namespace
 	constexpr int kCancelButtonId = 1003;
 
 	std::mutex gLifecycleMutex;
+	std::mutex gBootstrapLogMutex;
 	HMODULE gRuntimeModule = nullptr;
 	VsmrRuntimeApi::ShutdownFunction gRuntimeShutdown = nullptr;
 	EuroScopePlugIn::CPlugIn* gPluginInstance = nullptr;
@@ -274,6 +275,7 @@ namespace
 	{
 		try
 		{
+			std::lock_guard<std::mutex> guard(gBootstrapLogMutex);
 			const std::filesystem::path directory =
 				vsmr::updater::GetUpdaterStorageDirectory();
 			if (directory.empty())
@@ -298,6 +300,61 @@ namespace
 		catch (...)
 		{
 		}
+	}
+
+	struct GroundLayoutSyncTask
+	{
+		std::filesystem::path dataRoot;
+		HMODULE loaderModule = nullptr;
+	};
+
+	DWORD WINAPI RunGroundLayoutSync(void* parameter) noexcept
+	{
+		auto* task = static_cast<GroundLayoutSyncTask*>(parameter);
+		const HMODULE loaderModule = task->loaderModule;
+		std::wstring message;
+		vsmr::updater::ground_layout_aviso::Sync(task->dataRoot, message);
+		if (!message.empty())
+			AppendBootstrapLog(message);
+		delete task;
+		// The worker must keep this DLL mapped until its last instruction.
+		::FreeLibraryAndExitThread(loaderModule, 0);
+	}
+
+	void StartGroundLayoutSync(const std::filesystem::path& dataRoot) noexcept
+	{
+		HMODULE loaderModule = nullptr;
+		if (!::GetModuleHandleExW(
+			GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+			reinterpret_cast<LPCWSTR>(&__ImageBase),
+			&loaderModule))
+		{
+			AppendBootstrapLog(L"Could not start the background ground-layout AVISO check.");
+			return;
+		}
+
+		GroundLayoutSyncTask* task = nullptr;
+		try
+		{
+			task = new GroundLayoutSyncTask{ dataRoot, loaderModule };
+		}
+		catch (...)
+		{
+			::FreeLibrary(loaderModule);
+			AppendBootstrapLog(L"Could not allocate the ground-layout AVISO check.");
+			return;
+		}
+
+		const HANDLE thread = ::CreateThread(nullptr, 0, RunGroundLayoutSync, task, 0, nullptr);
+		if (thread == nullptr)
+		{
+			delete task;
+			::FreeLibrary(loaderModule);
+			AppendBootstrapLog(L"Could not start the background ground-layout AVISO check.");
+			return;
+		}
+		::SetThreadPriority(thread, THREAD_PRIORITY_BELOW_NORMAL);
+		::CloseHandle(thread);
 	}
 
 	std::string ReadRuntimeVersion(const std::filesystem::path& runtimePath)
@@ -1270,10 +1327,6 @@ void __declspec(dllexport) EuroScopePlugInInit(
 			ShowStartupFailure(L"The updater returned a non-absolute runtime path.");
 			return;
 		}
-		std::wstring groundLayoutMessage;
-		vsmr::updater::ground_layout_aviso::Sync(dataRoot, groundLayoutMessage);
-		if (!groundLayoutMessage.empty()) AppendBootstrapLog(groundLayoutMessage);
-
 		// Locking the selected runtime/data generation for this EuroScope session
 		std::wstring lockError;
 		if (!AcquireSessionLock(installRoot, lockError))
@@ -1315,6 +1368,7 @@ void __declspec(dllexport) EuroScopePlugInInit(
 			AppendBootstrapLog(L"Runtime activated version " +
 				Utf8ToWide(ReadRuntimeVersion(runtime.shadowPath)) +
 				L" from " + selectedRuntimePath.wstring());
+			StartGroundLayoutSync(dataRoot);
 			return;
 		}
 
@@ -1361,6 +1415,7 @@ void __declspec(dllexport) EuroScopePlugInInit(
 					PublishRuntime(restoredRuntime);
 					*pluginInstance = gPluginInstance;
 					AppendBootstrapLog(L"Updated runtime rolled back; restored runtime activated.");
+					StartGroundLayoutSync(dataRoot);
 					return;
 				}
 				runtimeError += L"\n\nRollback completed, but the restored runtime failed: " +
