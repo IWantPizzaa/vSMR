@@ -7,6 +7,7 @@
 #include "config/RuntimeConfig.hpp"
 #include "config/ProfileNormalization.hpp"
 #include "control_center/RuntimeResourceFiles.hpp"
+#include "datalink/PdcTsatPrefill.hpp"
 
 #include "rapidjson/document.h"
 #include "rapidjson/stringbuffer.h"
@@ -139,6 +140,20 @@ namespace
 			managedProfiles["profiles"].HasMember("builtin-lfpg") &&
 			matchesLfpgDetailedRows(managedProfiles["profiles"]["builtin-lfpg"]),
 			"Managed LFPG profile matches the Ready Startup template");
+		const rapidjson::Value* pdc = !managedProfiles.HasParseError() && managedProfiles.IsObject() &&
+			managedProfiles.HasMember("pdc") ? &managedProfiles["pdc"] : nullptr;
+		const bool sixAirports = pdc != nullptr && pdc->IsObject() &&
+			pdc->HasMember("tsat_prefill_airports") &&
+			(*pdc)["tsat_prefill_airports"].IsArray() &&
+			(*pdc)["tsat_prefill_airports"].Size() == 6U;
+		Expect(sixAirports, "Managed PDC defaults list six TSAT prefill airports");
+		for (const char* airport : { "LFPG", "LFPO", "LFML", "LFMN", "LFBO", "LFLL" })
+			Expect(VsmrPdcTsatPrefill::Allowed(pdc, airport),
+				std::string("TSAT prefill is enabled for ") + airport);
+		Expect(VsmrPdcTsatPrefill::Allowed(pdc, "lfpg") &&
+			!VsmrPdcTsatPrefill::Allowed(pdc, "EGKK") &&
+			!VsmrPdcTsatPrefill::Allowed(nullptr, "LFPG"),
+			"PDC TSAT prefill follows configured departure airports only");
 
 		bool migrated = false;
 		std::string error;

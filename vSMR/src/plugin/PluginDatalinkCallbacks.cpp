@@ -6,6 +6,8 @@
 #include "crash/CrashReporter.hpp"
 #include "datalink/DatalinkDialog.hpp"
 #include "datalink/DatalinkProtocolSupport.hpp"
+#include "datalink/PdcTsatPrefill.hpp"
+#include "radar/RadarScreen.Registry.hpp"
 #include "shared/TextUtils.hpp"
 #include "shared/logging/Logger.hpp"
 #include "tags/TagDataTypes.hpp"
@@ -22,6 +24,24 @@
 using VsmrDatalinkProtocol::FormatPdcFrequency;
 using VsmrDatalinkProtocol::PdcFrequencySelection;
 using VsmrDatalinkProtocol::ResolvePdcNextFrequency;
+
+namespace
+{
+	const rapidjson::Value* ActivePdcPolicy()
+	{
+		const std::string selectedPath = CSMRPlugin::GetActiveProfilesConfigPath();
+		for (const CSMRRadar* radar : RadarScreensOpened)
+		{
+			if (radar == nullptr || radar->IsShutdownRequested())
+				continue;
+			const CConfig* config = radar->GetConfiguration();
+			if (config != nullptr && config->isLayeredConfig() &&
+				(selectedPath.empty() || config->getConfigPath() == selectedPath))
+				return config->getEffectiveConfigSection("pdc");
+		}
+		return nullptr;
+	}
+}
 
 void CSMRPlugin::ForgetDatalinkFlightPlan(const std::string& normalizedCallsign)
 {
@@ -238,6 +258,9 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 					msg = msgIt->second;
 			}
 			dia.m_Req = msg.message.c_str();
+			const char* origin = FlightPlan.GetFlightPlanData().GetOrigin();
+			const bool prefillTsat = VsmrPdcTsatPrefill::Allowed(
+				ActivePdcPolicy(), origin != nullptr ? std::string_view(origin) : std::string_view{});
 			CdmPilotData cdmPilot;
 			const bool cdmReady = IsCdmBridgeReady();
 			// Offer the editable reminder unless CDM positively reports a TOBT.
@@ -246,7 +269,7 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 				TryGetCdmPilotData(fpCallsign, cdmPilot))
 			{
 				dia.SetTobtMissing(!cdmPilot.hasTobt);
-				if (cdmPilot.hasTsat)
+				if (prefillTsat && cdmPilot.hasTsat)
 					dia.m_TSAT = FormatUtcHhmm(cdmPilot.tsatUtc).c_str();
 				if (cdmPilot.hasCtot)
 					dia.m_CTOT = FormatUtcHhmm(cdmPilot.ctotUtc).c_str();
