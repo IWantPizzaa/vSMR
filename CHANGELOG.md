@@ -4,6 +4,7 @@
 
 - Prefill PDC TSAT only for the departure airports listed in `default.json` (`pdc.tsat_prefill_airports`); other airports keep the field empty.
 - Make the timer alarm three audible pulses and retry briefly if Windows rejects playback.
+- Update bundled WAV files during full installation when their previous copies are unmodified, while retaining custom sounds.
 - Route Runtime Menu airport editing through EuroScope's screen-object callback and suppress repeated edits during a double-click.
 - Restore the controller's saved AVISO palette before applying airport defaults, and keep that selection through configuration reloads.
 - Check France-Ground-Layouts AVISO in the background after runtime activation so a cold download cannot freeze EuroScope startup.
