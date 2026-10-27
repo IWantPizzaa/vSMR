@@ -78,7 +78,8 @@ namespace
 	}
 }
 
-bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POINT point, RECT area, int button)
+bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POINT point, RECT area,
+	int button, bool fromHostScreenObject)
 {
 	UNREFERENCED_PARAMETER(point);
 	if (objectType != RUNTIME_MENU_RAIL && objectType != RUNTIME_MENU_POPUP)
@@ -125,13 +126,17 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 
 		if (std::strcmp(id, "runtime.airport") == 0)
 		{
-			// EuroScope can deliver the second click after OpenPopupEdit has
-			// already created its editor. Opening a second editor crashes the host.
+			if (!fromHostScreenObject)
+				return true;
+			// This action must be invoked from EuroScope's screen-object callback.
+			// Calling OpenPopupEdit from our WH_MOUSE hook leaves the host without
+			// the active radar-window context used to position its editor.
+			static thread_local std::uint64_t lastAirportEditOpenedAt = 0;
 			const auto now = static_cast<std::uint64_t>(::GetTickCount64());
 			if (VsmrRuntimeMenuInput::IsRepeatedAirportEdit(
-				now, RuntimeAirportEditOpenedAt, ::GetDoubleClickTime()))
+				now, lastAirportEditOpenedAt, ::GetDoubleClickTime()))
 				return true;
-			RuntimeAirportEditOpenedAt = now;
+			lastAirportEditOpenedAt = now;
 			CloseRuntimeMenuPopup();
 			GetPlugIn()->OpenPopupEdit(area, RIMCAS_ACTIVE_AIRPORT_FUNC, getActiveAirport().c_str());
 		}
@@ -575,6 +580,25 @@ bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, 
 		(ActiveRuntimeMenuPopup != RuntimeMenuPopup::None &&
 			(RuntimeMenuPopupArea.PtInRect(point) != FALSE ||
 				RuntimeMenuSecondaryPopupArea.PtInRect(point) != FALSE));
+	if (message == WM_MOUSEMOVE || message == WM_LBUTTONDOWN || message == WM_LBUTTONUP ||
+		message == WM_LBUTTONDBLCLK)
+	{
+		for (const RuntimeMenuHitTarget& target : RuntimeMenuHitTargets)
+		{
+			if (target.id == "runtime.airport" && ::PtInRect(&target.area, point))
+			{
+				// Let EuroScope dispatch its registered screen object. Its
+				// OnClickScreenObject callback supplies the editor's window context.
+				const HWND root = ::GetAncestor(sourceWindow, GA_ROOT);
+				if (message != WM_MOUSEMOVE && root != nullptr &&
+					::GetAncestor(foreground, GA_ROOT) != root)
+					::SetForegroundWindow(root);
+				if (message != WM_MOUSEMOVE)
+					RuntimeMenuPress = {};
+				return false;
+			}
+		}
+	}
 	const bool isLeftDown = message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK;
 	const bool isRightDown = message == WM_RBUTTONDOWN || message == WM_RBUTTONDBLCLK;
 	if (message == WM_LBUTTONDBLCLK && overMenu)

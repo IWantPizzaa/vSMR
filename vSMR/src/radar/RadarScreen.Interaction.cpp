@@ -1168,7 +1168,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	mouseLocation = Pt;
 	MarkPerformanceRefreshReason(
 		VsmrPerformance::FrameRefreshReason::UserActionExternal);
-	if (HandleRuntimeMenuClick(ObjectType, sObjectId, Pt, Area, Button))
+	if (HandleRuntimeMenuClick(ObjectType, sObjectId, Pt, Area, Button, true))
 		return;
 	if (sObjectId && strcmp(sObjectId, "north.drag") == 0 &&
 		(ObjectType == NORTH_INDICATOR || ObjectType == APPWINDOW_AVISO))
