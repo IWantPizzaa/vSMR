@@ -276,7 +276,6 @@ private:
 		POINT startPoint{};
 	};
 	RuntimeMenuPointerPress RuntimeMenuPress;
-	std::uint64_t RuntimeAirportEditOpenedAt = 0;
 	int RuntimeMenuPopupScrollOffset = 0;
 	bool ShowNorthIndicator = true;
 	bool KeepAvisoWindowPlacement = true;
@@ -546,7 +545,8 @@ public:
 	void RepaintRuntimeMenuAfterHost(HWND window) noexcept;
 	void ProtectRuntimeMenuDuringHostPaint(HWND window, HDC eraseDc = nullptr) const noexcept;
 	void AddRuntimeMenuObject(int type, const char* id, RECT area, bool movable, const char* message);
-	bool HandleRuntimeMenuClick(int objectType, const char* objectId, POINT point, RECT area, int button);
+	bool HandleRuntimeMenuClick(int objectType, const char* objectId, POINT point, RECT area,
+		int button, bool fromHostScreenObject = false);
 	bool HandleRuntimeMenuMove(int objectType, const char* objectId, POINT point, RECT area, bool released);
 	void CloseRuntimeMenuPopup();
 	void LoadRuntimeMenuState();
