@@ -53,6 +53,33 @@ namespace
 				return false;
 			}
 		}
+		if (const auto* pdc = layers::Member(root, "pdc"))
+		{
+			if (!pdc->IsObject())
+			{
+				error = "Configuration 'pdc' must be an object.";
+				return false;
+			}
+			if (const auto* airports = layers::Member(*pdc, "tsat_prefill_airports"))
+			{
+				if (!airports->IsArray() || airports->Size() > 64U)
+				{
+					error = "PDC TSAT prefill airports must be an array of up to 64 ICAOs.";
+					return false;
+				}
+				for (const auto& airport : airports->GetArray())
+				{
+					if (!airport.IsString() || airport.GetStringLength() != 4U ||
+						!std::all_of(airport.GetString(), airport.GetString() + 4,
+							[](char value) { return (value >= 'A' && value <= 'Z') ||
+								(value >= '0' && value <= '9'); }))
+					{
+						error = "PDC TSAT prefill airports must contain four-character uppercase ICAOs.";
+						return false;
+					}
+				}
+			}
+		}
 		const auto* profiles = layers::Member(root, "profiles");
 		if (defaults && (profiles == nullptr || profiles->ObjectEmpty()))
 		{

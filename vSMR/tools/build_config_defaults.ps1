@@ -39,7 +39,7 @@ foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'vSMR/
     $assetHashes.Add('AVISO/' + $file.Name, (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant())
 }
 $runwayVisibility = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'vSMR/data/runway_group_visibility.json') -Raw | ConvertFrom-Json
-$document = [ordered]@{ schema_version = 1; profiles = $profiles; metadata = $metadata; asset_hashes = $assetHashes; runway_group_visibility = $runwayVisibility; aviso_display_defaults = [ordered]@{ palette = 'light' }; aviso_airport_palette_defaults = [ordered]@{ LFMN = 'real'; LFML = 'real'; LFPO = 'real' } }
+$document = [ordered]@{ schema_version = 1; profiles = $profiles; metadata = $metadata; asset_hashes = $assetHashes; runway_group_visibility = $runwayVisibility; aviso_display_defaults = [ordered]@{ palette = 'light' }; aviso_airport_palette_defaults = [ordered]@{ LFMN = 'real'; LFML = 'real'; LFPO = 'real' }; pdc = [ordered]@{ tsat_prefill_airports = @('LFPG', 'LFPO', 'LFML', 'LFMN', 'LFBO', 'LFLL') } }
 $serialized = ($document | ConvertTo-Json -Depth 100 -Compress) + "`n"
 if ($Check) {
     if (-not (Test-Path -LiteralPath $destination -PathType Leaf) -or

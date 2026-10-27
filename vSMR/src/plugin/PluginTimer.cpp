@@ -251,9 +251,12 @@ void CSMRPlugin::OnTimer(int Counter)
 	// ----- Updating runtime insets -----
 	const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
 	const int timerWindowId = APPWINDOW_TIMER - APPWINDOW_BASE;
+	const std::uint64_t timerNow = ::GetTickCount64();
 	bool timerAlarmDue = false;
-	if (ProxyTimers.Active()) ProxyTimers.Poll(::GetTickCount64(), TimerCountdowns, timerAlarmDue);
-	else timerAlarmDue = TimerCountdowns.Update(::GetTickCount64());
+	if (ProxyTimers.Active()) ProxyTimers.Poll(timerNow, TimerCountdowns, timerAlarmDue);
+	else timerAlarmDue = TimerCountdowns.Update(timerNow);
+	if (timerAlarmDue)
+		TimerAlarmRetryUntil = timerNow + 10000ULL;
 	for (CSMRRadar* radar : RadarScreensOpened)
 	{
 		if (radar == nullptr || radar->IsShutdownRequested())
@@ -272,8 +275,10 @@ void CSMRPlugin::OnTimer(int Counter)
 		if (refresh)
 			radar->RequestRefresh();
 	}
-	if (timerAlarmDue && !PluginShutdownRequested.load(std::memory_order_relaxed))
+	if (TimerAlarmRetryUntil != 0 && !PluginShutdownRequested.load(std::memory_order_relaxed))
 	{
-		VsmrPluginRuntimeAudio::Play(L"Alarm.wav", "Timer alarm");
+		if (timerNow > TimerAlarmRetryUntil ||
+			VsmrPluginRuntimeAudio::Play(L"Alarm.wav", "Timer alarm"))
+			TimerAlarmRetryUntil = 0;
 	}
 };
