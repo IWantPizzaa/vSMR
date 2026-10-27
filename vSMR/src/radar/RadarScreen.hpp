@@ -276,6 +276,7 @@ private:
 		POINT startPoint{};
 	};
 	RuntimeMenuPointerPress RuntimeMenuPress;
+	std::uint64_t RuntimeAirportEditOpenedAt = 0;
 	int RuntimeMenuPopupScrollOffset = 0;
 	bool ShowNorthIndicator = true;
 	bool KeepAvisoWindowPlacement = true;

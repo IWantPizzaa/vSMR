@@ -7,6 +7,7 @@
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "radar/RecentAirports.hpp"
+#include "radar/RuntimeMenuInputPolicy.hpp"
 #include "shared/TextUtils.hpp"
 
 #include <cstdlib>
@@ -124,6 +125,13 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 
 		if (std::strcmp(id, "runtime.airport") == 0)
 		{
+			// EuroScope can deliver the second click after OpenPopupEdit has
+			// already created its editor. Opening a second editor crashes the host.
+			const auto now = static_cast<std::uint64_t>(::GetTickCount64());
+			if (VsmrRuntimeMenuInput::IsRepeatedAirportEdit(
+				now, RuntimeAirportEditOpenedAt, ::GetDoubleClickTime()))
+				return true;
+			RuntimeAirportEditOpenedAt = now;
 			CloseRuntimeMenuPopup();
 			GetPlugIn()->OpenPopupEdit(area, RIMCAS_ACTIVE_AIRPORT_FUNC, getActiveAirport().c_str());
 		}
@@ -569,6 +577,13 @@ bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, 
 				RuntimeMenuSecondaryPopupArea.PtInRect(point) != FALSE));
 	const bool isLeftDown = message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK;
 	const bool isRightDown = message == WM_RBUTTONDOWN || message == WM_RBUTTONDBLCLK;
+	if (message == WM_LBUTTONDBLCLK && overMenu)
+	{
+		// The first click already activated the menu control. Consume the
+		// double-click message and its following button-up without reopening it.
+		RuntimeMenuPress = {};
+		return true;
+	}
 	if (isLeftDown || isRightDown)
 	{
 		if (!overMenu)

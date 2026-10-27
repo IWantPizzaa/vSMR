@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+- Prevent a double-click on the Runtime Menu airport ICAO from opening overlapping EuroScope edit popups.
+- Restore the controller's saved AVISO palette before applying airport defaults, and keep that selection through configuration reloads.
+
 ## [2.0.4] - 2026-10-24
 
 - Use the active runtime-menu airport for PDC and add ready-startup details to LFPG's custom profile.

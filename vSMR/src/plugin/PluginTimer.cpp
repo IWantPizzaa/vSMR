@@ -72,9 +72,14 @@ void CSMRPlugin::SynchronizeProxyRuntime()
 		}
 		ProxyFailedConfigRevisions.erase(path);
 		const auto global = radar->GetGlobalAvisoPalette();
-		const char* saved = radar->GetDataFromAsr("AvisoAppearanceGeneration");
-		const std::string generation = saved ? saved : "";
-		if (!global.first.empty() && generation != global.second) radar->SetAvisoColorPalette(global.first, true);
+		const char* savedPalette = radar->GetDataFromAsr("AvisoColorPalette");
+		const char* savedGeneration = radar->GetDataFromAsr("AvisoAppearanceGeneration");
+		const std::string generation = savedGeneration ? savedGeneration : "";
+		// A live config reload may initialize an unconfigured screen, but must
+		// never replace a palette the controller already selected in its ASR.
+		if ((savedPalette == nullptr || savedPalette[0] == '\0') &&
+			!global.first.empty() && generation != global.second)
+			radar->SetAvisoColorPalette(global.first, true);
 	}
 	for (const auto& root : roots) if (root.second.error.empty()) ProxyRootRevisions[root.first] = root.second.revision;
 }
