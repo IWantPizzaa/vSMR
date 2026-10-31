@@ -17,4 +17,10 @@ namespace VsmrRendering
 	{
 		return static_cast<int>(std::lround(pixels * scale));
 	}
+
+	// The tag font setting is already in screen pixels, including on 2K/4K displays.
+	inline int TagFontPixels(int configuredPixels) noexcept
+	{
+		return configuredPixels < 6 ? 6 : configuredPixels;
+	}
 }

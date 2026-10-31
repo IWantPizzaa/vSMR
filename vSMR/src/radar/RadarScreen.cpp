@@ -6,6 +6,7 @@
 #include "radar/RadarScreen.AvisoRuntimeState.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "radar/RadarScreenSupport.hpp"
+#include "rendering/DisplayScale.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
 #include "insets/InsetWindow.hpp"
 #include <cctype>
@@ -530,7 +531,7 @@ void CSMRRadar::LoadCustomFont() {
 		if (sizeConfig && sizeConfig->HasMember(key) && (*sizeConfig)[key].IsInt())
 		{
 			int configured = (*sizeConfig)[key].GetInt();
-			return (configured < 6) ? 6 : configured;
+			return VsmrRendering::TagFontPixels(configured);
 		}
 		return fallback;
 	};
@@ -550,7 +551,7 @@ void CSMRRadar::LoadCustomFont() {
 
 	auto createFont = [&](int size) -> std::unique_ptr<Gdiplus::Font>
 	{
-		const Gdiplus::REAL pixelSize = static_cast<Gdiplus::REAL>(size * GetDisplayScale());
+		const Gdiplus::REAL pixelSize = static_cast<Gdiplus::REAL>(VsmrRendering::TagFontPixels(size));
 		std::unique_ptr<Gdiplus::Font> font = std::make_unique<Gdiplus::Font>(buffer.c_str(), pixelSize, fontStyle, Gdiplus::UnitPixel);
 		if (font->GetLastStatus() != Gdiplus::Ok)
 		{

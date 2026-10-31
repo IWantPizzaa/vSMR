@@ -2,7 +2,7 @@
 
 vSMR is a configurable surface-movement radar plug-in for 32-bit EuroScope. It provides airport surface displays, aircraft tags and symbols, AVISO maps, RIMCAS alerts, native inset windows, CDM data, and Hoppie PDC and message workflows over CPDLC.
 
-Current source version: **2.0.5**. Release artifacts are prepared from clean committed source. Bundled third-party assets retain the licenses and attributions in `vSMR/data/Licenses/`.
+Current source version: **2.0.6**. Release artifacts are prepared from clean committed source. Bundled third-party assets retain the licenses and attributions in `vSMR/data/Licenses/`.
 
 > Verify the active airport, profile, AVISO map, runway configuration, and alerts before controlling. Development and validation-only packages are not official releases.
 
@@ -13,7 +13,7 @@ Current source version: **2.0.5**. Release artifacts are prepared from clean com
 - Configurable surface radar with NOVA, aircraft-icon, Triangle, and Diamond targets
 - Normal and detailed tags with status-specific layouts, structured color rules, and optional per-line backgrounds
 - 160 bundled AVISO airport maps, with shared geometry/text editing and airport-specific palettes
-- Resolution presets for AVISO rendering and aircraft icons/tags, without resizing menus or other UI
+- Resolution presets for AVISO rendering and aircraft symbols/tag spacing, without resizing configured tag fonts, menus or other UI
 - Automatic RIMCAS runway assignment from EuroScope's active-airport runway selection
 - AVISO, SRW, Weather, and Timer inset windows; uncorrelated tags can open EuroScope's acquisition or correlation menu with either mouse button.
 - The Control Center's **Keep AVISO window placement** option keeps its screen position and size when switching airports or opening another ASR; the map recenters on the new airport. The option is saved in EuroScope's vSMR settings.
@@ -28,7 +28,7 @@ Current source version: **2.0.5**. Release artifacts are prepared from clean com
 
 ## 2.0.0 behavior and compatibility
 
-- **Resolution:** Settings offers 1080p (100%), 2K (133%), and 4K (200%). These scale AVISO labels/lines and aircraft icons, trails, tags, and their hit areas in the main view and radar insets. They do not resize the Control Center, Runtime Menu, inset controls, or weather/timer panels, and do not change geographic positions or radar zoom.
+- **Resolution:** Settings offers 1080p (100%), 2K (133%), and 4K (200%). These scale AVISO labels/lines and aircraft icons, trails, tag spacing, and hit-area padding in the main view and radar insets. The configured tag font size is always its literal screen-pixel size, including at 4K. These presets do not resize the Control Center, Runtime Menu, inset controls, or weather/timer panels, and do not change geographic positions or radar zoom.
 - **Interface theme:** Night/Day UI colors are independent of the AVISO palette and also affect Timer and METAR insets. Dark/Light palettes are available in the current bundled maps; Real is available for LFBO, LFLL, LFML, LFMN, LFPG, LFPO, and LFSB. Other maps may offer different palettes.
 - **Target presentation:** Tag label font size is edited in pixels (6-72) instead of preset numbers 1-5. Diamond trails use more closely spaced samples while preserving the selected point count. METAR shows a prominent QNH strip and an inward-fading wind-from indicator. PDC and message composers distinguish editable light-grey fields from dark read-only fields; X uses the Cancel action.
 - **ASR profiles:** Each radar screen keeps its own active profile. Profile definitions and the profiles-file source remain shared; save the ASR to retain its selection.
@@ -263,9 +263,9 @@ After building the native test executable, run the regression suite independentl
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tests\run_tests.ps1
 ```
 
-Release-input checks enforce matching 2.0.5 versions, the reviewed hashes of all 161 AVISO files (including the separate LFPO_Work variant), and an update policy that never deletes a bundled airport. LFPG contains 1,470 ungrouped features, including the two 60 m limit lines, plus six grouped features carrying 89 East arrows and 97 West arrows, independently controlled through the **East Arrows** and **West Arrows** groups. The hash manifest records these committed geometries.
+Release-input checks enforce matching 2.0.6 versions, the reviewed hashes of all 161 AVISO files (including the separate LFPO_Work variant), and an update policy that never deletes a bundled airport. LFPG contains 1,470 ungrouped features, including the two 60 m limit lines, plus six grouped features carrying 89 East arrows and 97 West arrows, independently controlled through the **East Arrows** and **West Arrows** groups. The hash manifest records these committed geometries.
 
-Publishable artifacts require a clean source commit and passing release checks. Signing is optional; configuring a signing certificate/pin or `-RequireSignature` enforces signed binaries and the matching detached update signature. The packager, binary product versions, and AppVeyor settings target 2.0.5; loader version remains 1.3.0 and runtime ABI remains 1. Local validation packages are not distributable releases. Publication of the GitHub release and update feed remains an explicit maintainer action.
+Publishable artifacts require a clean source commit and passing release checks. Signing is optional; configuring a signing certificate/pin or `-RequireSignature` enforces signed binaries and the matching detached update signature. The packager, binary product versions, and AppVeyor settings target 2.0.6; loader version remains 1.3.0 and runtime ABI remains 1. Local validation packages are not distributable releases. Publication of the GitHub release and update feed remains an explicit maintainer action.
 
 ### Per-file update feed
 
