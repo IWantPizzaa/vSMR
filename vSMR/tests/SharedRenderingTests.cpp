@@ -462,12 +462,16 @@ namespace
 	{
 		Gdiplus::Bitmap bitmap(160, 100, PixelFormat32bppARGB);
 		Gdiplus::Graphics graphics(&bitmap);
+		Check(VsmrRendering::TagFontPixels(6) == 6 && VsmrRendering::TagFontPixels(5) == 6,
+			"tag font sizes are literal screen pixels with a six-pixel minimum", failures);
 		for (const char* preset : { "1080p", "2k", "4k" })
 		{
 			const double scale = VsmrRendering::ResolutionScale(preset);
-			Gdiplus::Font font(L"Arial", static_cast<Gdiplus::REAL>(10 * scale), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+			Gdiplus::Font font(L"Arial", static_cast<Gdiplus::REAL>(VsmrRendering::TagFontPixels(6)),
+				Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 			VsmrTagRendering::FontContext fonts(graphics, &font);
-			// Tag text and its mouse bounds scale without transforming the UI canvas.
+			Check(font.GetSize() == 6.0f, "resolution presets do not enlarge the configured tag font", failures);
+			// Tag hit bounds retain their resolution-scaled padding around literal-pixel text.
 			VsmrTagRendering::Layout layout;
 			layout.width = fonts.Measure("AFR123").Width;
 			layout.height = fonts.LineHeight();
@@ -478,7 +482,7 @@ namespace
 			options.tagCenter = {80, 50};
 			const CRect bounds = VsmrTagRendering::CalculateBounds(fonts, layout, options);
 			Check(bounds.Width() == layout.width + 2 * VsmrRendering::ScalePixels(1, scale),
-				"tag bounds include scaled padding around scaled text", failures);
+				"tag bounds include scaled padding around literal-pixel text", failures);
 			Gdiplus::Matrix transform;
 			graphics.GetTransform(&transform);
 			Check(transform.IsIdentity(), "aircraft text scaling leaves the UI canvas unchanged", failures);

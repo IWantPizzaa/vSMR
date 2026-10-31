@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Start 2.0.6 development: honor the configured tag font size in physical screen pixels at every resolution, including 4K, in the main radar view and SRW inset.
+
 ## [2.0.5] - 2026-10-27
 
 - Prefill PDC TSAT only for the departure airports listed in `default.json` (`pdc.tsat_prefill_airports`); other airports keep the field empty.
