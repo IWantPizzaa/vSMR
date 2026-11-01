@@ -301,6 +301,7 @@ CPosition CSMRRadar::ConvertCoordFromPixelToPosition(POINT point)
 
 CSMRRadar::~CSMRRadar()
 {
+	FinishRuntimeInlineEdit(false);
 	PublishCrashRadarState("closing", "none");
 	Logger::info(std::string(__FUNCSIG__));
 	BeginShutdown();
@@ -1013,6 +1014,20 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 
 	if (subclassId != kInsetWindowSubclassId)
 		return ::DefSubclassProc(hwnd, uMsg, wParam, lParam);
+	if (uMsg == WM_CTLCOLOREDIT)
+	{
+		const auto screens = gInsetWindowRadarScreens.find(hwnd);
+		if (screens != gInsetWindowRadarScreens.end())
+		{
+			for (CSMRRadar* radar : screens->second)
+			{
+				if (radar == nullptr) continue;
+				if (HBRUSH brush = radar->ColorRuntimeInlineEdit(
+					reinterpret_cast<HDC>(wParam), reinterpret_cast<HWND>(lParam)))
+					return reinterpret_cast<LRESULT>(brush);
+			}
+		}
+	}
 
 	if (uMsg == WM_NCDESTROY)
 	{
