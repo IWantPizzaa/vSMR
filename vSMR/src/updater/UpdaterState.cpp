@@ -190,7 +190,7 @@ namespace vsmr::updater::internal
 			}
 			if (knownFolder != nullptr)
 				::CoTaskMemFree(knownFolder);
-			std::array<wchar_t, 32768> buffer{};
+			std::vector<wchar_t> buffer(32768, L'\0');
 			const DWORD length = ::GetEnvironmentVariableW(
 				L"LOCALAPPDATA", buffer.data(), static_cast<DWORD>(buffer.size()));
 			if (length > 0 && length < buffer.size())
@@ -207,7 +207,7 @@ namespace vsmr::updater::internal
 	{
 		try
 		{
-			std::array<wchar_t, 32768> buffer{};
+			std::vector<wchar_t> buffer(32768, L'\0');
 			const DWORD length = ::GetTempPathW(
 				static_cast<DWORD>(buffer.size()), buffer.data());
 			if (length > 0 && length < buffer.size())

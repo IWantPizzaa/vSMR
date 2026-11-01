@@ -14,6 +14,7 @@
 #include <array>
 #include <filesystem>
 #include <fstream>
+#include <vector>
 
 using namespace VsmrControlCenterDialogInternal;
 
@@ -21,19 +22,25 @@ namespace
 {
 	std::wstring LocalAppDataPath()
 	{
-		wchar_t buffer[32768] = {};
-		const DWORD length = ::GetEnvironmentVariableW(
-			L"LOCALAPPDATA",
-			buffer,
-			static_cast<DWORD>(std::size(buffer)));
-		if (length > 0 && length < std::size(buffer))
-			return std::wstring(buffer, length);
+		try
+		{
+			std::vector<wchar_t> buffer(32768, L'\0');
+			const DWORD length = ::GetEnvironmentVariableW(
+				L"LOCALAPPDATA",
+				buffer.data(),
+				static_cast<DWORD>(buffer.size()));
+			if (length > 0 && length < buffer.size())
+				return std::wstring(buffer.data(), length);
 
-		const DWORD tempLength = ::GetTempPathW(
-			static_cast<DWORD>(std::size(buffer)),
-			buffer);
-		if (tempLength > 0 && tempLength < std::size(buffer))
-			return std::wstring(buffer, tempLength);
+			const DWORD tempLength = ::GetTempPathW(
+				static_cast<DWORD>(buffer.size()),
+				buffer.data());
+			if (tempLength > 0 && tempLength < buffer.size())
+				return std::wstring(buffer.data(), tempLength);
+		}
+		catch (...)
+		{
+		}
 		return L".";
 	}
 

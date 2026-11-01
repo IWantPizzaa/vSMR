@@ -7,6 +7,7 @@
 #include "rendering/NorthIndicator.hpp"
 #include "aircraft/GroundState.hpp"
 #include "control_center/ControlCenterDialog.hpp"
+#include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 
 #include <cmath>
@@ -1155,6 +1156,24 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 }
 
 void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
+{
+	try
+	{
+		OnClickScreenObjectImpl(ObjectType, sObjectId, Pt, Area, Button);
+	}
+	catch (CException* exception)
+	{
+		if (exception != nullptr)
+			exception->Delete();
+		VsmrCrashReporter::RecordState("callback exception", "OnClickScreenObject MFC");
+	}
+	catch (...)
+	{
+		VsmrCrashReporter::RecordState("callback exception", "OnClickScreenObject C++");
+	}
+}
+
+void CSMRRadar::OnClickScreenObjectImpl(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
 {
 	if (!OwnsOverlayPointer(this, Pt))
 	{

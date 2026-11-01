@@ -6,6 +6,7 @@
 
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
+#include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "insets/InsetWindow.hpp"
 #include "integrations/CdmBridgeClient.hpp"
@@ -102,6 +103,24 @@ void CSMRPlugin::ChangeTimerCountdown(int durationMinutes, bool reset)
 }
 
 void CSMRPlugin::OnTimer(int Counter)
+{
+	try
+	{
+		OnTimerImpl(Counter);
+	}
+	catch (CException* exception)
+	{
+		if (exception != nullptr)
+			exception->Delete();
+		VsmrCrashReporter::RecordState("callback exception", "OnTimer MFC");
+	}
+	catch (...)
+	{
+		VsmrCrashReporter::RecordState("callback exception", "OnTimer C++");
+	}
+}
+
+void CSMRPlugin::OnTimerImpl(int Counter)
 {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnTimer");
 	(void)Counter;

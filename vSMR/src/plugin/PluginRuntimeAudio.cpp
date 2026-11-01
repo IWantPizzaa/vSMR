@@ -120,8 +120,15 @@ namespace
 				::waveOutUnprepareHeader(active->device, &active->header, sizeof(active->header));
 				::waveOutClose(active->device);
 				::CloseHandle(active->event);
-				Logger::info(finished ? "Timer alarm playback completed on independent output" :
-					"Timer alarm playback interrupted on independent output");
+				try
+				{
+					Logger::info(finished ? "Timer alarm playback completed on independent output" :
+						"Timer alarm playback interrupted on independent output");
+				}
+				catch (...)
+				{
+					// Logging must never terminate the audio worker.
+				}
 			});
 		}
 		catch (...)

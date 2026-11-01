@@ -15,6 +15,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <vector>
 
 using VsmrDatalinkProtocol::EncodeUrlQueryComponent;
 using VsmrDatalinkProtocol::RedactSensitiveValue;
@@ -229,17 +230,17 @@ bool CSMRPlugin::WriteDiagnosticsReport(
 		std::filesystem::create_directories(diagnosticsDirectory, pathError);
 		if (pathError)
 		{
-			wchar_t temporaryPath[32768] = {};
+			std::vector<wchar_t> temporaryPath(32768, L'\0');
 			const DWORD length = ::GetTempPathW(
 				static_cast<DWORD>(std::size(temporaryPath)),
-				temporaryPath);
+				temporaryPath.data());
 			if (length == 0 || length >= std::size(temporaryPath))
 			{
 				error = "Unable to resolve a writable diagnostics folder.";
 				return false;
 			}
 			diagnosticsDirectory =
-				std::filesystem::path(temporaryPath) / "vSMR_Diagnostics";
+				std::filesystem::path(temporaryPath.data()) / "vSMR_Diagnostics";
 			pathError.clear();
 			std::filesystem::create_directories(
 				diagnosticsDirectory,

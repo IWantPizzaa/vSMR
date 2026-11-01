@@ -18,7 +18,9 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <mutex>
+#include <new>
 #include <set>
 #include <sstream>
 #include <string>
@@ -670,14 +672,20 @@ namespace
 				break;
 			}
 
-			std::array<BYTE, 64U * 1024U> buffer{};
+			constexpr DWORD bufferSize = 64U * 1024U;
+			std::unique_ptr<BYTE[]> buffer(new (std::nothrow) BYTE[bufferSize]);
+			if (!buffer)
+			{
+				errorMessage = L"Windows could not allocate the SHA-256 read buffer.";
+				break;
+			}
 			for (;;)
 			{
 				DWORD bytesRead = 0;
 				if (!::ReadFile(
 					file,
-					buffer.data(),
-					static_cast<DWORD>(buffer.size()),
+					buffer.get(),
+					bufferSize,
 					&bytesRead,
 					nullptr))
 				{
@@ -699,7 +707,7 @@ namespace
 					success = true;
 					break;
 				}
-				if (!BCRYPT_SUCCESS(::BCryptHashData(hash, buffer.data(), bytesRead, 0)))
+				if (!BCRYPT_SUCCESS(::BCryptHashData(hash, buffer.get(), bytesRead, 0)))
 				{
 					errorMessage = L"Windows could not update SHA-256.";
 					break;
@@ -752,7 +760,7 @@ namespace
 		{
 			appendCandidate(std::filesystem::path(localAppData.data()));
 		}
-		std::array<wchar_t, 32768U> localAppDataEnvironment{};
+		std::vector<wchar_t> localAppDataEnvironment(32768U, L'\0');
 		const DWORD environmentLength = ::GetEnvironmentVariableW(
 			L"LOCALAPPDATA",
 			localAppDataEnvironment.data(),

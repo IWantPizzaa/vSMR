@@ -1194,17 +1194,25 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		VsmrCrashReporter::RecordBreadcrumb("render stage", stage);
 	};
 	VsmrCrashReporter::RecordBreadcrumb("render stage", refreshStage);
-	auto logRefreshException = [&](const std::string& reason)
+	auto logRefreshException = [&](const char* reason)
 	{
-		static DWORD lastLogTick = 0;
-		static std::string lastMessage;
-		const DWORD nowTick = ::GetTickCount();
-		const std::string message = "OnRefresh caught exception stage=" + std::string(refreshStage) + " reason=" + reason;
-		if (message != lastMessage || nowTick - lastLogTick > 2000)
+		try
 		{
-			OutputVsmrDebugLine(message);
-			lastMessage = message;
-			lastLogTick = nowTick;
+			static thread_local DWORD lastLogTick = 0;
+			static thread_local std::string lastMessage;
+			const DWORD nowTick = ::GetTickCount();
+			const std::string message = "OnRefresh caught exception stage=" + std::string(refreshStage) +
+				" reason=" + (reason != nullptr ? reason : "unknown");
+			if (message != lastMessage || nowTick - lastLogTick > 2000)
+			{
+				OutputVsmrDebugLine(message);
+				lastMessage = message;
+				lastLogTick = nowTick;
+			}
+		}
+		catch (...)
+		{
+			VsmrCrashReporter::RecordState("callback exception", "OnRefresh logging failed");
 		}
 	};
 
@@ -1352,7 +1360,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			scode = static_cast<long>(ex->m_sc);
 			ex->Delete();
 		}
-		logRefreshException("OLE exception scode=" + std::to_string(scode));
+		char reason[64]{};
+		_snprintf_s(reason, sizeof(reason), _TRUNCATE, "OLE exception scode=%ld", scode);
+		logRefreshException(reason);
 	}
 	catch (CException* ex)
 	{
@@ -1362,7 +1372,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	}
 	catch (const std::exception& ex)
 	{
-		logRefreshException(std::string("std exception: ") + ex.what());
+		logRefreshException(ex.what());
 	}
 	catch (...)
 	{
