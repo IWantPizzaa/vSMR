@@ -137,7 +137,6 @@
     <ClCompile Include="src\radar\RadarScreen.Refresh.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\radar\RadarScreen.RuntimeMenu.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\radar\RadarScreen.RuntimeMenuActions.cpp"><Filter>Source</Filter></ClCompile>
-    <ClCompile Include="src\radar\RuntimeTextEditorDialog.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\radar\RadarScreen.TargetFiltering.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\rdf\RdfOverlay.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\safety\Rimcas.cpp"><Filter>Source</Filter></ClCompile>
