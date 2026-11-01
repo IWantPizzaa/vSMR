@@ -8,6 +8,7 @@
 #include "radar/RadarScreen.Registry.hpp"
 #include "radar/RecentAirports.hpp"
 #include "radar/RuntimeMenuInputPolicy.hpp"
+#include "radar/RuntimeTextEditorDialog.hpp"
 #include "shared/TextUtils.hpp"
 
 #include <cstdlib>
@@ -81,7 +82,6 @@ namespace
 bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POINT point, RECT area,
 	int button, bool fromHostScreenObject)
 {
-	UNREFERENCED_PARAMETER(point);
 	if (objectType != RUNTIME_MENU_RAIL && objectType != RUNTIME_MENU_POPUP)
 		return false;
 
@@ -145,7 +145,10 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		if (std::strcmp(id, "runtime.airport") == 0)
 		{
 			CloseRuntimeMenuPopup();
-			GetPlugIn()->OpenPopupEdit(area, RIMCAS_ACTIVE_AIRPORT_FUNC, getActiveAirport().c_str());
+			std::string value;
+			if (VsmrRuntimeTextEditor::Show(VsmrRuntimeTextEditor::Kind::Airport,
+				getActiveAirport(), GetUiColorTheme() == "day", value))
+				OnFunctionCall(RIMCAS_ACTIVE_AIRPORT_FUNC, value.c_str(), point, area);
 		}
 		else if (std::strcmp(id, "runtime.button.mode") == 0)
 			togglePopup(RuntimeMenuPopup::Mode);
@@ -276,10 +279,11 @@ bool CSMRRadar::HandleRuntimeDatalinkClick(const char* id, RECT area)
 		{
 			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
 			CloseRuntimeMenuPopup();
-			GetPlugIn()->OpenPopupEdit(
-				area,
-				RUNTIME_DATALINK_CALLSIGN_EDIT,
-				state.logonCallsign.c_str());
+			std::string value;
+			if (VsmrRuntimeTextEditor::Show(VsmrRuntimeTextEditor::Kind::PdcLogon,
+				state.logonCallsign, GetUiColorTheme() == "day", value))
+				OnFunctionCall(RUNTIME_DATALINK_CALLSIGN_EDIT, value.c_str(),
+					POINT{ area.left, area.top }, area);
 		}
 		return true;
 	}
@@ -486,7 +490,10 @@ bool CSMRRadar::HandleRuntimePresetClick(const char* id, RECT area)
 	else if (std::strcmp(id, "runtime.preset.rename") == 0 && !activePreset.empty())
 	{
 		CloseRuntimeMenuPopup();
-		GetPlugIn()->OpenPopupEdit(area, RIMCAS_AVISO_PRESET_RENAME, activePreset.c_str());
+		std::string value;
+		if (VsmrRuntimeTextEditor::Show(VsmrRuntimeTextEditor::Kind::Preset,
+			activePreset, GetUiColorTheme() == "day", value))
+			OnFunctionCall(RIMCAS_AVISO_PRESET_RENAME, value.c_str(), POINT{}, area);
 	}
 	else if (std::strcmp(id, "runtime.preset.duplicate") == 0 && !activePreset.empty())
 	{

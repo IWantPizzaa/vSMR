@@ -257,6 +257,7 @@
     <ClCompile Include="src\radar\RadarScreen.Refresh.cpp" />
     <ClCompile Include="src\radar\RadarScreen.RuntimeMenu.cpp" />
     <ClCompile Include="src\radar\RadarScreen.RuntimeMenuActions.cpp" />
+    <ClCompile Include="src\radar\RuntimeTextEditorDialog.cpp" />
     <ClCompile Include="src\radar\RadarScreen.TargetFiltering.cpp" />
     <ClCompile Include="src\rdf\RdfOverlay.cpp" />
     <ClCompile Include="src\safety\Rimcas.cpp" />
