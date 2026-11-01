@@ -113,6 +113,24 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 			CloseRuntimeMenuPopup();
 		return true;
 	}
+	if (VsmrRuntimeMenuInput::NeedsHostClickContext(id))
+	{
+		// EuroScope must own the active radar-window context before vSMR opens
+		// its editor or a modal window, or submits a host command-line action.
+		if (!fromHostScreenObject)
+			return true;
+		if (VsmrRuntimeMenuInput::OpensWindow(id))
+		{
+			static thread_local std::string lastWindowId;
+			static thread_local std::uint64_t lastWindowOpenedAt = 0;
+			const auto now = static_cast<std::uint64_t>(::GetTickCount64());
+			if (lastWindowId == id && VsmrRuntimeMenuInput::IsRepeatedWindowOpen(
+				now, lastWindowOpenedAt, ::GetDoubleClickTime()))
+				return true;
+			lastWindowId = id;
+			lastWindowOpenedAt = now;
+		}
+	}
 
 	if (objectType == RUNTIME_MENU_RAIL)
 	{
@@ -126,17 +144,6 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 
 		if (std::strcmp(id, "runtime.airport") == 0)
 		{
-			if (!fromHostScreenObject)
-				return true;
-			// This action must be invoked from EuroScope's screen-object callback.
-			// Calling OpenPopupEdit from our WH_MOUSE hook leaves the host without
-			// the active radar-window context used to position its editor.
-			static thread_local std::uint64_t lastAirportEditOpenedAt = 0;
-			const auto now = static_cast<std::uint64_t>(::GetTickCount64());
-			if (VsmrRuntimeMenuInput::IsRepeatedAirportEdit(
-				now, lastAirportEditOpenedAt, ::GetDoubleClickTime()))
-				return true;
-			lastAirportEditOpenedAt = now;
 			CloseRuntimeMenuPopup();
 			GetPlugIn()->OpenPopupEdit(area, RIMCAS_ACTIVE_AIRPORT_FUNC, getActiveAirport().c_str());
 		}
@@ -256,6 +263,7 @@ bool CSMRRadar::HandleRuntimeDatalinkClick(const char* id, RECT area)
 	};
 	if (std::strcmp(id, "runtime.datalink.credentials") == 0)
 	{
+		CloseRuntimeMenuPopup();
 		std::string error;
 		if (datalinkPlugin == nullptr || !datalinkPlugin->EditDatalinkCredentials(error))
 			showDatalinkMessage(error.empty() ? "The PDC service is unavailable." : error, true);
@@ -267,6 +275,7 @@ bool CSMRRadar::HandleRuntimeDatalinkClick(const char* id, RECT area)
 		if (datalinkPlugin != nullptr)
 		{
 			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
+			CloseRuntimeMenuPopup();
 			GetPlugIn()->OpenPopupEdit(
 				area,
 				RUNTIME_DATALINK_CALLSIGN_EDIT,
@@ -475,7 +484,10 @@ bool CSMRRadar::HandleRuntimePresetClick(const char* id, RECT area)
 	else if (std::strcmp(id, "runtime.preset.update") == 0)
 		UpdateActiveAvisoPreset();
 	else if (std::strcmp(id, "runtime.preset.rename") == 0 && !activePreset.empty())
+	{
+		CloseRuntimeMenuPopup();
 		GetPlugIn()->OpenPopupEdit(area, RIMCAS_AVISO_PRESET_RENAME, activePreset.c_str());
+	}
 	else if (std::strcmp(id, "runtime.preset.duplicate") == 0 && !activePreset.empty())
 	{
 		const std::string name = MakeUniquePresetName(presets, "Copy of " + activePreset);
@@ -580,21 +592,21 @@ bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, 
 		(ActiveRuntimeMenuPopup != RuntimeMenuPopup::None &&
 			(RuntimeMenuPopupArea.PtInRect(point) != FALSE ||
 				RuntimeMenuSecondaryPopupArea.PtInRect(point) != FALSE));
-	if (message == WM_MOUSEMOVE || message == WM_LBUTTONDOWN || message == WM_LBUTTONUP ||
+	if (message == WM_LBUTTONDOWN || message == WM_LBUTTONUP ||
 		message == WM_LBUTTONDBLCLK)
 	{
 		for (const RuntimeMenuHitTarget& target : RuntimeMenuHitTargets)
 		{
-			if (target.id == "runtime.airport" && ::PtInRect(&target.area, point))
+			if (VsmrRuntimeMenuInput::NeedsHostClickContext(target.id) &&
+				::PtInRect(&target.area, point))
 			{
 				// Let EuroScope dispatch its registered screen object. Its
-				// OnClickScreenObject callback supplies the editor's window context.
+				// OnClickScreenObject callback supplies the host window context.
 				const HWND root = ::GetAncestor(sourceWindow, GA_ROOT);
-				if (message != WM_MOUSEMOVE && root != nullptr &&
+				if (root != nullptr &&
 					::GetAncestor(foreground, GA_ROOT) != root)
 					::SetForegroundWindow(root);
-				if (message != WM_MOUSEMOVE)
-					RuntimeMenuPress = {};
+				RuntimeMenuPress = {};
 				return false;
 			}
 		}
