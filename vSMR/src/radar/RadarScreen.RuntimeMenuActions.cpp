@@ -15,6 +15,7 @@
 #include <limits>
 
 extern CPoint mouseLocation;
+UINT RuntimeInlineEditFocusMessage();
 
 namespace
 {
@@ -32,11 +33,8 @@ namespace
 		}
 		if (message == WM_GETDLGCODE)
 			return ::DefSubclassProc(window, message, wParam, lParam) | DLGC_WANTALLKEYS;
-		if (message == WM_KILLFOCUS && radar->RuntimeInlineEditWindow == window)
-		{
-			radar->FinishRuntimeInlineEdit(false);
-			return 0;
-		}
+		// EuroScope may move focus back to its radar view after dispatching a
+		// screen-object click. Keep the edit alive until an explicit action.
 		if (message == WM_NCDESTROY)
 		{
 			::RemoveWindowSubclass(window, RuntimeInlineEditSubclassProc, kRuntimeInlineEditSubclassId);
@@ -127,12 +125,15 @@ void CSMRRadar::StartRuntimeInlineEdit(RuntimeInlineEditKind kind, RECT area,
 	if (area.right <= area.left || area.bottom <= area.top)
 		return;
 	const bool day = GetUiColorTheme() == "day";
-	const COLORREF fill = day ? RGB(247, 251, 252) : RGB(41, 56, 59);
+	const COLORREF fill = kind == RuntimeInlineEditKind::Preset
+		? (day ? RGB(182, 188, 190) : RGB(41, 56, 59))
+		: (day ? RGB(173, 181, 183) : RGB(41, 57, 59));
 	HBRUSH brush = ::CreateSolidBrush(fill);
 	if (brush == nullptr)
 		return;
 	HWND edit = ::CreateWindowExA(0, "EDIT", value.c_str(),
-		WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+		WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL |
+			(kind == RuntimeInlineEditKind::Airport ? ES_CENTER : ES_LEFT),
 		area.left, area.top, area.right - area.left, area.bottom - area.top,
 		parent, nullptr, AfxGetResourceHandle(), nullptr);
 	if (edit == nullptr)
@@ -149,12 +150,38 @@ void CSMRRadar::StartRuntimeInlineEdit(RuntimeInlineEditKind kind, RECT area,
 		FinishRuntimeInlineEdit(false);
 		return;
 	}
-	::SendMessage(edit, WM_SETFONT, reinterpret_cast<WPARAM>(RuntimeMenuActionFont.GetSafeHandle()), TRUE);
+	const HFONT font = static_cast<HFONT>((kind == RuntimeInlineEditKind::Airport
+		? RuntimeOverlayFont : RuntimeMenuActionFont).GetSafeHandle());
+	if (font != nullptr)
+		::SendMessage(edit, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
 	::SendMessage(edit, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(3, 3));
+	if (font != nullptr)
+	{
+		HDC dc = ::GetDC(parent);
+		if (dc != nullptr)
+		{
+			const HGDIOBJ previousFont = ::SelectObject(dc, font);
+			TEXTMETRIC metrics{};
+			if (::GetTextMetrics(dc, &metrics))
+			{
+				const int height = (std::min)(area.bottom - area.top, metrics.tmHeight + 4);
+				const int top = area.top + ((area.bottom - area.top - height) / 2);
+				::SetWindowPos(edit, nullptr, area.left, top,
+					area.right - area.left, height, SWP_NOZORDER | SWP_NOACTIVATE);
+			}
+			::SelectObject(dc, previousFont);
+			::ReleaseDC(parent, dc);
+		}
+	}
 	::SendMessage(edit, EM_LIMITTEXT, kind == RuntimeInlineEditKind::Preset ? 128 :
 		kind == RuntimeInlineEditKind::Airport ? 4 : 16, 0);
+	::ShowWindow(edit, SW_SHOW);
 	::SetFocus(edit);
 	::SendMessage(edit, EM_SETSEL, 0, -1);
+	::RedrawWindow(edit, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+	// EuroScope can restore radar focus after its screen-object callback ends.
+	// Reassert edit focus once that callback has returned to the message loop.
+	::PostMessage(parent, RuntimeInlineEditFocusMessage(), 0, 0);
 }
 
 HBRUSH CSMRRadar::ColorRuntimeInlineEdit(HDC dc, HWND edit) const
@@ -162,8 +189,11 @@ HBRUSH CSMRRadar::ColorRuntimeInlineEdit(HDC dc, HWND edit) const
 	if (edit != RuntimeInlineEditWindow || RuntimeInlineEditBrush == nullptr)
 		return nullptr;
 	const bool day = GetUiColorTheme() == "day";
+	const COLORREF fill = RuntimeInlineEditType == RuntimeInlineEditKind::Preset
+		? (day ? RGB(182, 188, 190) : RGB(41, 56, 59))
+		: (day ? RGB(173, 181, 183) : RGB(41, 57, 59));
 	::SetTextColor(dc, day ? RGB(23, 33, 38) : RGB(208, 217, 220));
-	::SetBkColor(dc, day ? RGB(247, 251, 252) : RGB(41, 56, 59));
+	::SetBkColor(dc, fill);
 	return RuntimeInlineEditBrush;
 }
 
@@ -695,6 +725,14 @@ bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, 
 		return false;
 	if (sourceWindow == RuntimeInlineEditWindow)
 		return false;
+	if (RuntimeInlineEditWindow != nullptr &&
+		(message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN))
+	{
+		RECT editBounds{};
+		if (!::GetWindowRect(RuntimeInlineEditWindow, &editBounds) ||
+			!::PtInRect(&editBounds, screenPoint))
+			FinishRuntimeInlineEdit(false);
+	}
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 
 	// The Control Center is a native popup containing a WebView on another STA.

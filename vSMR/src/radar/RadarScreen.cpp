@@ -83,6 +83,11 @@ UINT AvisoWorkerRefreshMessage()
 		::RegisterWindowMessageA("vSMR.2.AvisoWorkerRefresh");
 	return message;
 }
+UINT RuntimeInlineEditFocusMessage()
+{
+	static const UINT message = ::RegisterWindowMessageA("vSMR.RuntimeInlineEdit.Focus");
+	return message;
+}
 void RestoreInsetWindowProcHooks();
 void RemoveInsetWindowProcHooksForRadar(CSMRRadar* radarScreen);
 HHOOK gThreadMouseHook = nullptr;
@@ -1014,6 +1019,20 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 
 	if (subclassId != kInsetWindowSubclassId)
 		return ::DefSubclassProc(hwnd, uMsg, wParam, lParam);
+	if (uMsg == RuntimeInlineEditFocusMessage())
+	{
+		const auto active = gInsetWindowActiveRadarScreen.find(hwnd);
+		if (active != gInsetWindowActiveRadarScreen.end() && active->second != nullptr)
+		{
+			const HWND edit = active->second->RuntimeInlineEditWindow;
+			const HWND foreground = ::GetForegroundWindow();
+			if (edit != nullptr && ::IsWindow(edit) && ::GetParent(edit) == hwnd &&
+				foreground != nullptr &&
+				::GetAncestor(foreground, GA_ROOT) == ::GetAncestor(hwnd, GA_ROOT))
+				::SetFocus(edit);
+		}
+		return 0;
+	}
 	if (uMsg == WM_CTLCOLOREDIT)
 	{
 		const auto screens = gInsetWindowRadarScreens.find(hwnd);
@@ -1094,7 +1113,11 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 		const auto active = gInsetWindowActiveRadarScreen.find(hwnd);
 		if (active != gInsetWindowActiveRadarScreen.end() && active->second != nullptr &&
 			!active->second->IsShutdownRequested())
+		{
 			active->second->RequestRefresh();
+			if (uMsg == WM_SETFOCUS && active->second->RuntimeInlineEditWindow != nullptr)
+				::PostMessage(hwnd, RuntimeInlineEditFocusMessage(), 0, 0);
+		}
 		break;
 	}
 	case WM_MOUSEMOVE:
