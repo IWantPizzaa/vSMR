@@ -12,7 +12,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <memory>
 #include <mutex>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -127,19 +129,20 @@ namespace
 						OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
 					if (file != INVALID_HANDLE_VALUE)
 					{
-						std::array<UCHAR, 64U * 1024U> buffer{};
-						bool ok = true;
-						for (;;)
+						constexpr DWORD bufferSize = 64U * 1024U;
+						std::unique_ptr<UCHAR[]> buffer(new (std::nothrow) UCHAR[bufferSize]);
+						bool ok = buffer != nullptr;
+						while (ok)
 						{
 							DWORD bytesRead = 0;
-							if (::ReadFile(file, buffer.data(), static_cast<DWORD>(buffer.size()), &bytesRead, nullptr) == FALSE)
+							if (::ReadFile(file, buffer.get(), bufferSize, &bytesRead, nullptr) == FALSE)
 							{
 								ok = false;
 								break;
 							}
 							if (bytesRead == 0)
 								break;
-							if (hashData(hashHandle, buffer.data(), bytesRead, 0) < 0)
+							if (hashData(hashHandle, buffer.get(), bytesRead, 0) < 0)
 							{
 								ok = false;
 								break;
@@ -170,7 +173,7 @@ namespace
 
 	std::string GetPdbIdentity(HMODULE module, std::uint32_t moduleSize)
 	{
-		if (module == nullptr || moduleSize < sizeof(IMAGE_DOS_HEADER))
+		if (module == nullptr || moduleSize < sizeof(IMAGE_NT_HEADERS))
 			return {};
 		const auto* base = reinterpret_cast<const BYTE*>(module);
 		const auto* dosHeader = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);

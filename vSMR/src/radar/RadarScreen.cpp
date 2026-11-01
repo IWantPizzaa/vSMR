@@ -1282,7 +1282,7 @@ bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd, boo
 	return false;
 }
 
-LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
+bool TryHandleMouseMessageHook(int code, WPARAM wParam, LPARAM lParam)
 {
 	if (VsmrRadarInteraction::IsActionableMouseHook(code) && IsMouseButtonDownMessage(wParam))
 		ClearAvisoWheelRoutingState();
@@ -1302,7 +1302,7 @@ LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
 			if (active->second != nullptr &&
 				active->second->HandleOverlayMouseMessage(mouseData->hwnd, mouseData->pt,
 					static_cast<UINT>(wParam)))
-				return 1;
+				return true;
 			break;
 		}
 	}
@@ -1316,17 +1316,38 @@ LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
 			sourceHwnd = ::WindowFromPoint(mouseData->pt);
 		// Count the dequeued event only here, not again in the subclass fallback.
 		if (TryHandleAvisoWheel(mouseData->pt, wheelDelta, sourceHwnd, true))
+			return true;
+	}
+	return false;
+}
+
+LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
+{
+	try
+	{
+		if (TryHandleMouseMessageHook(code, wParam, lParam))
 			return 1;
 	}
-
+	catch (...)
+	{
+		// C++ exceptions must not unwind through the Win32 hook dispatcher.
+		VsmrCrashReporter::RecordState("mouse hook", "exception");
+	}
 	return ::CallNextHookEx(gThreadMouseHook, code, wParam, lParam);
 }
 
 LRESULT CALLBACK KeyboardMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
 {
-	const bool keyReleased = (static_cast<ULONG_PTR>(lParam) & 0x80000000ULL) != 0;
-	if (code >= 0 && !keyReleased && IsEuroScopeViewSwitchKey(wParam))
-		ClearAvisoWheelRoutingState(true);
+	try
+	{
+		const bool keyReleased = (static_cast<ULONG_PTR>(lParam) & 0x80000000ULL) != 0;
+		if (code >= 0 && !keyReleased && IsEuroScopeViewSwitchKey(wParam))
+			ClearAvisoWheelRoutingState(true);
+	}
+	catch (...)
+	{
+		VsmrCrashReporter::RecordState("keyboard hook", "exception");
+	}
 
 	return ::CallNextHookEx(gThreadKeyboardHook, code, wParam, lParam);
 }

@@ -628,6 +628,7 @@ public:
 	//---OnClickScreenObject-----------------------------------------
 
 	virtual void OnClickScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button);
+	void OnClickScreenObjectImpl(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button);
 
 	//---OnButtonDownScreenObject-------------------------------------
 

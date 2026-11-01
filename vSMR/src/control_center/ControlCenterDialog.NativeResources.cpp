@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <vector>
 
 using namespace VsmrControlCenterDialogInternal;
 
@@ -62,7 +63,7 @@ namespace
 		selectedPath.clear();
 		try
 		{
-			std::array<wchar_t, 32768> pathBuffer{};
+			std::vector<wchar_t> pathBuffer(32768, L'\0');
 			const wchar_t profileFilters[] =
 				L"vSMR profiles (*.json)\0*.json\0All files (*.*)\0*.*\0";
 			const wchar_t avisoFilters[] =
