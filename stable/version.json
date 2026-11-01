@@ -1,7 +1,7 @@
 {
     "schema":  1,
     "version":  "2.0.6",
-    "content_commit":  "5eff799d0dc4e88ca1ee4d396d7b6c0bd398f4c1",
+    "content_commit":  "263a9ed8650f1dde5c13ee935954fa1b486b1538",
     "minimum_loader_version":  "1.3.0",
     "runtime_abi":  1,
     "files":  {
@@ -1098,7 +1098,7 @@
                                                              "size":  5641
                                                          },
                   "vSMR_Data/CrashReporter/vSMRCrashHandler.dll":  {
-                                                                       "sha256":  "e1b87c719691e231e2f37c0d3a7fcb3bf9a5db6e2a7e1e60dbb6f3130f4037fb",
+                                                                       "sha256":  "300233996ffe16ce5c90c2843a8111ead4a670e3fbddfd10aafd47acab95dcaf",
                                                                        "size":  158208
                                                                    },
                   "vSMR_Data/default.json":  {
@@ -1138,7 +1138,7 @@
                                                       "size":  35823
                                                   },
                   "vSMR_Data/Runtime/vSMR.Runtime.dll":  {
-                                                             "sha256":  "5752aee515b9ae56c769b604b646be092470ec9f836b5a9a5c3ecaa2ecf3ba58",
+                                                             "sha256":  "e57dec6f95dac85be8f5205a9beef7d0bce16ce30f37d41e00beae79ded4d9a3",
                                                              "size":  2512896
                                                          },
                   "vSMR_Data/Tools/install_vsmr.ps1":  {
@@ -1162,7 +1162,7 @@
                                                                   "size":  18268
                                                               },
                   "vSMR_Data/Tools/vSMR.ApplyUpdate.exe":  {
-                                                               "sha256":  "67e8d4849178fe8a5d931f591f6580bccbcb0f0d2b56c74dc7b58fc4663df884",
+                                                               "sha256":  "2fb2dcf005fd6431442d9f0187dbf827b1e910f0ea24b027fc33e6b6eabad42c",
                                                                "size":  464896
                                                            },
                   "vSMR_Data/vSMR_webUI/app-bundle.js":  {
