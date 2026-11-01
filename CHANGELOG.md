@@ -2,11 +2,9 @@
 
 ## [Unreleased]
 
-- Edit airport ICAO, inset preset names, and PDC login directly in their Runtime Menu fields, with Enter to save and Escape to cancel.
-- Keep Runtime Menu text fields active when EuroScope restores radar focus, and align their text and background with the surrounding controls during redraws.
-- Anchor inline editors to vSMR's painted screen-object rectangles rather than EuroScope's callback rectangle, which can cover a larger area.
+- Rebuild airport ICAO, inset preset rename, and PDC login editing as painted fields within the Runtime Menu. Keyboard input stays with vSMR even when EuroScope changes focus; text, selection, and caret use the menu's own geometry. Enter saves, Escape cancels, and paste and cursor keys work without an extra window.
 - Audit 2.0.6 crash paths, guard Runtime Menu/timer/hook callback exceptions, remove large production stack buffers, and harden nullable tag outputs, PE metadata parsing, AVISO sync, and exception logging.
-- Open PDC login, password, preset rename, and Control Center windows from EuroScope's screen-object callback; route vSID host command-line actions through the same callback to avoid crashes when the Runtime Menu receives clicks through its mouse hook.
+- Handle PDC login, password, preset rename, and Control Center actions from EuroScope's screen-object callback; route vSID host command-line actions through the same callback to avoid crashes when the Runtime Menu receives clicks through its mouse hook.
 - Start 2.0.6 development: honor the configured tag font size in physical screen pixels at every resolution, including 4K, in the main radar view and SRW inset.
 
 ## [2.0.5] - 2026-10-27
