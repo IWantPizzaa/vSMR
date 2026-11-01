@@ -11,6 +11,7 @@ param(
     [string]$RepositoryRoot = '',
     [string]$BuildOutputDirectory = '',
     [Parameter(Mandatory = $true)][string]$FeedDirectory,
+    [string]$ReuseLoaderFromFeedDirectory = '',
     [ValidatePattern('^(|[0-9a-fA-F]{40})$')][string]$ContentCommit = '',
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$MinimumLoaderVersion = '1.3.0',
     [ValidateSet('auto', 'stable', 'beta')][string]$Channel = 'auto',
@@ -111,6 +112,30 @@ if ($Phase -eq 'Prepare') {
     if ($runtimeInfo.ProductVersion -ne $version) { throw 'Compiled runtime version differs from source version.' }
     $loaderInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $BuildOutputDirectory 'vSMR.dll'))
     if ($loaderInfo.FileVersion -ne ($loaderVersion + '.0')) { throw 'Compiled loader version differs from source version.' }
+    $loaderSource = Join-Path $BuildOutputDirectory 'vSMR.dll'
+    if ($ReuseLoaderFromFeedDirectory) {
+        $previousFeed = [IO.Path]::GetFullPath($ReuseLoaderFromFeedDirectory)
+        $previousChannel = if ($Channel -eq 'auto') { if ($version -match '-beta\.') { 'beta' } else { 'stable' } } else { $Channel }
+        $previousManifestPath = Join-Path $previousFeed "$previousChannel/version.json"
+        Assert-RegularPath $previousManifestPath
+        $previous = Get-Content -LiteralPath $previousManifestPath -Raw | ConvertFrom-Json
+        if ($previous.schema -ne 1 -or $previous.runtime_abi -ne $runtimeAbi -or
+            -not $previous.files.'vSMR.dll' -or
+            [version]$previous.minimum_loader_version -gt [version]$loaderVersion -or
+            [version]$previous.version -ge [version]$version) {
+            throw 'The previous feed loader is not compatible with this release.'
+        }
+        $loaderSource = Join-Path $previousFeed 'payload/vSMR.dll'
+        Assert-Pe32 $loaderSource
+        $previousLoader = $previous.files.'vSMR.dll'
+        if ($previousLoader.sha256 -notmatch '^[0-9a-fA-F]{64}$' -or
+            [long]$previousLoader.size -ne (Get-Item -LiteralPath $loaderSource).Length -or
+            (Get-FileHash -LiteralPath $loaderSource -Algorithm SHA256).Hash -ne $previousLoader.sha256 -or
+            [Diagnostics.FileVersionInfo]::GetVersionInfo($loaderSource).FileVersion -ne ($loaderVersion + '.0')) {
+            throw 'The previous feed loader does not match its manifest or source loader version.'
+        }
+        Write-Host "Reusing the verified $loaderVersion loader from feed $($previous.version); runtime $version can activate on first launch."
+    }
     # The source inventory, not arbitrary contents of an installation, defines
     # ownership. Legacy profiles are migration input only, never managed here.
     $sourceData = Join-Path $RepositoryRoot 'vSMR/data'
@@ -139,7 +164,7 @@ if ($Phase -eq 'Prepare') {
     # Validate the full input before creating a partially usable payload.
     foreach ($relative in @($managed | Sort-Object)) {
         Assert-ManagedPath $relative
-        $source = Join-Path $BuildOutputDirectory $relative
+        $source = if ($relative -eq 'vSMR.dll') { $loaderSource } else { Join-Path $BuildOutputDirectory $relative }
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Compiled release asset is missing: $relative" }
         Assert-RegularPath $source
         $files.Add($relative, [ordered]@{
@@ -152,7 +177,8 @@ if ($Phase -eq 'Prepare') {
     foreach ($relative in $files.Keys) {
         $destination = Join-Path $payloadRoot $relative
         [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destination)) | Out-Null
-        Copy-Item -LiteralPath (Join-Path $BuildOutputDirectory $relative) -Destination $destination
+        $source = if ($relative -eq 'vSMR.dll') { $loaderSource } else { Join-Path $BuildOutputDirectory $relative }
+        Copy-Item -LiteralPath $source -Destination $destination
         if ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne $files[$relative].sha256) {
             throw "Release input changed while staging: $relative"
         }
