@@ -2,10 +2,13 @@
 
 ## [Unreleased]
 
+## [2.0.6] - 2026-11-01
+
 - Rebuild airport ICAO, inset preset rename, and PDC login editing as painted fields within the Runtime Menu. Keyboard input stays with vSMR even when EuroScope changes focus; text, selection, and caret use the menu's own geometry. Enter saves, Escape cancels, and paste and cursor keys work without an extra window.
 - Audit 2.0.6 crash paths, guard Runtime Menu/timer/hook callback exceptions, remove large production stack buffers, and harden nullable tag outputs, PE metadata parsing, AVISO sync, and exception logging.
-- Handle PDC login, password, preset rename, and Control Center actions from EuroScope's screen-object callback; route vSID host command-line actions through the same callback to avoid crashes when the Runtime Menu receives clicks through its mouse hook.
-- Start 2.0.6 development: honor the configured tag font size in physical screen pixels at every resolution, including 4K, in the main radar view and SRW inset.
+- Handle PDC login, password, preset rename, and Control Center actions from EuroScope's screen-object callback; route vSID host command-line actions through the same callback to avoid crashes when the Runtime Menu receives clicks through its mouse hook ([Sector-Files #261](https://github.com/vaccfr/Sector-Files/issues/261)).
+- Honor the configured tag font size in physical screen pixels at every resolution, including 4K, in the main radar view and SRW inset ([Sector-Files #255](https://github.com/vaccfr/Sector-Files/issues/255)).
+- Keep the stable feed and complete package on the same compatible loader and verified runtime binaries so the 2.0.6 update activates during the first EuroScope launch.
 
 ## [2.0.5] - 2026-10-27
 
