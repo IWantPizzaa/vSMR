@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Audit 2.0.6 crash paths, guard Runtime Menu/timer/hook callback exceptions, remove large production stack buffers, and harden nullable tag outputs, PE metadata parsing, AVISO sync, and exception logging.
 - Open PDC login, password, preset rename, and Control Center windows from EuroScope's screen-object callback; route vSID host command-line actions through the same callback to avoid crashes when the Runtime Menu receives clicks through its mouse hook.
 - Start 2.0.6 development: honor the configured tag font size in physical screen pixels at every resolution, including 4K, in the main radar view and SRW inset.
 

@@ -286,6 +286,12 @@ namespace vsmr::updater::ground_layout_aviso
 			message = L"France-Ground-Layouts AVISO ready at commit " + std::wstring(commit.begin(), commit.end()) + L".";
 			return true;
 		}
-		catch (...) { message = L"Ground-layout AVISO update failed; retaining cached AVISO."; return false; }
+		catch (...)
+		{
+			// Keep the noexcept worker safe even if the original failure was OOM.
+			try { message = L"Ground-layout AVISO update failed; retaining cached AVISO."; }
+			catch (...) { message.clear(); }
+			return false;
+		}
 	}
 }

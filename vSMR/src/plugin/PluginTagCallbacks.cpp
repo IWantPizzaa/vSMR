@@ -35,6 +35,8 @@ void CSMRPlugin::OnGetTagItem(
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnGetTagItem");
 	(void)TagData;
 	(void)pFontSize;
+	if (sItemString == nullptr)
+		return;
 	if (Logger::is_verbose_mode())
 		Logger::info(std::string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
@@ -93,8 +95,10 @@ void CSMRPlugin::OnGetTagItem(
 	if (ItemCode != TAG_ITEM_DATALINK_STS)
 		return;
 
-	*pColorCode = TAG_COLOR_RGB_DEFINED;
-	*pRGB = RGB(130, 130, 130);
+	if (pColorCode != nullptr)
+		*pColorCode = TAG_COLOR_RGB_DEFINED;
+	if (pRGB != nullptr)
+		*pRGB = RGB(130, 130, 130);
 	strcpy_s(sItemString, 16, "-");
 
 	if (!FlightPlan.IsValid())
@@ -126,27 +130,29 @@ void CSMRPlugin::OnGetTagItem(
 
 	if (isDemanding)
 	{
-		if (!BLINK)
+		if (!BLINK && pRGB != nullptr)
 			*pRGB = RGB(255, 255, 0);
 		strcpy_s(sItemString, 16, isStandby ? "S" : "R");
 		return;
 	}
 	if (hasMessage)
 	{
-		if (!BLINK)
+		if (!BLINK && pRGB != nullptr)
 			*pRGB = RGB(255, 255, 0);
 		strcpy_s(sItemString, 16, "T");
 		return;
 	}
 	if (isWilco)
 	{
-		*pRGB = RGB(0, 176, 0);
+		if (pRGB != nullptr)
+			*pRGB = RGB(0, 176, 0);
 		strcpy_s(sItemString, 16, "V");
 		return;
 	}
 	if (isMessageSent)
 	{
-		*pRGB = RGB(255, 255, 0);
+		if (pRGB != nullptr)
+			*pRGB = RGB(255, 255, 0);
 		strcpy_s(sItemString, 16, "V");
 	}
 }
