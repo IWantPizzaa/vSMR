@@ -15,43 +15,9 @@
 #include <limits>
 
 extern CPoint mouseLocation;
-UINT RuntimeInlineEditFocusMessage();
 
 namespace
 {
-	constexpr UINT_PTR kRuntimeInlineEditSubclassId = 0x56454d45u;
-	LRESULT CALLBACK RuntimeInlineEditSubclassProc(HWND window, UINT message,
-		WPARAM wParam, LPARAM lParam, UINT_PTR subclassId, DWORD_PTR referenceData)
-	{
-		auto* radar = reinterpret_cast<CSMRRadar*>(referenceData);
-		if (subclassId != kRuntimeInlineEditSubclassId || radar == nullptr)
-			return ::DefSubclassProc(window, message, wParam, lParam);
-		if (message == WM_KEYDOWN && (wParam == VK_RETURN || wParam == VK_ESCAPE))
-		{
-			radar->FinishRuntimeInlineEdit(wParam == VK_RETURN);
-			return 0;
-		}
-		if (message == WM_GETDLGCODE)
-			return ::DefSubclassProc(window, message, wParam, lParam) | DLGC_WANTALLKEYS;
-		// EuroScope may move focus back to its radar view after dispatching a
-		// screen-object click. Keep the edit alive until an explicit action.
-		if (message == WM_NCDESTROY)
-		{
-			::RemoveWindowSubclass(window, RuntimeInlineEditSubclassProc, kRuntimeInlineEditSubclassId);
-			if (radar->RuntimeInlineEditWindow == window)
-			{
-				radar->RuntimeInlineEditWindow = nullptr;
-				radar->RuntimeInlineEditType = CSMRRadar::RuntimeInlineEditKind::None;
-				if (radar->RuntimeInlineEditBrush != nullptr)
-				{
-					::DeleteObject(radar->RuntimeInlineEditBrush);
-					radar->RuntimeInlineEditBrush = nullptr;
-				}
-			}
-		}
-		return ::DefSubclassProc(window, message, wParam, lParam);
-	}
-
 	bool ParseIndexedObjectId(const char* objectId, const char* prefix, size_t& outIndex)
 	{
 		if (objectId == nullptr || prefix == nullptr)
@@ -111,141 +77,6 @@ namespace
 		value = static_cast<LONG>(parsed);
 		return true;
 	}
-}
-
-void CSMRRadar::StartRuntimeInlineEdit(RuntimeInlineEditKind kind, RECT area,
-	const std::string& value)
-{
-	FinishRuntimeInlineEdit(false);
-	HWND parent = AvisoRefreshHostWindow.load(std::memory_order_acquire);
-	if (parent == nullptr || !::IsWindow(parent))
-		return;
-	::OffsetRect(&area, RuntimeMenuDcOrigin.x, RuntimeMenuDcOrigin.y);
-	::InflateRect(&area, -2, -2);
-	if (area.right <= area.left || area.bottom <= area.top)
-		return;
-	const bool day = GetUiColorTheme() == "day";
-	const COLORREF fill = kind == RuntimeInlineEditKind::Preset
-		? (day ? RGB(182, 188, 190) : RGB(41, 56, 59))
-		: (day ? RGB(173, 181, 183) : RGB(41, 57, 59));
-	HBRUSH brush = ::CreateSolidBrush(fill);
-	if (brush == nullptr)
-		return;
-	HWND edit = ::CreateWindowExA(0, "EDIT", value.c_str(),
-		WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL |
-			(kind == RuntimeInlineEditKind::Airport ? ES_CENTER : ES_LEFT),
-		area.left, area.top, area.right - area.left, area.bottom - area.top,
-		parent, nullptr, AfxGetResourceHandle(), nullptr);
-	if (edit == nullptr)
-	{
-		::DeleteObject(brush);
-		return;
-	}
-	RuntimeInlineEditWindow = edit;
-	RuntimeInlineEditType = kind;
-	RuntimeInlineEditBrush = brush;
-	if (!::SetWindowSubclass(edit, RuntimeInlineEditSubclassProc,
-		kRuntimeInlineEditSubclassId, reinterpret_cast<DWORD_PTR>(this)))
-	{
-		FinishRuntimeInlineEdit(false);
-		return;
-	}
-	const HFONT font = static_cast<HFONT>((kind == RuntimeInlineEditKind::Airport
-		? RuntimeOverlayFont : RuntimeMenuActionFont).GetSafeHandle());
-	if (font != nullptr)
-		::SendMessage(edit, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-	::SendMessage(edit, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(3, 3));
-	if (font != nullptr)
-	{
-		HDC dc = ::GetDC(parent);
-		if (dc != nullptr)
-		{
-			const HGDIOBJ previousFont = ::SelectObject(dc, font);
-			TEXTMETRIC metrics{};
-			if (::GetTextMetrics(dc, &metrics))
-			{
-				const int height = (std::min)(area.bottom - area.top, metrics.tmHeight + 4);
-				const int top = area.top + ((area.bottom - area.top - height) / 2);
-				::SetWindowPos(edit, nullptr, area.left, top,
-					area.right - area.left, height, SWP_NOZORDER | SWP_NOACTIVATE);
-			}
-			::SelectObject(dc, previousFont);
-			::ReleaseDC(parent, dc);
-		}
-	}
-	::SendMessage(edit, EM_LIMITTEXT, kind == RuntimeInlineEditKind::Preset ? 128 :
-		kind == RuntimeInlineEditKind::Airport ? 4 : 16, 0);
-	::ShowWindow(edit, SW_SHOW);
-	::SetFocus(edit);
-	::SendMessage(edit, EM_SETSEL, 0, -1);
-	::RedrawWindow(edit, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
-	// EuroScope can restore radar focus after its screen-object callback ends.
-	// Reassert edit focus once that callback has returned to the message loop.
-	::PostMessage(parent, RuntimeInlineEditFocusMessage(), 0, 0);
-}
-
-HBRUSH CSMRRadar::ColorRuntimeInlineEdit(HDC dc, HWND edit) const
-{
-	if (edit != RuntimeInlineEditWindow || RuntimeInlineEditBrush == nullptr)
-		return nullptr;
-	const bool day = GetUiColorTheme() == "day";
-	const COLORREF fill = RuntimeInlineEditType == RuntimeInlineEditKind::Preset
-		? (day ? RGB(182, 188, 190) : RGB(41, 56, 59))
-		: (day ? RGB(173, 181, 183) : RGB(41, 57, 59));
-	::SetTextColor(dc, day ? RGB(23, 33, 38) : RGB(208, 217, 220));
-	::SetBkColor(dc, fill);
-	return RuntimeInlineEditBrush;
-}
-
-void CSMRRadar::FinishRuntimeInlineEdit(bool accept)
-{
-	HWND edit = RuntimeInlineEditWindow;
-	if (edit == nullptr)
-		return;
-	const RuntimeInlineEditKind kind = RuntimeInlineEditType;
-	std::string value;
-	if (accept)
-	{
-		char buffer[256]{};
-		::GetWindowTextA(edit, buffer, static_cast<int>(sizeof(buffer)));
-		value = buffer;
-		const auto first = value.find_first_not_of(" \t\r\n");
-		const auto last = value.find_last_not_of(" \t\r\n");
-		value = first == std::string::npos ? "" : value.substr(first, last - first + 1);
-		if (kind != RuntimeInlineEditKind::Preset)
-			std::transform(value.begin(), value.end(), value.begin(),
-				[](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
-		const bool airportValid = value.size() == 4 &&
-			std::all_of(value.begin(), value.end(), [](unsigned char ch) { return std::isalnum(ch) != 0; });
-		const bool pdcValid = !value.empty() && value.size() <= 16 &&
-			std::all_of(value.begin(), value.end(), [](unsigned char ch)
-				{ return std::isalnum(ch) != 0 || ch == '_' || ch == '-'; });
-		if ((kind == RuntimeInlineEditKind::Airport && !airportValid) ||
-			(kind == RuntimeInlineEditKind::Preset && value.empty()) ||
-			(kind == RuntimeInlineEditKind::PdcLogon && !pdcValid))
-		{
-			::MessageBeep(MB_ICONWARNING);
-			::SetFocus(edit);
-			::SendMessage(edit, EM_SETSEL, 0, -1);
-			return;
-		}
-	}
-	RuntimeInlineEditWindow = nullptr;
-	RuntimeInlineEditType = RuntimeInlineEditKind::None;
-	::DestroyWindow(edit);
-	if (RuntimeInlineEditBrush != nullptr)
-	{
-		::DeleteObject(RuntimeInlineEditBrush);
-		RuntimeInlineEditBrush = nullptr;
-	}
-	if (accept)
-	{
-		const int function = kind == RuntimeInlineEditKind::Airport ? RIMCAS_ACTIVE_AIRPORT_FUNC :
-			kind == RuntimeInlineEditKind::Preset ? RIMCAS_AVISO_PRESET_RENAME :
-			RUNTIME_DATALINK_CALLSIGN_EDIT;
-		OnFunctionCall(function, value.c_str(), POINT{}, RECT{});
-	}
-	RequestRefresh();
 }
 
 bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POINT point, RECT area,
@@ -734,17 +565,28 @@ bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, 
 {
 	if (IsShutdownRequested() || sourceWindow == nullptr || !::IsWindow(sourceWindow))
 		return false;
-	if (sourceWindow == RuntimeInlineEditWindow)
-		return false;
-	if (RuntimeInlineEditWindow != nullptr &&
-		(message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN))
-	{
-		RECT editBounds{};
-		if (!::GetWindowRect(RuntimeInlineEditWindow, &editBounds) ||
-			!::PtInRect(&editBounds, screenPoint))
-			FinishRuntimeInlineEdit(false);
-	}
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	if (RuntimeInlineEditType != RuntimeInlineEditKind::None)
+	{
+		const HWND host = AvisoRefreshHostWindow.load(std::memory_order_acquire);
+		POINT editPoint = screenPoint;
+		if (host != nullptr && ::IsWindow(host) && ::ScreenToClient(host, &editPoint))
+		{
+			editPoint.x -= RuntimeMenuDcOrigin.x;
+			editPoint.y -= RuntimeMenuDcOrigin.y;
+			if (::PtInRect(&RuntimeInlineEditArea, editPoint))
+			{
+				if (message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK)
+					PlaceRuntimeInlineEditCaret(editPoint.x, message == WM_LBUTTONDBLCLK);
+				if (message == WM_LBUTTONDOWN || message == WM_LBUTTONUP ||
+					message == WM_LBUTTONDBLCLK || message == WM_RBUTTONDOWN ||
+					message == WM_RBUTTONUP || message == WM_RBUTTONDBLCLK)
+					return true;
+			}
+			else if (message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN)
+				FinishRuntimeInlineEdit(false);
+		}
+	}
 
 	// The Control Center is a native popup containing a WebView on another STA.
 	// Its own messages must reach that window. If EuroScope receives a mouse
@@ -896,6 +738,9 @@ bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, 
 
 void CSMRRadar::CloseRuntimeMenuPopup()
 {
+	if (RuntimeInlineEditType == RuntimeInlineEditKind::Preset ||
+		RuntimeInlineEditType == RuntimeInlineEditKind::PdcLogon)
+		FinishRuntimeInlineEdit(false);
 	if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::None)
 		return;
 	ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;

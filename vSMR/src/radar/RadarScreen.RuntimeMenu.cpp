@@ -1250,9 +1250,6 @@ void CSMRRadar::RepaintRuntimeMenuAfterHost(HWND window) noexcept
 	::DeleteObject(bitmap);
 	::DeleteDC(buffer);
 	::ReleaseDC(window, dc);
-	if (RuntimeInlineEditWindow != nullptr && ::IsWindow(RuntimeInlineEditWindow))
-		::RedrawWindow(RuntimeInlineEditWindow, nullptr, nullptr,
-			RDW_INVALIDATE | RDW_UPDATENOW);
 }
 
 void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
@@ -1388,8 +1385,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		RuntimeMenuArea.top + kDragHeight + kRailPadding,
 		RuntimeMenuArea.right - 4,
 		RuntimeMenuArea.top + kDragHeight + kRailPadding + kAirportRowHeight);
-	const bool airportEditing = RuntimeInlineEditType == RuntimeInlineEditKind::Airport &&
-		RuntimeInlineEditWindow != nullptr;
+	const bool airportEditing = RuntimeInlineEditType == RuntimeInlineEditKind::Airport;
 	const bool airportHover = !airportEditing && PointInside(airportArea, mouseLocation);
 	DrawRoundedRect(
 		hdc,
@@ -1516,15 +1512,10 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	RuntimeMenuSecondaryPopupArea.SetRectEmpty();
 	if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::None)
 	{
+		graphics.Flush(Gdiplus::FlushIntentionSync);
+		DrawRuntimeInlineEdit(hdc);
 		graphics.Restore(initialGraphicsState);
 		::RestoreDC(hdc, savedDc);
-		if (!RuntimeMenuPaintOnly && RuntimeInlineEditWindow != nullptr &&
-			::IsWindow(RuntimeInlineEditWindow))
-		{
-			graphics.Flush(Gdiplus::FlushIntentionSync);
-			::RedrawWindow(RuntimeInlineEditWindow, nullptr, nullptr,
-				RDW_INVALIDATE | RDW_UPDATENOW);
-		}
 		return;
 	}
 
@@ -1534,13 +1525,88 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		if (popup.vsidPopup) popup.DrawIntegrationPopups();
 		else popup.DrawPopup();
 	}
+	graphics.Flush(Gdiplus::FlushIntentionSync);
+	DrawRuntimeInlineEdit(hdc);
 	graphics.Restore(initialGraphicsState);
 	::RestoreDC(hdc, savedDc);
-	if (!RuntimeMenuPaintOnly && RuntimeInlineEditWindow != nullptr &&
-		::IsWindow(RuntimeInlineEditWindow))
+}
+
+void CSMRRadar::DrawRuntimeInlineEdit(HDC dc)
+{
+	if (dc == nullptr || RuntimeInlineEditType == RuntimeInlineEditKind::None)
+		return;
+	if (RuntimeInlineEditType == RuntimeInlineEditKind::PdcLogon &&
+		ActiveRuntimeMenuPopup != RuntimeMenuPopup::Datalink)
+		return;
+	if (RuntimeInlineEditType == RuntimeInlineEditKind::Preset &&
+		ActiveRuntimeMenuPopup != RuntimeMenuPopup::Insets)
+		return;
+	const RECT area = RuntimeInlineEditArea;
+	if (area.right - area.left < 12 || area.bottom - area.top < 12)
+		return;
+	const int saved = ::SaveDC(dc);
+	if (saved == 0) return;
+	const bool day = GetUiColorTheme() == "day";
+	const COLORREF background = RuntimeInlineEditType == RuntimeInlineEditKind::Preset
+		? (day ? RGB(182, 188, 190) : RGB(41, 56, 59))
+		: (day ? RGB(173, 181, 183) : RGB(41, 57, 59));
+	const COLORREF foreground = day ? RGB(23, 33, 38) : RGB(208, 217, 220);
+	const COLORREF accent = day ? RGB(63, 130, 159) : RGB(80, 150, 180);
+	const COLORREF selectedForeground = RGB(244, 248, 249);
+	::SelectObject(dc, ::GetStockObject(DC_BRUSH));
+	::SelectObject(dc, ::GetStockObject(DC_PEN));
+	::SetDCBrushColor(dc, background);
+	::SetDCPenColor(dc, accent);
+	::RoundRect(dc, area.left, area.top, area.right, area.bottom, 6, 6);
+	const HFONT font = static_cast<HFONT>((RuntimeInlineEditType == RuntimeInlineEditKind::Airport
+		? RuntimeOverlayFont : RuntimeMenuActionFont).GetSafeHandle());
+	if (font != nullptr) ::SelectObject(dc, font);
+	::SetBkMode(dc, TRANSPARENT);
+	::SetTextColor(dc, foreground);
+	RECT inner = { area.left + 4, area.top + 2, area.right - 4, area.bottom - 2 };
+	::IntersectClipRect(dc, inner.left, inner.top, inner.right, inner.bottom);
+	TEXTMETRIC metrics{};
+	::GetTextMetrics(dc, &metrics);
+	const int top = inner.top + ((inner.bottom - inner.top - metrics.tmHeight) / 2);
+	auto width = [&](size_t count)
 	{
-		graphics.Flush(Gdiplus::FlushIntentionSync);
-		::RedrawWindow(RuntimeInlineEditWindow, nullptr, nullptr,
-			RDW_INVALIDATE | RDW_UPDATENOW);
+		if (count == 0) return 0;
+		SIZE extent{};
+		::GetTextExtentPoint32W(dc, RuntimeInlineEditText.data(),
+			static_cast<int>((std::min)(count, RuntimeInlineEditText.size())), &extent);
+		return static_cast<int>(extent.cx);
+	};
+	const int fullWidth = width(RuntimeInlineEditText.size());
+	const size_t cursor = (std::min)(RuntimeInlineEditCursor, RuntimeInlineEditText.size());
+	const int cursorWidth = width(cursor);
+	int left = inner.left + 2;
+	if (RuntimeInlineEditType == RuntimeInlineEditKind::Airport &&
+		fullWidth < inner.right - inner.left)
+		left = inner.left + ((inner.right - inner.left - fullWidth) / 2);
+	else if (left + cursorWidth > inner.right - 2)
+		left = inner.right - 2 - cursorWidth;
+	::ExtTextOutW(dc, left, top, ETO_CLIPPED, &inner,
+		RuntimeInlineEditText.data(), static_cast<UINT>(RuntimeInlineEditText.size()), nullptr);
+	const size_t begin = (std::min)(RuntimeInlineEditAnchor, cursor);
+	const size_t end = (std::max)(RuntimeInlineEditAnchor, cursor);
+	if (begin != end)
+	{
+		const int prefixWidth = width(begin);
+		const int selectedWidth = width(end) - prefixWidth;
+		RECT selected = { left + prefixWidth, top - 1,
+			left + prefixWidth + selectedWidth, top + metrics.tmHeight + 1 };
+		::SetDCBrushColor(dc, accent);
+		::FillRect(dc, &selected, static_cast<HBRUSH>(::GetStockObject(DC_BRUSH)));
+		::SetTextColor(dc, selectedForeground);
+		::ExtTextOutW(dc, left + prefixWidth, top, ETO_CLIPPED, &inner,
+			RuntimeInlineEditText.data() + begin, static_cast<UINT>(end - begin), nullptr);
 	}
+	else if (((::GetTickCount64() - RuntimeInlineEditCaretTick) / 500) % 2 == 0)
+	{
+		const int caretX = left + cursorWidth;
+		::SetDCPenColor(dc, accent);
+		::MoveToEx(dc, caretX, top - 1, nullptr);
+		::LineTo(dc, caretX, top + metrics.tmHeight + 1);
+	}
+	::RestoreDC(dc, saved);
 }

@@ -293,12 +293,21 @@ private:
 	POINT RuntimeMenuDcOrigin{};
 public:
 	enum class RuntimeInlineEditKind { None, Airport, Preset, PdcLogon };
-	HWND RuntimeInlineEditWindow = nullptr;
 	RuntimeInlineEditKind RuntimeInlineEditType = RuntimeInlineEditKind::None;
-	HBRUSH RuntimeInlineEditBrush = nullptr;
+	std::wstring RuntimeInlineEditText;
+	size_t RuntimeInlineEditCursor = 0;
+	size_t RuntimeInlineEditAnchor = 0;
+	RECT RuntimeInlineEditArea{};
+	std::uint64_t RuntimeInlineEditCaretTick = 0;
 	void StartRuntimeInlineEdit(RuntimeInlineEditKind kind, RECT area, const std::string& value);
 	void FinishRuntimeInlineEdit(bool accept);
-	HBRUSH ColorRuntimeInlineEdit(HDC dc, HWND edit) const;
+	bool HandleRuntimeInlineEditKey(WPARAM key);
+	void PlaceRuntimeInlineEditCaret(int logicalX, bool selectAll);
+	void DrawRuntimeInlineEdit(HDC dc);
+	HWND RuntimeInlineEditHostWindow() const noexcept
+	{
+		return AvisoRefreshHostWindow.load(std::memory_order_acquire);
+	}
 private:
 	CFont RuntimeOverlayFont;
 	CFont RuntimeMenuActionFont;

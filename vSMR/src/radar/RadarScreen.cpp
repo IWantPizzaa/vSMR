@@ -83,11 +83,6 @@ UINT AvisoWorkerRefreshMessage()
 		::RegisterWindowMessageA("vSMR.2.AvisoWorkerRefresh");
 	return message;
 }
-UINT RuntimeInlineEditFocusMessage()
-{
-	static const UINT message = ::RegisterWindowMessageA("vSMR.RuntimeInlineEdit.Focus");
-	return message;
-}
 void RestoreInsetWindowProcHooks();
 void RemoveInsetWindowProcHooksForRadar(CSMRRadar* radarScreen);
 HHOOK gThreadMouseHook = nullptr;
@@ -306,7 +301,7 @@ CPosition CSMRRadar::ConvertCoordFromPixelToPosition(POINT point)
 
 CSMRRadar::~CSMRRadar()
 {
-	FinishRuntimeInlineEdit(false);
+	RuntimeInlineEditType = RuntimeInlineEditKind::None;
 	PublishCrashRadarState("closing", "none");
 	Logger::info(std::string(__FUNCSIG__));
 	BeginShutdown();
@@ -1019,35 +1014,6 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 
 	if (subclassId != kInsetWindowSubclassId)
 		return ::DefSubclassProc(hwnd, uMsg, wParam, lParam);
-	if (uMsg == RuntimeInlineEditFocusMessage())
-	{
-		const auto active = gInsetWindowActiveRadarScreen.find(hwnd);
-		if (active != gInsetWindowActiveRadarScreen.end() && active->second != nullptr)
-		{
-			const HWND edit = active->second->RuntimeInlineEditWindow;
-			const HWND foreground = ::GetForegroundWindow();
-			if (edit != nullptr && ::IsWindow(edit) && ::GetParent(edit) == hwnd &&
-				foreground != nullptr &&
-				::GetAncestor(foreground, GA_ROOT) == ::GetAncestor(hwnd, GA_ROOT))
-				::SetFocus(edit);
-		}
-		return 0;
-	}
-	if (uMsg == WM_CTLCOLOREDIT)
-	{
-		const auto screens = gInsetWindowRadarScreens.find(hwnd);
-		if (screens != gInsetWindowRadarScreens.end())
-		{
-			for (CSMRRadar* radar : screens->second)
-			{
-				if (radar == nullptr) continue;
-				if (HBRUSH brush = radar->ColorRuntimeInlineEdit(
-					reinterpret_cast<HDC>(wParam), reinterpret_cast<HWND>(lParam)))
-					return reinterpret_cast<LRESULT>(brush);
-			}
-		}
-	}
-
 	if (uMsg == WM_NCDESTROY)
 	{
 		::RemoveWindowSubclass(hwnd, InsetWindowSubclassProc, kInsetWindowSubclassId);
@@ -1113,11 +1079,7 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 		const auto active = gInsetWindowActiveRadarScreen.find(hwnd);
 		if (active != gInsetWindowActiveRadarScreen.end() && active->second != nullptr &&
 			!active->second->IsShutdownRequested())
-		{
 			active->second->RequestRefresh();
-			if (uMsg == WM_SETFOCUS && active->second->RuntimeInlineEditWindow != nullptr)
-				::PostMessage(hwnd, RuntimeInlineEditFocusMessage(), 0, 0);
-		}
 		break;
 	}
 	case WM_MOUSEMOVE:
@@ -1379,6 +1341,27 @@ LRESULT CALLBACK KeyboardMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
 	try
 	{
 		const bool keyReleased = (static_cast<ULONG_PTR>(lParam) & 0x80000000ULL) != 0;
+		const bool altHeld = (static_cast<ULONG_PTR>(lParam) & 0x20000000ULL) != 0;
+		const bool windowsKeyHeld = (::GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 ||
+			(::GetAsyncKeyState(VK_RWIN) & 0x8000) != 0;
+		if (code >= 0 && !altHeld && !windowsKeyHeld &&
+			wParam != VK_MENU && wParam != VK_LWIN && wParam != VK_RWIN)
+		{
+			const HWND foreground = ::GetForegroundWindow();
+			for (CSMRRadar* radar : RadarScreensOpened)
+			{
+				if (radar == nullptr || radar->IsShutdownRequested() ||
+					radar->RuntimeInlineEditType == CSMRRadar::RuntimeInlineEditKind::None)
+					continue;
+				const HWND host = radar->RuntimeInlineEditHostWindow();
+				if (host == nullptr || !::IsWindow(host) || foreground == nullptr ||
+					::GetAncestor(host, GA_ROOT) != ::GetAncestor(foreground, GA_ROOT))
+					continue;
+				if (!keyReleased)
+					radar->HandleRuntimeInlineEditKey(wParam);
+				return 1;
+			}
+		}
 		if (code >= 0 && !keyReleased && IsEuroScopeViewSwitchKey(wParam))
 			ClearAvisoWheelRoutingState(true);
 	}
