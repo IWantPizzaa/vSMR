@@ -11,8 +11,9 @@
 #include "platform/windows/network/WinHttpSupport.hpp"
 
 #include <algorithm>
-#include <array>
 #include <climits>
+#include <memory>
+#include <new>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -295,7 +296,13 @@ namespace vsmr::updater::transport
 			}
 			std::uint64_t received = resumeOffset;
 			int lastPercent = -1;
-			std::array<BYTE, 64 * 1024> buffer{};
+			constexpr DWORD bufferSize = 64U * 1024U;
+			std::unique_ptr<BYTE[]> buffer(new (std::nothrow) BYTE[bufferSize]);
+			if (!buffer)
+			{
+				response.error = "out_of_memory";
+				return response;
+			}
 			for (;;)
 			{
 				if (isCancelled() || remaining() == 0)
@@ -307,7 +314,7 @@ namespace vsmr::updater::transport
 				if (!ApplyBoundedTimeouts(request.get(), readTimeout, response))
 					return response;
 				DWORD read = 0;
-				if (!::WinHttpReadData(request.get(), buffer.data(), static_cast<DWORD>(buffer.size()), &read))
+				if (!::WinHttpReadData(request.get(), buffer.get(), bufferSize, &read))
 				{
 					response.error = "read_failed";
 					return response;
@@ -326,14 +333,14 @@ namespace vsmr::updater::transport
 				if (file)
 				{
 					DWORD written = 0;
-					if (!::WriteFile(file.get(), buffer.data(), read, &written, nullptr) || written != read)
+					if (!::WriteFile(file.get(), buffer.get(), read, &written, nullptr) || written != read)
 					{
 						response.error = "write_failed";
 						return response;
 					}
 				}
 				else
-					response.body.insert(response.body.end(), buffer.begin(), buffer.begin() + read);
+					response.body.insert(response.body.end(), buffer.get(), buffer.get() + read);
 				if (parameters.expectedSize > 0 && !parameters.outputFile.empty())
 				{
 					const int percent =

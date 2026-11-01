@@ -114,6 +114,7 @@ public:
 	//---OnTimer------------------------------------------
 
 	virtual void OnTimer(int Counter);
+	void OnTimerImpl(int Counter);
 
 	//---OnNewMetarReceived------------------------------------------
 
