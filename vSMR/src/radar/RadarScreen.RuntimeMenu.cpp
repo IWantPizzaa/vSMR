@@ -1250,6 +1250,9 @@ void CSMRRadar::RepaintRuntimeMenuAfterHost(HWND window) noexcept
 	::DeleteObject(bitmap);
 	::DeleteDC(buffer);
 	::ReleaseDC(window, dc);
+	if (RuntimeInlineEditWindow != nullptr && ::IsWindow(RuntimeInlineEditWindow))
+		::RedrawWindow(RuntimeInlineEditWindow, nullptr, nullptr,
+			RDW_INVALIDATE | RDW_UPDATENOW);
 }
 
 void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
@@ -1385,14 +1388,17 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		RuntimeMenuArea.top + kDragHeight + kRailPadding,
 		RuntimeMenuArea.right - 4,
 		RuntimeMenuArea.top + kDragHeight + kRailPadding + kAirportRowHeight);
-	const bool airportHover = PointInside(airportArea, mouseLocation);
+	const bool airportEditing = RuntimeInlineEditType == RuntimeInlineEditKind::Airport &&
+		RuntimeInlineEditWindow != nullptr;
+	const bool airportHover = !airportEditing && PointInside(airportArea, mouseLocation);
 	DrawRoundedRect(
 		hdc,
 		airportArea,
 		airportHover ? kButtonHover : kButtonBackground,
 		kOuterBorder,
 		kControlCornerDiameter);
-	DrawTextEllipsis(hdc, airportArea, getActiveAirport(), kText, DT_CENTER);
+	if (!airportEditing)
+		DrawTextEllipsis(hdc, airportArea, getActiveAirport(), kText, DT_CENTER);
 	AddRuntimeMenuObject(
 		RUNTIME_MENU_RAIL,
 		"runtime.airport",
@@ -1512,6 +1518,13 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	{
 		graphics.Restore(initialGraphicsState);
 		::RestoreDC(hdc, savedDc);
+		if (!RuntimeMenuPaintOnly && RuntimeInlineEditWindow != nullptr &&
+			::IsWindow(RuntimeInlineEditWindow))
+		{
+			graphics.Flush(Gdiplus::FlushIntentionSync);
+			::RedrawWindow(RuntimeInlineEditWindow, nullptr, nullptr,
+				RDW_INVALIDATE | RDW_UPDATENOW);
+		}
 		return;
 	}
 
@@ -1523,4 +1536,11 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	}
 	graphics.Restore(initialGraphicsState);
 	::RestoreDC(hdc, savedDc);
+	if (!RuntimeMenuPaintOnly && RuntimeInlineEditWindow != nullptr &&
+		::IsWindow(RuntimeInlineEditWindow))
+	{
+		graphics.Flush(Gdiplus::FlushIntentionSync);
+		::RedrawWindow(RuntimeInlineEditWindow, nullptr, nullptr,
+			RDW_INVALIDATE | RDW_UPDATENOW);
+	}
 }
