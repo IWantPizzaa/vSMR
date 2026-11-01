@@ -291,6 +291,15 @@ private:
 	std::array<double, 3> AvisoBackgroundOpacities{ 1.0, 1.0, 1.0 };
 	bool RuntimeMenuPaintOnly = false;
 	POINT RuntimeMenuDcOrigin{};
+public:
+	enum class RuntimeInlineEditKind { None, Airport, Preset, PdcLogon };
+	HWND RuntimeInlineEditWindow = nullptr;
+	RuntimeInlineEditKind RuntimeInlineEditType = RuntimeInlineEditKind::None;
+	HBRUSH RuntimeInlineEditBrush = nullptr;
+	void StartRuntimeInlineEdit(RuntimeInlineEditKind kind, RECT area, const std::string& value);
+	void FinishRuntimeInlineEdit(bool accept);
+	HBRUSH ColorRuntimeInlineEdit(HDC dc, HWND edit) const;
+private:
 	CFont RuntimeOverlayFont;
 	CFont RuntimeMenuActionFont;
 	bool AirportPositionsCacheValid = false;

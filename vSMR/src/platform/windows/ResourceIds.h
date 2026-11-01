@@ -45,10 +45,6 @@
 #define IDC_DATALINK_REQUEST_LABEL      7042
 #define IDC_DATALINK_ADDITIONAL_LABEL   7043
 #define IDC_DATALINK_TOBT_REMINDER       7044
-#define IDD_VSMR_RUNTIME_TEXT_EDIT       7045
-#define IDC_RUNTIME_TEXT_LABEL          7046
-#define IDC_RUNTIME_TEXT_VALUE          7047
-#define IDC_RUNTIME_TEXT_ERROR          7048
 
 // Next default values for new objects
 // 

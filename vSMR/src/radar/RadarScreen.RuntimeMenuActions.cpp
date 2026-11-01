@@ -8,9 +8,9 @@
 #include "radar/RadarScreen.Registry.hpp"
 #include "radar/RecentAirports.hpp"
 #include "radar/RuntimeMenuInputPolicy.hpp"
-#include "radar/RuntimeTextEditorDialog.hpp"
 #include "shared/TextUtils.hpp"
 
+#include <cctype>
 #include <cstdlib>
 #include <limits>
 
@@ -18,6 +18,42 @@ extern CPoint mouseLocation;
 
 namespace
 {
+	constexpr UINT_PTR kRuntimeInlineEditSubclassId = 0x56454d45u;
+	LRESULT CALLBACK RuntimeInlineEditSubclassProc(HWND window, UINT message,
+		WPARAM wParam, LPARAM lParam, UINT_PTR subclassId, DWORD_PTR referenceData)
+	{
+		auto* radar = reinterpret_cast<CSMRRadar*>(referenceData);
+		if (subclassId != kRuntimeInlineEditSubclassId || radar == nullptr)
+			return ::DefSubclassProc(window, message, wParam, lParam);
+		if (message == WM_KEYDOWN && (wParam == VK_RETURN || wParam == VK_ESCAPE))
+		{
+			radar->FinishRuntimeInlineEdit(wParam == VK_RETURN);
+			return 0;
+		}
+		if (message == WM_GETDLGCODE)
+			return ::DefSubclassProc(window, message, wParam, lParam) | DLGC_WANTALLKEYS;
+		if (message == WM_KILLFOCUS && radar->RuntimeInlineEditWindow == window)
+		{
+			radar->FinishRuntimeInlineEdit(false);
+			return 0;
+		}
+		if (message == WM_NCDESTROY)
+		{
+			::RemoveWindowSubclass(window, RuntimeInlineEditSubclassProc, kRuntimeInlineEditSubclassId);
+			if (radar->RuntimeInlineEditWindow == window)
+			{
+				radar->RuntimeInlineEditWindow = nullptr;
+				radar->RuntimeInlineEditType = CSMRRadar::RuntimeInlineEditKind::None;
+				if (radar->RuntimeInlineEditBrush != nullptr)
+				{
+					::DeleteObject(radar->RuntimeInlineEditBrush);
+					radar->RuntimeInlineEditBrush = nullptr;
+				}
+			}
+		}
+		return ::DefSubclassProc(window, message, wParam, lParam);
+	}
+
 	bool ParseIndexedObjectId(const char* objectId, const char* prefix, size_t& outIndex)
 	{
 		if (objectId == nullptr || prefix == nullptr)
@@ -79,9 +115,113 @@ namespace
 	}
 }
 
+void CSMRRadar::StartRuntimeInlineEdit(RuntimeInlineEditKind kind, RECT area,
+	const std::string& value)
+{
+	FinishRuntimeInlineEdit(false);
+	HWND parent = AvisoRefreshHostWindow.load(std::memory_order_acquire);
+	if (parent == nullptr || !::IsWindow(parent))
+		return;
+	::OffsetRect(&area, RuntimeMenuDcOrigin.x, RuntimeMenuDcOrigin.y);
+	::InflateRect(&area, -2, -2);
+	if (area.right <= area.left || area.bottom <= area.top)
+		return;
+	const bool day = GetUiColorTheme() == "day";
+	const COLORREF fill = day ? RGB(247, 251, 252) : RGB(41, 56, 59);
+	HBRUSH brush = ::CreateSolidBrush(fill);
+	if (brush == nullptr)
+		return;
+	HWND edit = ::CreateWindowExA(0, "EDIT", value.c_str(),
+		WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+		area.left, area.top, area.right - area.left, area.bottom - area.top,
+		parent, nullptr, AfxGetResourceHandle(), nullptr);
+	if (edit == nullptr)
+	{
+		::DeleteObject(brush);
+		return;
+	}
+	RuntimeInlineEditWindow = edit;
+	RuntimeInlineEditType = kind;
+	RuntimeInlineEditBrush = brush;
+	if (!::SetWindowSubclass(edit, RuntimeInlineEditSubclassProc,
+		kRuntimeInlineEditSubclassId, reinterpret_cast<DWORD_PTR>(this)))
+	{
+		FinishRuntimeInlineEdit(false);
+		return;
+	}
+	::SendMessage(edit, WM_SETFONT, reinterpret_cast<WPARAM>(RuntimeMenuActionFont.GetSafeHandle()), TRUE);
+	::SendMessage(edit, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(3, 3));
+	::SendMessage(edit, EM_LIMITTEXT, kind == RuntimeInlineEditKind::Preset ? 128 :
+		kind == RuntimeInlineEditKind::Airport ? 4 : 16, 0);
+	::SetFocus(edit);
+	::SendMessage(edit, EM_SETSEL, 0, -1);
+}
+
+HBRUSH CSMRRadar::ColorRuntimeInlineEdit(HDC dc, HWND edit) const
+{
+	if (edit != RuntimeInlineEditWindow || RuntimeInlineEditBrush == nullptr)
+		return nullptr;
+	const bool day = GetUiColorTheme() == "day";
+	::SetTextColor(dc, day ? RGB(23, 33, 38) : RGB(208, 217, 220));
+	::SetBkColor(dc, day ? RGB(247, 251, 252) : RGB(41, 56, 59));
+	return RuntimeInlineEditBrush;
+}
+
+void CSMRRadar::FinishRuntimeInlineEdit(bool accept)
+{
+	HWND edit = RuntimeInlineEditWindow;
+	if (edit == nullptr)
+		return;
+	const RuntimeInlineEditKind kind = RuntimeInlineEditType;
+	std::string value;
+	if (accept)
+	{
+		char buffer[256]{};
+		::GetWindowTextA(edit, buffer, static_cast<int>(sizeof(buffer)));
+		value = buffer;
+		const auto first = value.find_first_not_of(" \t\r\n");
+		const auto last = value.find_last_not_of(" \t\r\n");
+		value = first == std::string::npos ? "" : value.substr(first, last - first + 1);
+		if (kind != RuntimeInlineEditKind::Preset)
+			std::transform(value.begin(), value.end(), value.begin(),
+				[](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
+		const bool airportValid = value.size() == 4 &&
+			std::all_of(value.begin(), value.end(), [](unsigned char ch) { return std::isalnum(ch) != 0; });
+		const bool pdcValid = !value.empty() && value.size() <= 16 &&
+			std::all_of(value.begin(), value.end(), [](unsigned char ch)
+				{ return std::isalnum(ch) != 0 || ch == '_' || ch == '-'; });
+		if ((kind == RuntimeInlineEditKind::Airport && !airportValid) ||
+			(kind == RuntimeInlineEditKind::Preset && value.empty()) ||
+			(kind == RuntimeInlineEditKind::PdcLogon && !pdcValid))
+		{
+			::MessageBeep(MB_ICONWARNING);
+			::SetFocus(edit);
+			::SendMessage(edit, EM_SETSEL, 0, -1);
+			return;
+		}
+	}
+	RuntimeInlineEditWindow = nullptr;
+	RuntimeInlineEditType = RuntimeInlineEditKind::None;
+	::DestroyWindow(edit);
+	if (RuntimeInlineEditBrush != nullptr)
+	{
+		::DeleteObject(RuntimeInlineEditBrush);
+		RuntimeInlineEditBrush = nullptr;
+	}
+	if (accept)
+	{
+		const int function = kind == RuntimeInlineEditKind::Airport ? RIMCAS_ACTIVE_AIRPORT_FUNC :
+			kind == RuntimeInlineEditKind::Preset ? RIMCAS_AVISO_PRESET_RENAME :
+			RUNTIME_DATALINK_CALLSIGN_EDIT;
+		OnFunctionCall(function, value.c_str(), POINT{}, RECT{});
+	}
+	RequestRefresh();
+}
+
 bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POINT point, RECT area,
 	int button, bool fromHostScreenObject)
 {
+	UNREFERENCED_PARAMETER(point);
 	if (objectType != RUNTIME_MENU_RAIL && objectType != RUNTIME_MENU_POPUP)
 		return false;
 
@@ -145,10 +285,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		if (std::strcmp(id, "runtime.airport") == 0)
 		{
 			CloseRuntimeMenuPopup();
-			std::string value;
-			if (VsmrRuntimeTextEditor::Show(VsmrRuntimeTextEditor::Kind::Airport,
-				getActiveAirport(), GetUiColorTheme() == "day", value))
-				OnFunctionCall(RIMCAS_ACTIVE_AIRPORT_FUNC, value.c_str(), point, area);
+			StartRuntimeInlineEdit(RuntimeInlineEditKind::Airport, area, getActiveAirport());
 		}
 		else if (std::strcmp(id, "runtime.button.mode") == 0)
 			togglePopup(RuntimeMenuPopup::Mode);
@@ -278,12 +415,7 @@ bool CSMRRadar::HandleRuntimeDatalinkClick(const char* id, RECT area)
 		if (datalinkPlugin != nullptr)
 		{
 			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
-			CloseRuntimeMenuPopup();
-			std::string value;
-			if (VsmrRuntimeTextEditor::Show(VsmrRuntimeTextEditor::Kind::PdcLogon,
-				state.logonCallsign, GetUiColorTheme() == "day", value))
-				OnFunctionCall(RUNTIME_DATALINK_CALLSIGN_EDIT, value.c_str(),
-					POINT{ area.left, area.top }, area);
+			StartRuntimeInlineEdit(RuntimeInlineEditKind::PdcLogon, area, state.logonCallsign);
 		}
 		return true;
 	}
@@ -489,11 +621,19 @@ bool CSMRRadar::HandleRuntimePresetClick(const char* id, RECT area)
 		UpdateActiveAvisoPreset();
 	else if (std::strcmp(id, "runtime.preset.rename") == 0 && !activePreset.empty())
 	{
-		CloseRuntimeMenuPopup();
-		std::string value;
-		if (VsmrRuntimeTextEditor::Show(VsmrRuntimeTextEditor::Kind::Preset,
-			activePreset, GetUiColorTheme() == "day", value))
-			OnFunctionCall(RIMCAS_AVISO_PRESET_RENAME, value.c_str(), POINT{}, area);
+		// Edit the selected preset directly in its visible list row.
+		for (const RuntimeMenuHitTarget& target : RuntimeMenuHitTargets)
+		{
+			if (target.id.rfind("runtime.preset.", 0) != 0)
+				continue;
+			size_t index = 0;
+			if (!ParseIndexedObjectId(target.id.c_str(), "runtime.preset.", index) ||
+				index >= presets.size() || !AsciiCaseInsensitiveEquals(presets[index].name, activePreset))
+				continue;
+			area = target.area;
+			break;
+		}
+		StartRuntimeInlineEdit(RuntimeInlineEditKind::Preset, area, activePreset);
 	}
 	else if (std::strcmp(id, "runtime.preset.duplicate") == 0 && !activePreset.empty())
 	{
@@ -552,6 +692,8 @@ bool CSMRRadar::HandleRuntimeMenuMove(int objectType, const char* objectId, POIN
 bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, UINT message)
 {
 	if (IsShutdownRequested() || sourceWindow == nullptr || !::IsWindow(sourceWindow))
+		return false;
+	if (sourceWindow == RuntimeInlineEditWindow)
 		return false;
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 
