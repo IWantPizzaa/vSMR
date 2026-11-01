@@ -113,6 +113,42 @@ try {
     if (Test-Path -LiteralPath (Join-Path $fixture 'invalid-feed/payload')) {
         throw 'Invalid binaries left a publishable-looking payload tree.'
     }
+    $previousFeed = Join-Path $fixture 'previous-feed'
+    $previousLoader = Join-Path $previousFeed 'payload/vSMR.dll'
+    [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($previousLoader)) | Out-Null
+    Copy-Item -LiteralPath (Join-Path $RepositoryRoot 'Release/vSMR.dll') -Destination $previousLoader
+    # A changed but valid PE image proves that Prepare stages the previous
+    # loader, rather than silently taking the newly compiled one.
+    $stream = [IO.File]::Open($previousLoader, [IO.FileMode]::Append)
+    try { $stream.WriteByte(0) } finally { $stream.Dispose() }
+    $previousEntry = [ordered]@{
+        sha256 = (Get-FileHash -LiteralPath $previousLoader -Algorithm SHA256).Hash.ToLowerInvariant()
+        size = [long](Get-Item -LiteralPath $previousLoader).Length
+    }
+    Write-Fixture 'previous-feed/stable/version.json' (([ordered]@{
+        schema = 1; version = '2.0.5'; minimum_loader_version = '1.3.0'; runtime_abi = 1
+        files = [ordered]@{ 'vSMR.dll' = $previousEntry }
+    }) | ConvertTo-Json -Depth 5)
+    $reuseStage = Join-Path $fixture 'reuse-stage'
+    $compiledRuntimeVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo(
+        (Join-Path $RepositoryRoot 'Release/vSMR_Data/Runtime/vSMR.Runtime.dll')).ProductVersion
+    & $generator -Phase Prepare -RepositoryRoot $RepositoryRoot -BuildOutputDirectory (Join-Path $RepositoryRoot 'Release') `
+        -FeedDirectory $reuseStage -ReuseLoaderFromFeedDirectory $previousFeed -ValidationOnly -SkipBuild
+    $reused = Get-Content -LiteralPath (Join-Path $reuseStage 'prepared-feed.json') -Raw | ConvertFrom-Json
+    if ($reused.files.'vSMR.dll'.sha256 -ne $previousEntry.sha256 -or
+        (Get-FileHash -LiteralPath (Join-Path $reuseStage 'payload/vSMR.dll') -Algorithm SHA256).Hash -ne $previousEntry.sha256 -or
+        $reused.version -ne $compiledRuntimeVersion) {
+        throw 'The compatible previous loader was not staged with the new runtime.'
+    }
+    Write-Fixture 'previous-feed/stable/version.json' (([ordered]@{
+        schema = 1; version = '2.0.5'; minimum_loader_version = '1.3.0'; runtime_abi = 1
+        files = [ordered]@{ 'vSMR.dll' = [ordered]@{ sha256 = ('0' * 64); size = $previousEntry.size } }
+    }) | ConvertTo-Json -Depth 5)
+    try {
+        & $generator -Phase Prepare -RepositoryRoot $RepositoryRoot -BuildOutputDirectory (Join-Path $RepositoryRoot 'Release') `
+            -FeedDirectory (Join-Path $fixture 'tampered-reuse-stage') -ReuseLoaderFromFeedDirectory $previousFeed -ValidationOnly -SkipBuild
+        throw 'Accepted a loader that does not match the previous feed manifest.'
+    } catch { if ($_.Exception.Message -notlike 'The previous feed loader does not match*') { throw } }
     Write-Host 'Raw update feed tests passed: immutable Git bytes, hashes, ownership, channels and validation-only isolation.'
 } finally {
     $resolved = [IO.Path]::GetFullPath($fixture)
