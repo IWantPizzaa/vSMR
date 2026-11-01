@@ -90,10 +90,21 @@ namespace
 		Expect(VsmrAvisoPalettePreference::InitialPalette(nullptr, "real") == "real" &&
 			VsmrAvisoPalettePreference::InitialPalette("", "light") == "light",
 			"new AVISO views use the configured airport palette");
-		Expect(VsmrRuntimeMenuInput::IsRepeatedAirportEdit(1200, 1000, 500) &&
-			!VsmrRuntimeMenuInput::IsRepeatedAirportEdit(1600, 1000, 500) &&
-			!VsmrRuntimeMenuInput::IsRepeatedAirportEdit(1200, 0, 500),
-			"ICAO editor opens once per double-click interval");
+		Expect(VsmrRuntimeMenuInput::IsRepeatedWindowOpen(1200, 1000, 500) &&
+			!VsmrRuntimeMenuInput::IsRepeatedWindowOpen(1600, 1000, 500) &&
+			!VsmrRuntimeMenuInput::IsRepeatedWindowOpen(1200, 0, 500),
+			"runtime editors open once per double-click interval");
+		for (const auto id : { "runtime.airport", "runtime.datalink.callsign",
+			"runtime.datalink.credentials", "runtime.preset.rename", "runtime.button.control-center" })
+		{
+			Expect(VsmrRuntimeMenuInput::NeedsHostClickContext(id) &&
+				VsmrRuntimeMenuInput::OpensWindow(id),
+				std::string("runtime window requires EuroScope's click context: ") + id);
+		}
+		Expect(VsmrRuntimeMenuInput::NeedsHostClickContext("runtime.vsid.sync") &&
+			!VsmrRuntimeMenuInput::OpensWindow("runtime.vsid.sync") &&
+			!VsmrRuntimeMenuInput::NeedsHostClickContext("runtime.datalink.poll"),
+			"host command-line actions use EuroScope's click context without window debouncing");
 	}
 
 	std::string ReadTextFile(const std::filesystem::path& path)
