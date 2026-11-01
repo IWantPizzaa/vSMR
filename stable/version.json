@@ -1,7 +1,7 @@
 {
     "schema":  1,
-    "version":  "2.0.5",
-    "content_commit":  "bdd1015df1182e5b1beb1e3721c9e623de320c3b",
+    "version":  "2.0.6",
+    "content_commit":  "5eff799d0dc4e88ca1ee4d396d7b6c0bd398f4c1",
     "minimum_loader_version":  "1.3.0",
     "runtime_abi":  1,
     "files":  {
@@ -1094,11 +1094,11 @@
                                                    "size":  97716
                                                },
                   "vSMR_Data/AVISO-UPDATE-POLICY.json":  {
-                                                             "sha256":  "82631b7167fbef1a72b6149cd63c63357d38eacbe9c895528d1817db5c26ae47",
+                                                             "sha256":  "2e76883031ad19c16989665141fa8451ec631e262fc39cb92cc1cf19d33a0fe5",
                                                              "size":  5641
                                                          },
                   "vSMR_Data/CrashReporter/vSMRCrashHandler.dll":  {
-                                                                       "sha256":  "c85ff8174e80adcf86d7c825d1938b74aff1e9ec6fc682ab5033a2a841e1efd5",
+                                                                       "sha256":  "e1b87c719691e231e2f37c0d3a7fcb3bf9a5db6e2a7e1e60dbb6f3130f4037fb",
                                                                        "size":  158208
                                                                    },
                   "vSMR_Data/default.json":  {
@@ -1138,8 +1138,8 @@
                                                       "size":  35823
                                                   },
                   "vSMR_Data/Runtime/vSMR.Runtime.dll":  {
-                                                             "sha256":  "98279bef9740178c69cd83dec332e25ea91c80b29679aa1de8730b6b6d14103c",
-                                                             "size":  2494976
+                                                             "sha256":  "5752aee515b9ae56c769b604b646be092470ec9f836b5a9a5c3ecaa2ecf3ba58",
+                                                             "size":  2512896
                                                          },
                   "vSMR_Data/Tools/install_vsmr.ps1":  {
                                                            "sha256":  "6844c8c4915c5b835d024a4b0689c8497cfbefd673daa710a339ac8175c84cec",
@@ -1162,8 +1162,8 @@
                                                                   "size":  18268
                                                               },
                   "vSMR_Data/Tools/vSMR.ApplyUpdate.exe":  {
-                                                               "sha256":  "ff6b02050a23f99e880fac1118fde22e82056f7d7f53bedec8dd0f59efd29152",
-                                                               "size":  464384
+                                                               "sha256":  "67e8d4849178fe8a5d931f591f6580bccbcb0f0d2b56c74dc7b58fc4663df884",
+                                                               "size":  464896
                                                            },
                   "vSMR_Data/vSMR_webUI/app-bundle.js":  {
                                                              "sha256":  "08a5b9aebdef58d17924905b392be8ad194f7681b8beaab1a6ce54ee7d4b0ae5",
