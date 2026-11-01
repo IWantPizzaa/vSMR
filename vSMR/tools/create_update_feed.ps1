@@ -12,6 +12,7 @@ param(
     [string]$BuildOutputDirectory = '',
     [Parameter(Mandatory = $true)][string]$FeedDirectory,
     [string]$ReuseLoaderFromFeedDirectory = '',
+    [string]$VerifiedPackageDirectory = '',
     [ValidatePattern('^(|[0-9a-fA-F]{40})$')][string]$ContentCommit = '',
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$MinimumLoaderVersion = '1.3.0',
     [ValidateSet('auto', 'stable', 'beta')][string]$Channel = 'auto',
@@ -23,6 +24,12 @@ Set-StrictMode -Version Latest
 $utf8 = [Text.UTF8Encoding]::new($false)
 if (-not $RepositoryRoot) { $RepositoryRoot = Join-Path $PSScriptRoot '..\..' }
 $RepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot)
+if ($VerifiedPackageDirectory) {
+    if ($BuildOutputDirectory -or $ReuseLoaderFromFeedDirectory -or $SkipBuild) {
+        throw 'VerifiedPackageDirectory supplies its own build output and loader.'
+    }
+    $BuildOutputDirectory = $VerifiedPackageDirectory
+}
 if (-not $BuildOutputDirectory) { $BuildOutputDirectory = Join-Path $RepositoryRoot 'Release' }
 $BuildOutputDirectory = [IO.Path]::GetFullPath($BuildOutputDirectory)
 $FeedDirectory = [IO.Path]::GetFullPath($FeedDirectory)
@@ -90,7 +97,7 @@ if ($Phase -eq 'Prepare') {
         Assert-GitSuccess 'checking release source'
         if ($dirty.Count) { throw 'Publishable feed artifacts require clean committed source. Use -ValidationOnly for local tests.' }
     }
-    if (-not $SkipBuild) {
+    if (-not $SkipBuild -and -not $VerifiedPackageDirectory) {
         $defaultBuild = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot 'Release'))
         if (-not $BuildOutputDirectory.TrimEnd('\').Equals($defaultBuild.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
             throw 'BuildOutputDirectory must be the repository Release folder unless using -ValidationOnly -SkipBuild.'
@@ -112,6 +119,27 @@ if ($Phase -eq 'Prepare') {
     if ($runtimeInfo.ProductVersion -ne $version) { throw 'Compiled runtime version differs from source version.' }
     $loaderInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $BuildOutputDirectory 'vSMR.dll'))
     if ($loaderInfo.FileVersion -ne ($loaderVersion + '.0')) { throw 'Compiled loader version differs from source version.' }
+    $packageChecksums = @{}
+    if ($VerifiedPackageDirectory) {
+        $metadataPath = Join-Path $BuildOutputDirectory 'vSMR_Data/RELEASE-METADATA.json'
+        $checksumsPath = Join-Path $BuildOutputDirectory 'vSMR_Data/SHA256SUMS.txt'
+        Assert-RegularPath $metadataPath
+        Assert-RegularPath $checksumsPath
+        $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+        $sourceCommit = [string](& git -C $RepositoryRoot rev-parse HEAD)
+        Assert-GitSuccess 'checking verified package source commit'
+        if ($metadata.version -ne $version -or $metadata.git_commit -ne $sourceCommit -or
+            $metadata.source_dirty -or -not $metadata.publishable -or
+            $metadata.runtime.abi -ne $runtimeAbi -or $metadata.loader.version -ne $loaderVersion) {
+            throw 'The verified package does not match the clean release source and ABI.'
+        }
+        foreach ($line in Get-Content -LiteralPath $checksumsPath) {
+            if ($line -notmatch '^([0-9a-fA-F]{64})  (vSMR\.dll|vSMR_Data/.+)$') {
+                throw 'The verified package has an invalid checksum inventory.'
+            }
+            $packageChecksums.Add($Matches[2], $Matches[1].ToLowerInvariant())
+        }
+    }
     $loaderSource = Join-Path $BuildOutputDirectory 'vSMR.dll'
     if ($ReuseLoaderFromFeedDirectory) {
         $previousFeed = [IO.Path]::GetFullPath($ReuseLoaderFromFeedDirectory)
@@ -167,8 +195,12 @@ if ($Phase -eq 'Prepare') {
         $source = if ($relative -eq 'vSMR.dll') { $loaderSource } else { Join-Path $BuildOutputDirectory $relative }
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Compiled release asset is missing: $relative" }
         Assert-RegularPath $source
+        $hash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($VerifiedPackageDirectory -and $packageChecksums[$relative] -ne $hash) {
+            throw "Verified package checksum mismatch: $relative"
+        }
         $files.Add($relative, [ordered]@{
-            sha256 = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+            sha256 = $hash
             size = [long](Get-Item -LiteralPath $source).Length
         })
     }

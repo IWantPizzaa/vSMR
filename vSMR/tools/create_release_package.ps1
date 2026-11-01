@@ -5,6 +5,7 @@ param(
     [string]$RepositoryRoot = "",
     [string]$BuildOutputDirectory = "",
     [string]$ArtifactsDirectory = "",
+    [string]$ReuseLoaderFromFeedDirectory = "",
     [ValidatePattern("^\d+\.\d+\.\d+(?:-beta\.\d+)?$")]
     [string]$Version = "2.0.6",
     [string]$Configuration = "Release",
@@ -330,13 +331,34 @@ if (-not $SkipBuild) {
 $PdbPath = [System.IO.Path]::GetFullPath($PdbPath)
 Assert-File $PdbPath
 $LoaderPdbPath = [System.IO.Path]::GetFullPath($LoaderPdbPath)
-Assert-File $LoaderPdbPath
+if (-not $ReuseLoaderFromFeedDirectory) { Assert-File $LoaderPdbPath }
 $CrashHandlerPdbPath = [System.IO.Path]::GetFullPath($CrashHandlerPdbPath)
 Assert-File $CrashHandlerPdbPath
 
 $dllPath = Join-Path $BuildOutputDirectory "vSMR.dll"
 $dataPath = Join-Path $BuildOutputDirectory "vSMR_Data"
 Assert-File $dllPath
+$reusedLoader = $false
+if ($ReuseLoaderFromFeedDirectory) {
+    if ($Version.Contains('-')) { throw 'Reusing a previous loader currently requires a stable release.' }
+    $previousFeed = [IO.Path]::GetFullPath($ReuseLoaderFromFeedDirectory)
+    $previous = Get-Content -LiteralPath (Join-Path $previousFeed 'stable/version.json') -Raw | ConvertFrom-Json
+    $previousLoader = $previous.files.'vSMR.dll'
+    $candidate = Join-Path $previousFeed 'payload/vSMR.dll'
+    Assert-File $candidate
+    if ($previous.schema -ne 1 -or $previous.runtime_abi -ne $RuntimeAbi -or
+        [version]$previous.version -ge [version]$Version -or
+        [version]$previous.minimum_loader_version -gt [version]$LoaderVersion -or
+        $previousLoader.sha256 -notmatch '^[0-9a-fA-F]{64}$' -or
+        [long]$previousLoader.size -ne (Get-Item -LiteralPath $candidate).Length -or
+        (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash -ne $previousLoader.sha256 -or
+        [Diagnostics.FileVersionInfo]::GetVersionInfo($candidate).FileVersion -ne ($LoaderVersion + '.0')) {
+        throw 'The previous feed loader is incompatible or does not match its manifest.'
+    }
+    $dllPath = $candidate
+    $reusedLoader = $true
+    Write-Host "Reusing verified loader $LoaderVersion from feed $($previous.version) in the complete package."
+}
 if (-not (Test-Path -LiteralPath $dataPath -PathType Container)) {
     throw "Required release directory is missing: $dataPath"
 }
@@ -659,7 +681,12 @@ if ($RequireSignature -and -not (Test-Path -LiteralPath $updateSignaturePath -Pa
     throw "The signed update manifest was not created."
 }
 
-Copy-Item -LiteralPath $LoaderPdbPath -Destination (Join-Path $symbolStage "vSMR.Loader.pdb")
+if ($reusedLoader) {
+    Write-Utf8NoBom (Join-Path $symbolStage "vSMR.Loader.symbols-unavailable.txt") `
+        "The package reuses the previous release's loader. Its matching PDB was not available during this build.`n"
+} else {
+    Copy-Item -LiteralPath $LoaderPdbPath -Destination (Join-Path $symbolStage "vSMR.Loader.pdb")
+}
 Copy-Item -LiteralPath $packagedDllPath -Destination (Join-Path $symbolStage "vSMR.Loader.dll")
 Copy-Item -LiteralPath $PdbPath -Destination (Join-Path $symbolStage "vSMR.Runtime.pdb")
 Copy-Item -LiteralPath $packagedRuntimePath -Destination (Join-Path $symbolStage "vSMR.Runtime.dll")

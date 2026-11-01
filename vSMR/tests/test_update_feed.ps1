@@ -149,6 +149,31 @@ try {
             -FeedDirectory (Join-Path $fixture 'tampered-reuse-stage') -ReuseLoaderFromFeedDirectory $previousFeed -ValidationOnly -SkipBuild
         throw 'Accepted a loader that does not match the previous feed manifest.'
     } catch { if ($_.Exception.Message -notlike 'The previous feed loader does not match*') { throw } }
+    $packageFixture = Join-Path $fixture 'verified-package'
+    $packageChecksums = [Collections.Generic.List[string]]::new()
+    $payloadRoot = Join-Path $reuseStage 'payload'
+    foreach ($file in Get-ChildItem -LiteralPath $payloadRoot -File -Recurse) {
+        $relative = $file.FullName.Substring($payloadRoot.Length + 1).Replace('\', '/')
+        $target = Join-Path $packageFixture $relative
+        [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target)) | Out-Null
+        Copy-Item -LiteralPath $file.FullName -Destination $target
+        $packageChecksums.Add(((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + $relative))
+    }
+    Write-Fixture 'verified-package/vSMR_Data/SHA256SUMS.txt' (($packageChecksums | Sort-Object) -join "`n")
+    $sourceCommit = [string](& git -C $RepositoryRoot rev-parse HEAD)
+    Write-Fixture 'verified-package/vSMR_Data/RELEASE-METADATA.json' (([ordered]@{
+        version = $compiledRuntimeVersion; git_commit = $sourceCommit; source_dirty = $false; publishable = $true
+        runtime = @{ abi = 1 }; loader = @{ version = '1.3.0' }
+    }) | ConvertTo-Json -Depth 5)
+    $packageStage = Join-Path $fixture 'package-stage'
+    & $generator -Phase Prepare -RepositoryRoot $RepositoryRoot -FeedDirectory $packageStage `
+        -VerifiedPackageDirectory $packageFixture -ValidationOnly
+    $packageRecord = Get-Content -LiteralPath (Join-Path $packageStage 'prepared-feed.json') -Raw | ConvertFrom-Json
+    if ($packageRecord.files.'vSMR.dll'.sha256 -ne $previousEntry.sha256 -or
+        $packageRecord.files.'vSMR_Data/Runtime/vSMR.Runtime.dll'.sha256 -ne
+            $reused.files.'vSMR_Data/Runtime/vSMR.Runtime.dll'.sha256) {
+        throw 'Verified package bytes were not staged unchanged.'
+    }
     Write-Host 'Raw update feed tests passed: immutable Git bytes, hashes, ownership, channels and validation-only isolation.'
 } finally {
     $resolved = [IO.Path]::GetFullPath($fixture)
