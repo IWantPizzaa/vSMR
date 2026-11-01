@@ -256,6 +256,17 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		return false;
 
 	const char* id = objectId != nullptr ? objectId : "";
+	// EuroScope's callback area is not guaranteed to be the painted object's
+	// rectangle. Use the same rectangle vSMR registered for hit testing and
+	// drawing when placing a native child editor over that object.
+	for (const RuntimeMenuHitTarget& target : RuntimeMenuHitTargets)
+	{
+		if (target.type == objectType && target.id == id)
+		{
+			area = target.area;
+			break;
+		}
+	}
 	if (button == BUTTON_RIGHT &&
 		objectType == RUNTIME_MENU_RAIL &&
 		std::strcmp(id, "runtime.drag") == 0)
