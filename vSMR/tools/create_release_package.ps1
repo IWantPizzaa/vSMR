@@ -7,7 +7,7 @@ param(
     [string]$ArtifactsDirectory = "",
     [string]$ReuseLoaderFromFeedDirectory = "",
     [ValidatePattern("^\d+\.\d+\.\d+(?:-beta\.\d+)?$")]
-    [string]$Version = "2.0.6",
+    [string]$Version = "2.0.7",
     [string]$Configuration = "Release",
     [string]$Platform = "Win32",
     [ValidatePattern("^(auto|v\d+)$")]
