@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Open EuroScope's correlation chooser from stationary or moving uncorrelated tags before offering Assume/Handoff ([#40](https://github.com/IWantPizzaa/vSMR/issues/40)).
 - Make Ramp Agent stands clickable in inset tags, including unassigned stands, and route the action through Ramp Agent's registered tag item ([#37](https://github.com/IWantPizzaa/vSMR/issues/37)).
 - Show Ramp Agent stands on LFMN arrival tags in both normal and detailed layouts ([#39](https://github.com/IWantPizzaa/vSMR/issues/39)).
 
