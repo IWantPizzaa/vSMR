@@ -308,6 +308,19 @@ std::vector<std::string> RunAuditRegressionTests()
 	const auto& compiled = definitions.Get(labels, "departure", "default", false);
 	auto normal = VsmrTags::BuildTagVariant(compiled, target, false);
 	check(normal.lines.size() == 1 && normal.lines[0].elements.size() == 5, "compiled tags retain their line and element structure");
+	rapidjson::Document standLabels;
+	VsmrJson::ParseDocument(standLabels, R"json({"arrival":{"definition":[["callsign","uk_stand"]]}})json");
+	VsmrTags::DefinitionCache standDefinitions;
+	target.tag.tokens["uk_stand"] = "";
+	auto standTag = VsmrTags::BuildTagVariant(
+		standDefinitions.Get(standLabels, "arrival", "default", false), target, false);
+	check(standTag.lines.size() == 1 && standTag.lines[0].elements.size() == 2 &&
+		standTag.lines[0].elements[1].text == "-",
+		"unassigned Ramp Agent stand remains a visible click target");
+	target.tag.tokens["uk_stand"] = "A12";
+	VsmrTags::UpdateTagVariant(standDefinitions.Get(standLabels, "arrival", "default", false), target, false, standTag);
+	check(standTag.lines[0].elements[1].text == "A12", "assigned Ramp Agent stand replaces the placeholder");
+	target.tag.tokens["uk_stand"] = "";
 	if (normal.lines.size() == 1 && normal.lines[0].elements.size() == 5)
 	{
 		const auto& elements = normal.lines[0].elements;
