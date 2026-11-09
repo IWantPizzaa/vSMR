@@ -1270,17 +1270,17 @@ void CSMRRadar::OnClickScreenObjectImpl(int ObjectType, const char * sObjectId, 
 		StartTagFunction(rtCallsign, NULL, tagItemType, rtCallsign, menuContext, tagMenu, Pt, Area);
 		return true;
 	};
-	// A system-id tag is still a clickable aircraft even when vSMR's display
-	// correlation rules classify it as uncorrelated. Route clicks on any part of
-	// that tag to EuroScope's Assume/Handoff menu when a flight plan exists, or
-	// its correlation chooser when the radar target has no matching plan yet.
+	// A stationary target without a correlated flight plan can have the Departure
+	// display role, so use correlation state rather than the displayed tag role.
+	// Correlate first; a same-callsign flight plan is not proof that this radar
+	// target is correlated and ready for EuroScope's Assume/Handoff menu.
 	if ((Button == BUTTON_LEFT || Button == BUTTON_RIGHT) && hasObjectId &&
 		(ObjectType == DRAWING_TAG ||
 			(ObjectType >= TAG_CITEM_NO && ObjectType <= TAG_CITEM_READY_STARTUP)))
 	{
 		const VsmrScene::RadarScene* scene = GetCurrentRadarScene();
 		const VsmrScene::Target* sceneTarget = scene != nullptr ? scene->FindTarget(objectId) : nullptr;
-		if (sceneTarget != nullptr && sceneTarget->role == VsmrScene::TargetRole::Uncorrelated)
+		if (sceneTarget != nullptr && !sceneTarget->correlated)
 		{
 			CRadarTarget target = GetPlugIn()->RadarTargetSelect(objectId);
 			if (target.IsValid())
@@ -1289,9 +1289,7 @@ void CSMRRadar::OnClickScreenObjectImpl(int ObjectType, const char * sObjectId, 
 				if (callsign != nullptr && callsign[0] != '\0')
 				{
 					CFlightPlan flightPlan = target.GetCorrelatedFlightPlan();
-					if (!flightPlan.IsValid())
-						flightPlan = GetPlugIn()->FlightPlanSelect(callsign);
-					GetPlugIn()->SetASELAircraft(flightPlan);
+					if (flightPlan.IsValid()) GetPlugIn()->SetASELAircraft(flightPlan);
 					StartTagFunction(callsign, NULL, TAG_ITEM_TYPE_CALLSIGN, callsign, NULL,
 						flightPlan.IsValid() ? TAG_ITEM_FUNCTION_HANDOFF_POPUP_MENU
 							: TAG_ITEM_FUNCTION_CORRELATE_POPUP,
