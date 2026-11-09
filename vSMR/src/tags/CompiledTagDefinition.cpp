@@ -223,6 +223,9 @@ bool VsmrTags::UpdateTagVariant(const CompiledDefinition& definition,
 			}
 			if (!detailed && ToLowerAsciiCopy(element.token) == "scratchpad" && element.text == "...") element.text.clear();
 			if (detailed && element.action == TAG_CITEM_HOLDINGPOINT && element.text.empty()) element.text = "HP";
+			// Keep an unassigned stand clickable in both the main view and insets.
+			if (element.action == TAG_CITEM_UKSTAND && element.text.empty() && target.hasFlightPlan && target.correlated)
+				element.text = "-";
 			line.visible = line.visible || !element.text.empty();
 		}
 	}

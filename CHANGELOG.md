@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Make Ramp Agent stands clickable in inset tags, including unassigned stands, and route the action through Ramp Agent's registered tag item ([#37](https://github.com/IWantPizzaa/vSMR/issues/37)).
 - Show Ramp Agent stands on LFMN arrival tags in both normal and detailed layouts ([#39](https://github.com/IWantPizzaa/vSMR/issues/39)).
 
 ## [2.0.6] - 2026-11-01
