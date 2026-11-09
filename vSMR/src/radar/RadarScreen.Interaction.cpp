@@ -4,6 +4,7 @@
 #include "radar/RadarScreen.Registry.hpp"
 #include "radar/InsetHostPolicy.hpp"
 #include "insets/InsetWindow.hpp"
+#include "integrations/RampAgentBridgeClient.hpp"
 #include "rendering/NorthIndicator.hpp"
 #include "aircraft/GroundState.hpp"
 #include "control_center/ControlCenterDialog.hpp"
@@ -1389,8 +1390,6 @@ void CSMRRadar::OnClickScreenObjectImpl(int ObjectType, const char * sObjectId, 
 			return 0;
 		case TAG_CITEM_CLEARANCE:
 			return TAG_ITEM_FUNCTION_SET_CLEARED_FLAG;
-		case TAG_CITEM_UKSTAND:
-			return 999999;
 		case TAG_CITEM_SCRATCHPAD:
 			return TAG_ITEM_FUNCTION_EDIT_SCRATCH_PAD;
 		default:
@@ -1439,6 +1438,27 @@ void CSMRRadar::OnClickScreenObjectImpl(int ObjectType, const char * sObjectId, 
 	}
 	if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
 		SelectAvisoScrollTargetAtPoint(this, Pt);
+	if (Button == BUTTON_RIGHT && ObjectType == TAG_CITEM_UKSTAND)
+	{
+		CRadarTarget target = GetPlugIn()->RadarTargetSelect(objectId);
+		CFlightPlan flightPlan = target.IsValid() ? target.GetCorrelatedFlightPlan() : CFlightPlan();
+		if (!flightPlan.IsValid()) flightPlan = GetPlugIn()->FlightPlanSelect(objectId);
+		if (flightPlan.IsValid())
+		{
+			const char* callsign = flightPlan.GetCallsign();
+			if (callsign != nullptr && callsign[0] != '\0')
+			{
+				VsmrRampAgent::AircraftData rampData;
+				(void)VsmrRampAgent::TryGetAircraftData(callsign, rampData);
+				GetPlugIn()->SetASELAircraft(flightPlan);
+				StartTagFunction(callsign, VsmrRampAgent::PluginName, VsmrRampAgent::StandTagItemCode,
+					rampData.stand.c_str(), VsmrRampAgent::PluginName,
+					VsmrRampAgent::OpenStandMenuFunctionId, Pt, Area);
+			}
+		}
+		RequestRefresh();
+		return;
+	}
 	if (Button == BUTTON_RIGHT &&
 		!clickedInsetTag &&
 		!IsPointInRuntimeMenuOverlay(this, Pt) &&
@@ -1602,12 +1622,7 @@ void CSMRRadar::OnClickScreenObjectImpl(int ObjectType, const char * sObjectId, 
 
 	const int rightTagMenu = getRightTagMenu(ObjectType);
 	if (Button == BUTTON_RIGHT && rightTagMenu != 0) {
-		if (ObjectType == TAG_CITEM_UKSTAND) {
-			(void)startTagFunctionForObject(TAG_ITEM_TYPE_CALLSIGN, 0, "RampAgent", false);
-		}
-		else {
-			(void)startTagFunctionForObject(TAG_ITEM_TYPE_CALLSIGN, rightTagMenu, NULL, false);
-		}
+		(void)startTagFunctionForObject(TAG_ITEM_TYPE_CALLSIGN, rightTagMenu, NULL, false);
 	}
 
 	RequestRefresh();

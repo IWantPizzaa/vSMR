@@ -8,6 +8,9 @@
 
 namespace VsmrRampAgent
 {
+	inline constexpr char PluginName[] = "RampAgent";
+	inline constexpr int StandTagItemCode = 0;
+	inline constexpr int OpenStandMenuFunctionId = 0;
 	// Ramp Agent's provider declaration (EuroscopeRampAgent RampAgent.h, schema 1.0):
 	// "rampagent/stand" and "rampagent/remark" are aircraft-scope STR fields. Ramp
 	// Agent sets both while it holds a stand for an aircraft and clears both otherwise.
