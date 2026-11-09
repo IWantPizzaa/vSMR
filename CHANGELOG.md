@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Show Ramp Agent stands on LFMN arrival tags in both normal and detailed layouts ([#39](https://github.com/IWantPizzaa/vSMR/issues/39)).
+
 ## [2.0.6] - 2026-11-01
 
 - Rebuild airport ICAO, inset preset rename, and PDC login editing as painted fields within the Runtime Menu. Keyboard input stays with vSMR even when EuroScope changes focus; text, selection, and caret use the menu's own geometry. Enter saves, Escape cancels, and paste and cursor keys work without an extra window.

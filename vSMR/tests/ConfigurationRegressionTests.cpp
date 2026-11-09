@@ -63,6 +63,23 @@ namespace
 				matchesRows(departure["definition_detailed"]) &&
 				matchesRows(departure["status_definitions"]["stup"]["definition_detailed"]);
 		};
+		const auto matchesLfmnArrivalStand = [](const rapidjson::Value& profile)
+		{
+			if (!profile.IsObject() || !profile.HasMember("labels") || !profile["labels"].IsObject() ||
+				!profile["labels"].HasMember("arrival") || !profile["labels"]["arrival"].IsObject())
+				return false;
+			const auto& arrival = profile["labels"]["arrival"];
+			for (const char* key : { "definition", "definition_detailed" })
+			{
+				if (!arrival.HasMember(key) || !arrival[key].IsArray()) return false;
+				bool found = false;
+				for (const auto& row : arrival[key].GetArray())
+					if (row.IsArray()) for (const auto& token : row.GetArray())
+						found = found || (token.IsString() && std::string(token.GetString()) == "uk_stand");
+				if (!found) return false;
+			}
+			return true;
+		};
 		const std::filesystem::path profilePath = repositoryRoot / "vSMR" / "data" / "profile_templates.json";
 		const std::string profileJson = ReadTextFile(profilePath);
 		Expect(!profileJson.empty(), "default profiles file is readable");
@@ -121,6 +138,8 @@ namespace
 				if (name == "LFPG")
 					Expect(matchesLfpgDetailedRows(original), "LFPG template shows Ready Startup in Default and Startup detailed tags");
 				lfmnProfileFound = lfmnProfileFound || name == "LFMN";
+				if (name == "LFMN")
+					Expect(matchesLfmnArrivalStand(original), "LFMN arrival tags display the Ramp Agent stand");
 			}
 			rapidjson::Document normalized;
 			normalized.CopyFrom(original, normalized.GetAllocator());
@@ -140,6 +159,11 @@ namespace
 			managedProfiles["profiles"].HasMember("builtin-lfpg") &&
 			matchesLfpgDetailedRows(managedProfiles["profiles"]["builtin-lfpg"]),
 			"Managed LFPG profile matches the Ready Startup template");
+		Expect(!managedProfiles.HasParseError() && managedProfiles.IsObject() &&
+			managedProfiles.HasMember("profiles") && managedProfiles["profiles"].IsObject() &&
+			managedProfiles["profiles"].HasMember("builtin-lfmn") &&
+			matchesLfmnArrivalStand(managedProfiles["profiles"]["builtin-lfmn"]),
+			"Managed LFMN profile displays the arrival stand");
 		const rapidjson::Value* pdc = !managedProfiles.HasParseError() && managedProfiles.IsObject() &&
 			managedProfiles.HasMember("pdc") ? &managedProfiles["pdc"] : nullptr;
 		const bool sixAirports = pdc != nullptr && pdc->IsObject() &&
