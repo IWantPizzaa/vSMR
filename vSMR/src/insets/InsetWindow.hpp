@@ -1,6 +1,7 @@
 #pragma once
 #include "EuroScopePlugIn.h"
 #include "diagnostics/PerformanceDiagnostics.hpp"
+#include "insets/InsetSnapFeedback.hpp"
 #include "rendering/TagRenderer.hpp"
 #include <array>
 #include <string>
@@ -120,6 +121,8 @@ public:
 	void CancelWindowInteraction();
 	bool GetSnapPreviewRect(CRect& preview) const;
 	void RenderSnapPreview(Gdiplus::Graphics& graphics) const;
+	bool SnapPreviewNeedsTimer(std::uint64_t now) const noexcept;
+	bool SnapPreviewIsAnimating(std::uint64_t now) const noexcept;
 	void ApplyAvisoLayoutBounds(const RECT* layoutBounds);
 	void SnapAvisoLayoutToPoint(POINT Pt, const RECT* layoutBounds);
 	void UpdateAvisoScreenArea(HWND hwnd);
@@ -194,4 +197,5 @@ private:
 	bool m_SnapPreviewValid = false;
 	AvisoLayoutMode m_SnapPreviewMode = AvisoLayoutMode::Floating;
 	RECT m_SnapPreviewArea = { 0, 0, 0, 0 };
+	VsmrInsetSnap::Feedback m_SnapFeedback;
 };
