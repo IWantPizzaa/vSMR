@@ -109,6 +109,10 @@ void datalinkLogin(DatalinkLoginRequest request) {
 				HoppieConnecting.store(false, std::memory_order_release);
 		}
 	} resetConnecting{ request.generation };
+	// A disconnect can invalidate a login while it is still waiting in the
+	// network queue. Do not contact Hoppie for that stale session.
+	if (request.generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
+		return;
 
 	bool connected = false;
 	std::string failureMessage;
@@ -202,6 +206,14 @@ void pollMessages(DatalinkPollRequest request) {
 	};
 
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+	{
+		completePoll(false);
+		return;
+	}
+	// Polling renews Hoppie's server-side callsign lock. A queued poll must
+	// never start after the controller has disconnected this session.
+	if (request.generation != HoppieConnectionGeneration.load(std::memory_order_acquire) ||
+		request.pollGeneration != HoppiePollGeneration.load(std::memory_order_acquire))
 	{
 		completePoll(false);
 		return;
