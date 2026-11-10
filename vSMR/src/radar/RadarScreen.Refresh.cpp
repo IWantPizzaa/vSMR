@@ -18,6 +18,7 @@ extern bool customCursor;
 
 void EnsureAvisoWheelHooks(CSMRRadar* radarScreen);
 void EnsureInsetWindowProcHook(HWND hwnd, CSMRRadar* radarScreen);
+void EnsureInsetSnapPreviewTimer(HWND hwnd, CSMRRadar* radarScreen, bool enabled);
 
 namespace
 {
@@ -952,6 +953,34 @@ void CSMRRadar::RenderRefreshInsets(
 		activeInsetWindow->RenderSnapPreview(graphics);
 	if (foregroundInsetWindow != nullptr)
 		renderInsetWindow(foregroundInsetWindow);
+	EnsureInsetSnapPreviewTimer(
+		AvisoRefreshHostWindow.load(std::memory_order_acquire),
+		this,
+		activeInsetWindow != nullptr && activeInsetWindow->SnapPreviewNeedsTimer(::GetTickCount64()));
+}
+
+bool CSMRRadar::TickInsetSnapPreview()
+{
+	if (IsShutdownRequested())
+		return false;
+	const std::uint64_t now = ::GetTickCount64();
+	for (const auto& display : appWindowDisplays)
+	{
+		if (!display.second)
+			continue;
+		const auto window = appWindows.find(display.first);
+		if (window == appWindows.end() || window->second == nullptr)
+			continue;
+		if (window->second->SnapPreviewNeedsTimer(now))
+		{
+			if (window->second->SnapPreviewIsAnimating(now))
+				RequestRefresh();
+			return true;
+		}
+	}
+	// One final paint removes the last faded pixel after the timer expires.
+	RequestRefresh();
+	return false;
 }
 
 void CSMRRadar::RecordRefreshPerformance(
