@@ -924,7 +924,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		(selectedLfpg != AvisoGeoJsonOverridePaths.end() && IsRegularFileNoThrow(fs::u8path(selectedLfpg->second))) ||
 		(CurrentConfig != nullptr && !VsmrAvisoOverrides::CustomSource(
 			*CurrentConfig, "LFPG", fs::u8path(DataPath)).empty());
-	if (!manualLfpgSource && IsAutomaticGroundLayoutLfpg(path, DataPath))
+	if (!manualLfpgSource && defaultSource == path &&
+		IsAutomaticGroundLayoutLfpg(path, DataPath))
 	{
 		// Keep the current AIRAC map as the base. Add only the bundled LVP
 		// groups missing upstream, before applying the controller's own edits.
