@@ -116,6 +116,8 @@ public:
 	// Claim mouse input over the painted runtime menu and modeless Control
 	// Center before a later-rendering plugin can activate covered objects.
 	bool HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, UINT message);
+	// Driven by a short-lived host-window timer while an inset snap cue animates.
+	bool TickInsetSnapPreview();
 
 private:
 	// These collaborators implement tightly coupled rendering or same-screen

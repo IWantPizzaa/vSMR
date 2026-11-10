@@ -77,6 +77,12 @@ bool customCursor; // True when the plugin-specific cursor theme is enabled.
 constexpr UINT_PTR kInsetWindowSubclassId = 0x56534D52u; // "VSMR"
 std::map<HWND, std::vector<CSMRRadar*>> gInsetWindowRadarScreens;
 std::map<HWND, CSMRRadar*> gInsetWindowActiveRadarScreen;
+struct InsetSnapPreviewTimer
+{
+	UINT_PTR id = 0;
+	CSMRRadar* radar = nullptr;
+};
+std::map<HWND, InsetSnapPreviewTimer> gInsetSnapPreviewTimers;
 UINT AvisoWorkerRefreshMessage()
 {
 	static const UINT message =
@@ -1016,6 +1022,7 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 		return ::DefSubclassProc(hwnd, uMsg, wParam, lParam);
 	if (uMsg == WM_NCDESTROY)
 	{
+		gInsetSnapPreviewTimers.erase(hwnd);
 		::RemoveWindowSubclass(hwnd, InsetWindowSubclassProc, kInsetWindowSubclassId);
 		gInsetWindowRadarScreens.erase(hwnd);
 		gInsetWindowActiveRadarScreen.erase(hwnd);
@@ -1067,6 +1074,31 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 			}
 		}
 		return 0;
+	}
+	if (uMsg == WM_TIMER)
+	{
+		const auto timer = gInsetSnapPreviewTimers.find(hwnd);
+		if (timer != gInsetSnapPreviewTimers.end() && timer->second.id == static_cast<UINT_PTR>(wParam))
+		{
+			const UINT_PTR timerId = timer->second.id;
+			CSMRRadar* owner = timer->second.radar;
+			bool keepTimer = false;
+			if (owner != nullptr)
+			{
+				try { keepTimer = owner->TickInsetSnapPreview(); }
+				catch (...) { Logger::info("Inset snap preview refresh failed"); }
+			}
+			if (!keepTimer)
+			{
+				const auto current = gInsetSnapPreviewTimers.find(hwnd);
+				if (current != gInsetSnapPreviewTimers.end() && current->second.id == timerId)
+				{
+					::KillTimer(hwnd, timerId);
+					gInsetSnapPreviewTimers.erase(current);
+				}
+			}
+			return 0;
+		}
 	}
 
 	switch (uMsg)
@@ -1188,10 +1220,53 @@ void EnsureInsetWindowProcHook(HWND hwnd, CSMRRadar* radarScreen)
 	gInsetWindowActiveRadarScreen[hwnd] = radarScreen;
 }
 
+void EnsureInsetSnapPreviewTimer(HWND hwnd, CSMRRadar* radarScreen, bool enabled)
+{
+	if (hwnd == nullptr || !::IsWindow(hwnd))
+		return;
+	const auto existing = gInsetSnapPreviewTimers.find(hwnd);
+	if (!enabled)
+	{
+		if (existing != gInsetSnapPreviewTimers.end())
+		{
+			if (existing->second.radar == radarScreen)
+			{
+				::KillTimer(hwnd, existing->second.id);
+				gInsetSnapPreviewTimers.erase(existing);
+			}
+		}
+		return;
+	}
+	if (radarScreen == nullptr)
+		return;
+	const auto active = gInsetWindowActiveRadarScreen.find(hwnd);
+	if (active == gInsetWindowActiveRadarScreen.end() || active->second != radarScreen)
+		return;
+	if (existing != gInsetSnapPreviewTimers.end())
+	{
+		if (existing->second.radar == radarScreen)
+			return;
+		::KillTimer(hwnd, existing->second.id);
+		gInsetSnapPreviewTimers.erase(existing);
+	}
+	const UINT_PTR timer = ::SetTimer(hwnd, 0, 33U, nullptr);
+	if (timer != 0)
+		gInsetSnapPreviewTimers.emplace(hwnd, InsetSnapPreviewTimer{timer, radarScreen});
+}
+
 void RemoveInsetWindowProcHooksForRadar(CSMRRadar* radarScreen)
 {
 	if (radarScreen == nullptr)
 		return;
+	for (auto it = gInsetSnapPreviewTimers.begin(); it != gInsetSnapPreviewTimers.end();)
+	{
+		if (it->second.radar == radarScreen)
+		{
+			if (::IsWindow(it->first)) ::KillTimer(it->first, it->second.id);
+			it = gInsetSnapPreviewTimers.erase(it);
+		}
+		else ++it;
+	}
 	for (auto it = gInsetWindowActiveRadarScreen.begin(); it != gInsetWindowActiveRadarScreen.end();)
 	{
 		if (it->second == radarScreen) it = gInsetWindowActiveRadarScreen.erase(it);
@@ -1228,6 +1303,9 @@ void RemoveInsetWindowProcHooksForRadar(CSMRRadar* radarScreen)
 
 void RestoreInsetWindowProcHooks()
 {
+	for (const auto& timer : gInsetSnapPreviewTimers)
+		if (::IsWindow(timer.first)) ::KillTimer(timer.first, timer.second.id);
+	gInsetSnapPreviewTimers.clear();
 	gInsetWindowActiveRadarScreen.clear();
 	for (auto it = gInsetWindowRadarScreens.begin(); it != gInsetWindowRadarScreens.end();)
 	{

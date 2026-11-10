@@ -17,6 +17,7 @@
 #include "integrations/VsidBridgeData.hpp"
 #include "integrations/ProxyBridgeSnapshot.hpp"
 #include "insets/TimerCountdownState.hpp"
+#include "insets/InsetSnapFeedback.hpp"
 #include "insets/ProxyTimerState.hpp"
 #include "insets/AvisoViewportCenter.hpp"
 #include "datalink/PdcLogonSync.hpp"
@@ -1812,6 +1813,44 @@ void TestWeatherInsetLayout()
 		"weather stays inside a host smaller than its preferred minimum");
 }
 
+void TestInsetSnapFeedback()
+{
+	using namespace VsmrInsetSnap;
+	Feedback cue;
+	constexpr std::uint64_t start = 1000;
+	cue.SetTarget(true, 1, start);
+	Expect(cue.CanSnap(start) && cue.Opacity(start) == 0.0f && cue.NeedsTimer(start),
+		"new edge arms snap while its blue cue begins transparent");
+	Expect(cue.Opacity(start + FadeMilliseconds / 2) > 0.0f &&
+		cue.Opacity(start + FadeMilliseconds / 2) < 1.0f &&
+		cue.Opacity(start + FadeMilliseconds) == 1.0f,
+		"snap cue eases into its full rectangle");
+	cue.SetTarget(true, 1, start + HoldMilliseconds - 1);
+	Expect(cue.CanSnap(start + HoldMilliseconds - 1),
+		"repeated drag callbacks at the same edge do not restart its dwell time");
+	Expect(!cue.CanSnap(start + HoldMilliseconds) && cue.Opacity(start + HoldMilliseconds) == 1.0f &&
+		cue.Opacity(start + HoldMilliseconds + FadeMilliseconds / 2) < 1.0f &&
+		cue.Opacity(start + HoldMilliseconds + FadeMilliseconds) == 0.0f,
+		"holding at an edge dismisses both snap and the cue with a reverse fade");
+	cue.SetTarget(true, 1, start + HoldMilliseconds + FadeMilliseconds + 1);
+	Expect(!cue.CanSnap(start + HoldMilliseconds + FadeMilliseconds + 1),
+		"remaining on the edge cannot rearm an expired snap");
+	cue.SetTarget(false, 0, start + HoldMilliseconds + FadeMilliseconds + 2);
+	cue.SetTarget(true, 1, start + HoldMilliseconds + FadeMilliseconds + 3);
+	Expect(cue.CanSnap(start + HoldMilliseconds + FadeMilliseconds + 3),
+		"leaving and reentering the edge permits a fresh snap");
+	cue.SetTarget(false, 0, start + HoldMilliseconds + FadeMilliseconds + 3 + FadeMilliseconds / 2);
+	Expect(!cue.CanSnap(start + HoldMilliseconds + FadeMilliseconds + 3 + FadeMilliseconds / 2) &&
+		cue.Opacity(start + HoldMilliseconds + FadeMilliseconds + 3 + FadeMilliseconds / 2) > 0.0f &&
+		cue.Opacity(start + HoldMilliseconds + FadeMilliseconds + 3 + FadeMilliseconds * 3 / 2) == 0.0f,
+		"leaving an edge fades out the current cue instead of snapping");
+	cue.SetTarget(true, 2, start + 2000);
+	Expect(cue.CanSnap(start + 2000), "another edge starts a new snap opportunity");
+	cue.Reset();
+	Expect(!cue.CanSnap(start + 2000) && !cue.NeedsTimer(start + 2000),
+		"ending the drag clears the cue and its refresh timer");
+}
+
 void TestSharedTimerCountdowns()
 {
 	TimerCountdownState session;
@@ -2123,6 +2162,7 @@ int wmain(int argc, wchar_t** argv)
 	TestSharedTimerCountdowns();
 	TestProxyProcesses(repositoryRoot);
 	TestWeatherInsetLayout();
+	TestInsetSnapFeedback();
 	TestRunwayVisibilityRules(repositoryRoot);
 	TestZoomDiagnostics();
 	for (const std::string& failure : RunPerformanceDiagnosticsTests())

@@ -144,6 +144,7 @@ bool CInsetWindow::BeginWindowMove(POINT Pt, const RECT* layoutBounds, bool requ
 	m_SnapPreviewValid = false;
 	m_SnapPreviewMode = AvisoLayoutMode::Floating;
 	m_SnapPreviewArea = { 0, 0, 0, 0 };
+	m_SnapFeedback.Reset();
 	m_Grip = true;
 	return true;
 }
@@ -300,10 +301,8 @@ bool CInsetWindow::UpdateWindowMove(POINT Pt, const RECT* layoutBounds)
 				snappedTop + frame.Height()
 			};
 		}
-		else
-		{
-			m_SnapPreviewArea = { 0, 0, 0, 0 };
-		}
+		// Keep the last target rectangle while its blue cue fades away.
+		m_SnapFeedback.SetTarget(m_SnapPreviewValid, static_cast<int>(m_SnapPreviewMode), ::GetTickCount64());
 		return true;
 	}
 
@@ -323,8 +322,8 @@ bool CInsetWindow::UpdateWindowMove(POINT Pt, const RECT* layoutBounds)
 	else
 	{
 		m_SnapPreviewMode = AvisoLayoutMode::Floating;
-		m_SnapPreviewArea = { 0, 0, 0, 0 };
 	}
+	m_SnapFeedback.SetTarget(m_SnapPreviewValid, static_cast<int>(m_SnapPreviewMode), ::GetTickCount64());
 	return true;
 }
 
@@ -334,7 +333,7 @@ bool CInsetWindow::EndWindowMove(POINT Pt, const RECT* layoutBounds)
 		return false;
 
 	UpdateWindowMove(Pt, layoutBounds);
-	if (m_WindowInteractionMoved && m_SnapPreviewValid)
+	if (m_WindowInteractionMoved && m_SnapPreviewValid && m_SnapFeedback.CanSnap(::GetTickCount64()))
 	{
 		m_AvisoLayoutMode = m_SnapPreviewMode;
 		m_Area = m_SnapPreviewArea;
@@ -348,6 +347,7 @@ bool CInsetWindow::EndWindowMove(POINT Pt, const RECT* layoutBounds)
 	m_SnapPreviewValid = false;
 	m_SnapPreviewMode = AvisoLayoutMode::Floating;
 	m_SnapPreviewArea = { 0, 0, 0, 0 };
+	m_SnapFeedback.Reset();
 	m_Grip = false;
 	VsmrAvisoWindowPlacement::Remember(*this);
 	return true;
@@ -367,6 +367,7 @@ bool CInsetWindow::BeginWindowResize(ResizeRegion region, POINT Pt, const RECT* 
 	m_WindowInteractionStartArea = m_Area;
 	m_WindowResizeStartFrame = GetWindowFrameRect();
 	m_SnapPreviewValid = false;
+	m_SnapFeedback.Reset();
 	m_Grip = true;
 	return true;
 }
@@ -557,13 +558,14 @@ void CInsetWindow::CancelWindowInteraction()
 	m_SnapPreviewValid = false;
 	m_SnapPreviewMode = AvisoLayoutMode::Floating;
 	m_SnapPreviewArea = { 0, 0, 0, 0 };
+	m_SnapFeedback.Reset();
 	m_Grip = false;
 }
 
 bool CInsetWindow::GetSnapPreviewRect(CRect& preview) const
 {
 	preview.SetRectEmpty();
-	if (!m_SnapPreviewValid)
+	if (m_SnapFeedback.Opacity(::GetTickCount64()) <= 0.0f)
 		return false;
 	preview = CRect(m_SnapPreviewArea);
 	if (UsesSizePreservingSnap())
@@ -574,7 +576,8 @@ bool CInsetWindow::GetSnapPreviewRect(CRect& preview) const
 
 void CInsetWindow::RenderSnapPreview(Gdiplus::Graphics& graphics) const
 {
-	if (!m_SnapPreviewValid)
+	const float opacity = m_SnapFeedback.Opacity(::GetTickCount64());
+	if (opacity <= 0.0f)
 		return;
 
 	CRect preview;
@@ -583,15 +586,34 @@ void CInsetWindow::RenderSnapPreview(Gdiplus::Graphics& graphics) const
 
 	const Gdiplus::GraphicsState state = graphics.Save();
 	graphics.SetSmoothingMode(Gdiplus::SmoothingModeNone);
-	Gdiplus::SolidBrush fill(Gdiplus::Color(64, 72, 169, 205));
-	Gdiplus::Pen outline(Gdiplus::Color(230, 135, 220, 238), 2.0f);
+	// A very small expansion accompanies the eased opacity on entry; the same
+	// motion runs backwards when the edge cue expires or the pointer leaves.
+	const float inset = (1.0f - opacity) * 0.012f;
+	const int left = preview.left + static_cast<int>(std::lround(preview.Width() * inset));
+	const int top = preview.top + static_cast<int>(std::lround(preview.Height() * inset));
+	const int right = preview.right - static_cast<int>(std::lround(preview.Width() * inset));
+	const int bottom = preview.bottom - static_cast<int>(std::lround(preview.Height() * inset));
+	const int width = (std::max)(1, right - left);
+	const int height = (std::max)(1, bottom - top);
+	Gdiplus::SolidBrush fill(Gdiplus::Color(static_cast<BYTE>(std::lround(64.0f * opacity)), 72, 169, 205));
+	Gdiplus::Pen outline(Gdiplus::Color(static_cast<BYTE>(std::lround(230.0f * opacity)), 135, 220, 238), 2.0f);
 	graphics.FillRectangle(
 		&fill,
-		Gdiplus::Rect(preview.left, preview.top, preview.Width(), preview.Height()));
+		Gdiplus::Rect(left, top, width, height));
 	graphics.DrawRectangle(
 		&outline,
-		Gdiplus::Rect(preview.left + 1, preview.top + 1, (std::max)(1, preview.Width() - 2), (std::max)(1, preview.Height() - 2)));
+		Gdiplus::Rect(left + 1, top + 1, (std::max)(1, width - 2), (std::max)(1, height - 2)));
 	graphics.Restore(state);
+}
+
+bool CInsetWindow::SnapPreviewNeedsTimer(std::uint64_t now) const noexcept
+{
+	return m_WindowMoveActive && m_SnapFeedback.NeedsTimer(now);
+}
+
+bool CInsetWindow::SnapPreviewIsAnimating(std::uint64_t now) const noexcept
+{
+	return m_WindowMoveActive && m_SnapFeedback.IsAnimating(now);
 }
 
 void CInsetWindow::ApplyAvisoLayoutBounds(const RECT* layoutBounds)
