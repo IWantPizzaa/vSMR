@@ -294,6 +294,12 @@ void VsmrControlCenterBridgeImpl::EvaluateAvisoHealth(
 			if (schemaSupported)
 			{
 				AvisoDocumentModel validationModel;
+				if (Owner != nullptr &&
+					!Owner->MergeAutomaticLfpgLvp(path, defaultSource, parsed, inputError))
+				{
+					Logger::info("Control Center LFPG LVP overlay skipped: " + inputError);
+					inputError.clear();
+				}
 				if (Owner != nullptr && !Owner->ApplyAvisoUserOverrides(path, parsed, inputError))
 				{
 					message = inputError;

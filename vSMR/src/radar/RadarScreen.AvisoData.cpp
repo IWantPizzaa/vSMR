@@ -745,6 +745,21 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 	return rememberResolvedPath("");
 }
 
+bool CSMRRadar::MergeAutomaticLfpgLvp(const std::string& path, const std::string& source,
+	rapidjson::Document& document, std::string& error) const
+{
+	error.clear();
+	const auto selected = AvisoGeoJsonOverridePaths.find("LFPG");
+	const bool manualSource =
+		(selected != AvisoGeoJsonOverridePaths.end() && IsRegularFileNoThrow(fs::u8path(selected->second))) ||
+		(CurrentConfig != nullptr && !VsmrAvisoOverrides::CustomSource(
+			*CurrentConfig, "LFPG", fs::u8path(DataPath)).empty());
+	if (manualSource || source != path || !IsAutomaticGroundLayoutLfpg(path, DataPath))
+		return true;
+	const auto bundled = BundledLfpgForOverlay(fs::u8path(DataPath) / "AVISO" / "LFPG.geojson", error);
+	return bundled && VsmrAvisoBundledGroups::MergeLfpgLvp(document, *bundled, error);
+}
+
 bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	const std::string& path,
 	bool retainPreviousOnFailure) try
@@ -919,21 +934,9 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 
 	const double validationStartMilliseconds = RefreshPerfNowMs();
 	std::string overrideError;
-	const auto selectedLfpg = AvisoGeoJsonOverridePaths.find("LFPG");
-	const bool manualLfpgSource =
-		(selectedLfpg != AvisoGeoJsonOverridePaths.end() && IsRegularFileNoThrow(fs::u8path(selectedLfpg->second))) ||
-		(CurrentConfig != nullptr && !VsmrAvisoOverrides::CustomSource(
-			*CurrentConfig, "LFPG", fs::u8path(DataPath)).empty());
-	if (!manualLfpgSource && defaultSource == path &&
-		IsAutomaticGroundLayoutLfpg(path, DataPath))
+	if (!MergeAutomaticLfpgLvp(path, defaultSource, parsedDocument, overrideError))
 	{
-		// Keep the current AIRAC map as the base. Add only the bundled LVP
-		// groups missing upstream, before applying the controller's own edits.
-		const auto bundled = BundledLfpgForOverlay(fs::u8path(DataPath) / "AVISO" / "LFPG.geojson", overrideError);
-		if (bundled && !VsmrAvisoBundledGroups::MergeLfpgLvp(parsedDocument, *bundled, overrideError))
-			Logger::info("LFPG LVP overlay skipped: " + overrideError);
-		else if (!bundled)
-			Logger::info("LFPG LVP overlay unavailable: " + overrideError);
+		Logger::info("LFPG LVP overlay skipped: " + overrideError);
 		overrideError.clear();
 	}
 	if (!ApplyAvisoUserOverrides(path, parsedDocument, overrideError))
