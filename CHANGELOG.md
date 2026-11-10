@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Prevent queued PDC login and poll requests from reaching Hoppie after disconnect, so they cannot prolong the server's callsign lock.
 - Trigger AVISO inset snapping from the inset frame borders, so the grab position in its title bar no longer affects the snap target.
 - Animate inset edge snap previews and dismiss the snap target when an inset is held against the same edge for 750 ms.
 - Open EuroScope's correlation chooser from stationary or moving uncorrelated tags before offering Assume/Handoff ([#40](https://github.com/IWantPizzaa/vSMR/issues/40)).
