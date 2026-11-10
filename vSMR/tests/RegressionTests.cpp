@@ -18,6 +18,7 @@
 #include "integrations/ProxyBridgeSnapshot.hpp"
 #include "insets/TimerCountdownState.hpp"
 #include "insets/InsetSnapFeedback.hpp"
+#include "insets/InsetSnapGeometry.hpp"
 #include "insets/ProxyTimerState.hpp"
 #include "insets/AvisoViewportCenter.hpp"
 #include "datalink/PdcLogonSync.hpp"
@@ -1851,6 +1852,28 @@ void TestInsetSnapFeedback()
 		"ending the drag clears the cue and its refresh timer");
 }
 
+void TestInsetSnapGeometry()
+{
+	using namespace VsmrInsetSnap;
+	constexpr Frame bounds{0, 0, 1200, 800};
+	constexpr int edge = 28;
+	constexpr int corner = 48;
+	Expect(EdgeForFrame({300, 200, 700, 500}, bounds, edge, corner) == Edge::None,
+		"AVISO stays floating while every frame edge is distant from the viewport");
+	Expect(EdgeForFrame({300, 20, 700, 320}, bounds, edge, corner) == Edge::Top &&
+		EdgeForFrame({300, 480, 700, 780}, bounds, edge, corner) == Edge::Bottom,
+		"AVISO top and bottom frame borders trigger snap independently of the grab point");
+	Expect(EdgeForFrame({20, 200, 420, 500}, bounds, edge, corner) == Edge::Left &&
+		EdgeForFrame({780, 200, 1180, 500}, bounds, edge, corner) == Edge::Right,
+		"AVISO side borders trigger snap independently of the grab point");
+	Expect(EdgeForFrame({40, 40, 440, 340}, bounds, edge, corner) == Edge::TopLeft &&
+		EdgeForFrame({760, 460, 1160, 760}, bounds, edge, corner) == Edge::BottomRight,
+		"AVISO frame corner proximity retains corner snap priority");
+	Expect(EdgeForFrame({0, 200, 1200, 500}, bounds, edge, corner) == Edge::Left &&
+		EdgeForFrame({15, 200, 1200, 500}, bounds, edge, corner) == Edge::Right,
+		"an inset near both sides chooses the closer frame border");
+}
+
 void TestSharedTimerCountdowns()
 {
 	TimerCountdownState session;
@@ -2163,6 +2186,7 @@ int wmain(int argc, wchar_t** argv)
 	TestProxyProcesses(repositoryRoot);
 	TestWeatherInsetLayout();
 	TestInsetSnapFeedback();
+	TestInsetSnapGeometry();
 	TestRunwayVisibilityRules(repositoryRoot);
 	TestZoomDiagnostics();
 	for (const std::string& failure : RunPerformanceDiagnosticsTests())

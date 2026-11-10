@@ -28,7 +28,7 @@ using VsmrInsetWindowInternal::ResizeAvisoCornerRectToPoint;
 using VsmrInsetWindowInternal::ResizeAvisoSplitRectToPoint;
 using VsmrInsetWindowInternal::ResizeRegionHasHorizontalEdge;
 using VsmrInsetWindowInternal::ResizeRegionHasVerticalEdge;
-using VsmrInsetWindowInternal::ResolveAvisoSnapTarget;
+using VsmrInsetWindowInternal::ResolveAvisoFrameSnapTarget;
 using VsmrInsetWindowInternal::TryParseInsetResizeObjectId;
 using VsmrInsetWindowInternal::kAvisoCornerSnapThresholdPx;
 using VsmrInsetWindowInternal::kAvisoMinLayoutHeight;
@@ -308,10 +308,9 @@ bool CInsetWindow::UpdateWindowMove(POINT Pt, const RECT* layoutBounds)
 
 	CRect previewArea;
 	AvisoLayoutMode previewMode = AvisoLayoutMode::Floating;
-	m_SnapPreviewValid = ResolveAvisoSnapTarget(
-		Pt,
+	m_SnapPreviewValid = ResolveAvisoFrameSnapTarget(
+		GetWindowFrameRect(),
 		bounds,
-		GetWindowFrameRect().Size(),
 		previewMode,
 		previewArea);
 	if (m_WindowInteractionMoved && m_SnapPreviewValid)
@@ -751,7 +750,7 @@ void CInsetWindow::ApplyAvisoLayoutBounds(const RECT* layoutBounds)
 	}
 }
 
-void CInsetWindow::SnapAvisoLayoutToPoint(POINT Pt, const RECT* layoutBounds)
+void CInsetWindow::SnapAvisoLayoutToFrame(const RECT* layoutBounds)
 {
 	CRect bounds = NormalizedAvisoLayoutBounds(layoutBounds);
 	if (bounds.IsRectEmpty())
@@ -762,7 +761,7 @@ void CInsetWindow::SnapAvisoLayoutToPoint(POINT Pt, const RECT* layoutBounds)
 
 	AvisoLayoutMode snappedMode = AvisoLayoutMode::Floating;
 	CRect snappedArea;
-	if (ResolveAvisoSnapTarget(Pt, bounds, GetWindowFrameRect().Size(), snappedMode, snappedArea))
+	if (ResolveAvisoFrameSnapTarget(GetWindowFrameRect(), bounds, snappedMode, snappedArea))
 	{
 		m_AvisoLayoutMode = snappedMode;
 		if (!UsesSizePreservingSnap())
@@ -1199,7 +1198,7 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 
 		m_Area = newPos;
 		if (Released)
-			SnapAvisoLayoutToPoint(Pt, layoutBounds);
+			SnapAvisoLayoutToFrame(layoutBounds);
 		else
 			ApplyAvisoLayoutBounds(layoutBounds);
 
