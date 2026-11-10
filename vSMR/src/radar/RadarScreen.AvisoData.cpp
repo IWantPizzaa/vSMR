@@ -8,6 +8,7 @@
 #include "radar/RadarScreenSupport.hpp"
 #include "insets/InsetWindow.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
+#include "aviso/AvisoBundledGroups.hpp"
 #include "aviso/AvisoOverrides.hpp"
 
 #include <cctype>
@@ -123,6 +124,47 @@ namespace
 		PushUniquePath(directories, pluginDirectory);
 
 		return directories;
+	}
+
+	bool IsAutomaticGroundLayoutLfpg(const std::string& path, const std::string& dataPath)
+	{
+		if (dataPath.empty()) return false;
+		const fs::path source = fs::u8path(path);
+		return ToUpperAscii(source.filename().u8string()) == "LFPG.GEOJSON" &&
+			ToUpperAscii(source.parent_path().filename().u8string()) == "GEOJSON" &&
+			VsmrAvisoOverrides::IsManagedSource(fs::u8path(dataPath), source) &&
+			ToUpperAscii(source.parent_path().parent_path().parent_path().lexically_normal().u8string()) ==
+				ToUpperAscii((fs::u8path(dataPath) / "UserData" / "France-Ground-Layouts").lexically_normal().u8string());
+	}
+
+	std::shared_ptr<const Document> BundledLfpgForOverlay(const fs::path& path, std::string& error)
+	{
+		static std::mutex cacheMutex;
+		static fs::path cachedPath;
+		static fs::file_time_type cachedWriteTime{};
+		static std::shared_ptr<const Document> cachedDocument;
+		std::lock_guard<std::mutex> guard(cacheMutex);
+		std::error_code ec;
+		const fs::file_time_type writeTime = fs::last_write_time(path, ec);
+		if (ec)
+		{
+			error = "Bundled LFPG AVISO is unavailable.";
+			return {};
+		}
+		if (cachedDocument && cachedPath == path && cachedWriteTime == writeTime)
+			return cachedDocument;
+		std::string json;
+		if (!AvisoDocumentModel::ReadBoundedSourceFile(path, json, error)) return {};
+		auto document = std::make_shared<Document>();
+		if (VsmrJson::ParseDocument(*document, json).HasParseError())
+		{
+			error = "Bundled LFPG AVISO is not valid JSON.";
+			return {};
+		}
+		cachedPath = path;
+		cachedWriteTime = writeTime;
+		cachedDocument = document;
+		return cachedDocument;
 	}
 
 	std::set<std::string> CollectAvisoAirportsInDirectory(const fs::path& searchDirectory)
@@ -877,6 +919,22 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 
 	const double validationStartMilliseconds = RefreshPerfNowMs();
 	std::string overrideError;
+	const auto selectedLfpg = AvisoGeoJsonOverridePaths.find("LFPG");
+	const bool manualLfpgSource =
+		(selectedLfpg != AvisoGeoJsonOverridePaths.end() && IsRegularFileNoThrow(fs::u8path(selectedLfpg->second))) ||
+		(CurrentConfig != nullptr && !VsmrAvisoOverrides::CustomSource(
+			*CurrentConfig, "LFPG", fs::u8path(DataPath)).empty());
+	if (!manualLfpgSource && IsAutomaticGroundLayoutLfpg(path, DataPath))
+	{
+		// Keep the current AIRAC map as the base. Add only the bundled LVP
+		// groups missing upstream, before applying the controller's own edits.
+		const auto bundled = BundledLfpgForOverlay(fs::u8path(DataPath) / "AVISO" / "LFPG.geojson", overrideError);
+		if (bundled && !VsmrAvisoBundledGroups::MergeLfpgLvp(parsedDocument, *bundled, overrideError))
+			Logger::info("LFPG LVP overlay skipped: " + overrideError);
+		else if (!bundled)
+			Logger::info("LFPG LVP overlay unavailable: " + overrideError);
+		overrideError.clear();
+	}
 	if (!ApplyAvisoUserOverrides(path, parsedDocument, overrideError))
 	{
 		Logger::info("AVISO user overrides failed: " + overrideError);

@@ -3,6 +3,7 @@
 
 #include "ConfigurationRegressionTests.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
+#include "aviso/AvisoBundledGroups.hpp"
 #include "aviso/AvisoPolygonOutline.hpp"
 #include "config/RuntimeConfig.hpp"
 #include "config/ProfileNormalization.hpp"
@@ -15,6 +16,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <sstream>
 
 namespace
@@ -524,19 +526,19 @@ namespace
 			if (airport == "LFPG")
 			{
 				bool east = false, west = false;
-				Expect(document["vsmr_groups"].Size() == 2U, "LFPG has two independent arrow groups");
+				Expect(document["vsmr_groups"].Size() == 6U, "LFPG has independent arrow and LVP groups");
 				for (const auto& group : document["vsmr_groups"].GetArray())
 				{
 					const std::string id = group["id"].GetString();
 					east = east || id == "ground-layout-east";
 					west = west || id == "ground-layout-west";
-					Expect(group["visible"].GetBool(), "LFPG arrow groups are available and initially visible");
+					Expect(group["visible"].GetBool(), "LFPG grouped geometry is initially visible");
 				}
 				Expect(east && west, "LFPG exposes East Arrows and West Arrows separately");
-				// The 18-airport refresh added the two named 60 m limit lines.
-				Expect(model.FeatureCount() == 1476U, "LFPG retains 1470 supplied features plus six grouped arrow features");
+				Expect(model.FeatureCount() == 1559U, "LFPG retains 1476 airport features and adds 83 LVP features");
 				bool eastLimit = false, westLimit = false;
 				int eastArrows = 0, westArrows = 0, ungroupedFeatures = 0;
+				std::map<std::string, int> lvpCounts;
 				for (const auto& feature : document["features"].GetArray())
 				{
 					const auto& properties = feature["properties"];
@@ -545,7 +547,9 @@ namespace
 					westLimit = westLimit || featureId == "LFPG-341594b8aadf72cf5869";
 					const auto& groups = properties["vsmr_group_ids"];
 					if (groups.Empty()) { ++ungroupedFeatures; continue; }
-					Expect(groups.Size() == 1U, "Each LFPG arrow belongs to only one direction group");
+					Expect(groups.Size() == 1U, "Each LFPG grouped feature belongs to one group");
+					const std::string groupId = groups[0].GetString();
+					if (groupId.rfind("lvp-", 0) == 0) { ++lvpCounts[groupId]; continue; }
 					Expect(properties.HasMember("geometry_role") &&
 						std::string(properties["geometry_role"].GetString()) == "directional_arrows",
 						"LFPG arrow groups do not hide unrelated airport geometry");
@@ -563,6 +567,12 @@ namespace
 				}
 				Expect(eastArrows == 89 && westArrows == 97 && ungroupedFeatures == 1470,
 					"LFPG preserves the original East/West arrow sets and ungrouped airport layout");
+				Expect(lvpCounts["lvp-critical-east"] == 10 && lvpCounts["lvp-critical-west"] == 10 &&
+					lvpCounts["lvp-loc-markers"] == 8 && lvpCounts["lvp-hp-cat1-cat3"] == 55,
+					"LFPG preserves all four supplied LVP geometry sets");
+				Expect(document["metadata"].HasMember("lvp_overlay") &&
+					document["metadata"]["lvp_overlay"]["version"].GetInt() == 5,
+					"LFPG retains the supplied LVP provenance and validation notes");
 				Expect(eastLimit && westLimit, "LFPG preserves both supplied East/West 60 m limit lines");
 				bool grassPaletteFound = false;
 				for (auto style = document["styles"].MemberBegin(); style != document["styles"].MemberEnd(); ++style)
@@ -670,6 +680,22 @@ namespace
 			"AVISO feature limit is enforced before DOM construction");
 		std::error_code cleanupError;
 		std::filesystem::remove(featureLimitPath, cleanupError);
+	}
+
+	void TestLfpgBundledOverlay()
+	{
+		rapidjson::Document remote, bundled;
+		remote.Parse(R"({"features":[{"id":"upstream","properties":{"name":"New AIRAC geometry"}}],"styles":{},"vsmr_groups":[]})");
+		bundled.Parse(R"({"vsmr_groups":[{"id":"lvp-critical-east"},{"id":"lvp-critical-west"},{"id":"lvp-loc-markers"},{"id":"lvp-hp-cat1-cat3"}],"styles":{"lvp":{"paint":{"stroke":"#ff0000"}}},"features":[{"id":"upstream","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-critical-east"]},"geometry":{"type":"Point","coordinates":[1,2]}},{"id":"west","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-critical-west"]},"geometry":{"type":"Point","coordinates":[2,3]}},{"id":"loc","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-loc-markers"]},"geometry":{"type":"Point","coordinates":[3,4]}},{"id":"hp","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-hp-cat1-cat3"]},"geometry":{"type":"Point","coordinates":[4,5]}}]})");
+		std::string error;
+		Expect(VsmrAvisoBundledGroups::MergeLfpgLvp(remote, bundled, error) &&
+			remote["features"].Size() == 4U && remote["vsmr_groups"].Size() == 4U &&
+			remote["styles"].MemberCount() == 1U &&
+			std::string(remote["features"][0]["properties"]["name"].GetString()) == "New AIRAC geometry",
+			"bundled LVP geometry supplements the current AIRAC without replacing matching upstream IDs");
+		Expect(VsmrAvisoBundledGroups::MergeLfpgLvp(remote, bundled, error) &&
+			remote["features"].Size() == 4U && remote["vsmr_groups"].Size() == 4U,
+			"loading LFPG LVP overlay repeatedly does not duplicate its features or groups");
 	}
 
 	void TestUnicodeResourcePaths(const std::filesystem::path& repositoryRoot)
@@ -790,6 +816,7 @@ std::vector<std::string> RunConfigurationRegressionTests(
 	TestProfiles(repositoryRoot);
 	TestIndependentProfileSelections();
 	TestAviso(repositoryRoot);
+	TestLfpgBundledOverlay();
 	TestUnicodeResourcePaths(repositoryRoot);
 	return Failures;
 }
