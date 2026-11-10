@@ -1,5 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "insets/InsetWindow.Internal.hpp"
+#include "insets/InsetSnapGeometry.hpp"
 #include "aviso/AvisoProjection.hpp"
 #include "radar/RadarScreen.hpp"
 #include "rendering/NorthIndicator.hpp"
@@ -372,47 +373,35 @@ namespace VsmrInsetWindowInternal
 		return CRect(left, top, left + width, top + height);
 	}
 
-	bool ResolveAvisoSnapTarget(
-		POINT point,
+	bool ResolveAvisoFrameSnapTarget(
+		const CRect& frame,
 		const CRect& bounds,
-		CSize cornerFrameSize,
 		AvisoLayoutMode& mode,
 		CRect& area)
 	{
-		if (bounds.IsRectEmpty())
+		using VsmrInsetSnap::Edge;
+		const Edge edge = VsmrInsetSnap::EdgeForFrame(
+			{frame.left, frame.top, frame.right, frame.bottom},
+			{bounds.left, bounds.top, bounds.right, bounds.bottom},
+			kAvisoSnapThresholdPx, kAvisoCornerSnapThresholdPx);
+		switch (edge)
+		{
+		case Edge::Left: mode = AvisoLayoutMode::SplitLeft; break;
+		case Edge::Right: mode = AvisoLayoutMode::SplitRight; break;
+		case Edge::Top: mode = AvisoLayoutMode::SplitTop; break;
+		case Edge::Bottom: mode = AvisoLayoutMode::SplitBottom; break;
+		case Edge::TopLeft: mode = AvisoLayoutMode::CornerTopLeft; break;
+		case Edge::TopRight: mode = AvisoLayoutMode::CornerTopRight; break;
+		case Edge::BottomLeft: mode = AvisoLayoutMode::CornerBottomLeft; break;
+		case Edge::BottomRight: mode = AvisoLayoutMode::CornerBottomRight; break;
+		case Edge::None:
+		default:
+			mode = AvisoLayoutMode::Floating;
+			area.SetRectEmpty();
 			return false;
-
-		const bool nearLeft = point.x <= bounds.left + kAvisoSnapThresholdPx;
-		const bool nearRight = point.x >= bounds.right - kAvisoSnapThresholdPx;
-		const bool nearTop = point.y <= bounds.top + kAvisoSnapThresholdPx;
-		const bool nearBottom = point.y >= bounds.bottom - kAvisoSnapThresholdPx;
-		const bool nearCornerLeft = point.x <= bounds.left + kAvisoCornerSnapThresholdPx;
-		const bool nearCornerRight = point.x >= bounds.right - kAvisoCornerSnapThresholdPx;
-		const bool nearCornerTop = point.y <= bounds.top + kAvisoCornerSnapThresholdPx;
-		const bool nearCornerBottom = point.y >= bounds.bottom - kAvisoCornerSnapThresholdPx;
-
-		mode = AvisoLayoutMode::Floating;
-		if (nearCornerLeft && nearCornerTop)
-			mode = AvisoLayoutMode::CornerTopLeft;
-		else if (nearCornerRight && nearCornerTop)
-			mode = AvisoLayoutMode::CornerTopRight;
-		else if (nearCornerLeft && nearCornerBottom)
-			mode = AvisoLayoutMode::CornerBottomLeft;
-		else if (nearCornerRight && nearCornerBottom)
-			mode = AvisoLayoutMode::CornerBottomRight;
-		else if (nearLeft)
-			mode = AvisoLayoutMode::SplitLeft;
-		else if (nearRight)
-			mode = AvisoLayoutMode::SplitRight;
-		else if (nearTop)
-			mode = AvisoLayoutMode::SplitTop;
-		else if (nearBottom)
-			mode = AvisoLayoutMode::SplitBottom;
-		else
-			return false;
-
+		}
 		area = IsAvisoCornerLayout(mode)
-			? AvisoCornerRectForFrameSize(mode, bounds, cornerFrameSize)
+			? AvisoCornerRectForFrameSize(mode, bounds, frame.Size())
 			: DefaultAvisoSplitRect(mode, bounds);
 		return !area.IsRectEmpty();
 	}
