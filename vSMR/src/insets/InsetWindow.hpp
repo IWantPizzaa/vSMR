@@ -124,7 +124,7 @@ public:
 	bool SnapPreviewNeedsTimer(std::uint64_t now) const noexcept;
 	bool SnapPreviewIsAnimating(std::uint64_t now) const noexcept;
 	void ApplyAvisoLayoutBounds(const RECT* layoutBounds);
-	void SnapAvisoLayoutToPoint(POINT Pt, const RECT* layoutBounds);
+	void SnapAvisoLayoutToFrame(const RECT* layoutBounds);
 	void UpdateAvisoScreenArea(HWND hwnd);
 	bool TryMapAvisoScreenPoint(POINT screenPoint, POINT& avisoPoint) const;
 	void BeginAvisoPan(POINT Pt);

@@ -73,10 +73,9 @@ namespace VsmrInsetWindowInternal
 		AvisoLayoutMode mode,
 		const CRect& bounds,
 		CSize requestedSize);
-	bool ResolveAvisoSnapTarget(
-		POINT point,
+	bool ResolveAvisoFrameSnapTarget(
+		const CRect& frame,
 		const CRect& bounds,
-		CSize cornerFrameSize,
 		AvisoLayoutMode& mode,
 		CRect& area);
 
