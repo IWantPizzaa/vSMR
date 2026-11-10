@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Show the bundled LFPG LVP styles and groups in the Control Center when using the automatic AIRAC map.
 - Add LFPG's four LVP geometry groups from the supplied local AVISO and retain them when the automatic France-Ground-Layouts AIRAC map is loaded.
 - Prevent queued PDC login and poll requests from reaching Hoppie after disconnect, so they cannot prolong the server's callsign lock.
 - Trigger AVISO inset snapping from the inset frame borders, so the grab position in its title bar no longer affects the snap target.

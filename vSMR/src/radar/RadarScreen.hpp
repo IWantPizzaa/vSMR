@@ -577,6 +577,8 @@ public:
 	std::string GetAvisoGeoJsonEditorPathForAirport(const std::string& airport) const;
 	bool ApplyAvisoUserOverrides(const std::string& path, rapidjson::Document& document,
 		std::string& error) const;
+	bool MergeAutomaticLfpgLvp(const std::string& path, const std::string& source,
+		rapidjson::Document& document, std::string& error) const;
 	std::string GetAvisoDefaultSource(const std::string& path, std::string& error) const;
 	std::string GetAvisoOverridesRevision(bool forceRefresh = false) const;
 	void SetAvisoGeoJsonOverrideForAirport(const std::string& airport, const std::string& path);
