@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Save a valid PDC login when leaving its Runtime Menu field, without requiring Enter.
 - Show the bundled LFPG LVP styles and groups in the Control Center when using the automatic AIRAC map.
 - Add LFPG's four LVP geometry groups from the supplied local AVISO and retain them when the automatic France-Ground-Layouts AIRAC map is loaded.
 - Prevent queued PDC login and poll requests from reaching Hoppie after disconnect, so they cannot prolong the server's callsign lock.
