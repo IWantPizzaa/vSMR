@@ -87,6 +87,8 @@
     <ClCompile Include="..\src\integrations\RampAgentBridgeClient.cpp" />
     <ClCompile Include="..\src\integrations\PluginBridgeReads.cpp" />
     <ClCompile Include="..\src\platform\windows\network\HttpHelper.cpp" />
+    <ClCompile Include="..\src\datalink\PinedeProtocol.cpp" />
+    <ClCompile Include="PinedeProtocolTests.cpp" />
     <ClCompile Include="..\src\updater\UpdaterVerification.cpp" />
     <ClCompile Include="..\src\updater\FileUpdateTransaction.cpp" />
     <ClCompile Include="..\src\updater\FileUpdater.cpp" />
@@ -145,7 +147,8 @@
     <ClInclude Include="..\src\aircraft\GroundState.hpp" />
     <ClInclude Include="..\src\aircraft\HoldingPoint.hpp" />
     <ClInclude Include="..\src\insets\AvisoViewportCenter.hpp" />
-    <ClInclude Include="..\src\datalink\PdcLogonSync.hpp" />
+    <ClInclude Include="..\src\datalink\PinedeProtocol.hpp" />
+    <ClInclude Include="PinedeProtocolTests.hpp" />
     <ClInclude Include="..\src\aviso\AvisoDocumentModel.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterBlitter.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterPipeline.hpp" />

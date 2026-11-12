@@ -200,45 +200,6 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		return;
 	}
 
-	if (FunctionId == RUNTIME_DATALINK_CALLSIGN_EDIT)
-	{
-		if (!hasItemString)
-			return;
-		const std::string callsign = NormalizeAirportInput(itemString);
-		const bool callsignValid =
-			!callsign.empty() &&
-			callsign.size() <= 16 &&
-			std::all_of(callsign.begin(), callsign.end(), [](unsigned char value)
-			{
-				return std::isalnum(value) != 0 || value == '_' || value == '-';
-			});
-		if (!callsignValid)
-		{
-			showConfigError("Enter a login callsign of 1 to 16 letters, numbers, underscores or hyphens.");
-			return;
-		}
-
-		CSMRPlugin* plugin = static_cast<CSMRPlugin*>(GetPlugIn());
-		if (plugin == nullptr)
-		{
-			showConfigError("The PDC service is unavailable.");
-			return;
-		}
-		std::string error;
-		if (!plugin->UpdateDatalinkControlSettings(
-			callsign,
-			"",
-			false,
-			error,
-			true))
-		{
-			showConfigError(error.c_str());
-			return;
-		}
-		RequestRefresh();
-		return;
-	}
-
 
 	if (FunctionId > RIMCAS_UPDATEFILTER && FunctionId <= RIMCAS_UPDATEFILTER3) {
 		int id = FunctionId - RIMCAS_UPDATEFILTER;
