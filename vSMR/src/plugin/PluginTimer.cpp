@@ -43,12 +43,6 @@ void CSMRPlugin::SynchronizeProxyRuntime()
 	if (!identity.empty()) ProxyTimers.Join(identity);
 	else if (ProxyTimers.Active()) { ProxyTimers.Close(); TimerCountdowns = {}; }
 
-	// Keep a Hoppie lease until old requests have drained after disconnect/error.
-	if (DatalinkSessionLease.Owned() && !HoppieConnected.load(std::memory_order_acquire) &&
-		!HoppieConnecting.load(std::memory_order_acquire)) {
-		const auto workers = GetWorkerQueueSnapshot();
-		if (!workers.networkQueued && !workers.networkInFlight) DatalinkSessionLease.Close();
-	}
 	std::map<std::string, std::string> revisions;
 	std::map<std::string, VsmrAvisoSharedConfig::Snapshot> roots;
 	for (auto* radar : RadarScreensOpened) {
@@ -131,7 +125,6 @@ void CSMRPlugin::OnTimerImpl(int Counter)
 		Logger::info(std::string(__FUNCSIG__));
 	BLINK = (::GetTickCount64() / 1000U) % 2U != 0; // common phase across same-PC instances
 	SynchronizeProxyRuntime();
-	SyncPdcLogonWithSelectedAirport();
 	VsmrRdf::OnTimer();
 
 	// Consume runway notifications after EuroScope's dialog callback has returned.

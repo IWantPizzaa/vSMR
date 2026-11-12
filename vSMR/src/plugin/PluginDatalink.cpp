@@ -33,32 +33,25 @@
 #include <new>
 #include <set>
 
-using VsmrDatalinkProtocol::BuildHoppieLoginFailureMessage;
-using VsmrDatalinkProtocol::EncodeUrlQueryComponent;
-using VsmrDatalinkProtocol::FormatPdcFrequency;
-using VsmrDatalinkProtocol::IsHoppieOkResponse;
-using VsmrDatalinkProtocol::PdcFrequencySelection;
-using VsmrDatalinkProtocol::ProtectHoppieCredential;
-using VsmrDatalinkProtocol::RedactSensitiveValue;
-using VsmrDatalinkProtocol::ResolvePdcNextFrequency;
-using VsmrDatalinkProtocol::UnprotectHoppieCredential;
 
-// CPDLC/Hoppie connection state shared between timer and worker threads.
-std::atomic<bool> HoppieConnected(false);
-std::atomic<bool> HoppieConnecting(false);
-std::atomic<bool> HoppiePollInProgress(false);
-std::atomic<unsigned long long> HoppieConnectionGeneration(0);
-std::atomic<unsigned long long> HoppiePollGeneration(0);
+// PDC connection state shared between timer and worker threads.
+std::atomic<bool> DatalinkConnected(false);
+std::atomic<bool> DatalinkConnecting(false);
+std::atomic<bool> DatalinkPollInProgress(false);
+std::atomic<unsigned long long> DatalinkConnectionGeneration(0);
+std::atomic<unsigned long long> DatalinkPollGeneration(0);
+std::atomic<unsigned long long> DatalinkStateRevision(0);
 std::atomic<bool> ConnectionMessage(false);
 std::atomic<bool> FailedToConnectMessage(false);
 
+// The PINEDE key, and the EuroScope callsign PINEDE knows this station by
 std::string logonCode = "";
 std::string logonCallsign;
+std::string DatalinkBaseUrl = VsmrPinede::kDefaultBaseUrl;
+std::string DatalinkStationFrequency;
 
 std::string DatalinkStatusMessage = "Disconnected.";
 std::mutex DatalinkControlMutex;
-
-const std::string baseUrlDatalink = "https://www.hoppie.nl/acars/system/connect.html";
 
 std::vector<std::string> AircraftDemandingClearance;
 std::vector<std::string> AircraftMessageSent;
@@ -67,12 +60,11 @@ std::vector<std::string> AircraftWilco;
 std::vector<std::string> AircraftStandby;
 std::set<std::string> AircraftDatalinkClearedCallsigns;
 std::set<std::string> AircraftDatalinkClearanceInFlightCallsigns;
+std::set<std::string> AircraftWilcoDismissed;
 
 std::map<std::string, AcarsMessage> PendingMessages;
 // Guards all mutable CPDLC message state used by worker threads.
 std::mutex DatalinkStateMutex;
-
-std::atomic<int> messageId(0);
 
 PluginSteadyClock::time_point DatalinkLastPollAt;
 
@@ -80,14 +72,38 @@ std::mutex ProfilesSourceMutex;
 std::string ActiveProfilesConfigPath;
 bool ActiveProfilesConfigPathClaimed = false;
 
-	const size_t HoppieResponseLimitBytes = 1024U * 1024U;
+	const size_t DatalinkResponseLimitBytes = 1024U * 1024U;
+
+	namespace
+	{
+		std::mutex DatalinkNoticesMutex;
+		std::deque<std::string> DatalinkNotices;
+	}
+
+	void QueueDatalinkNotice(const std::string& message)
+	{
+		std::lock_guard<std::mutex> guard(DatalinkNoticesMutex);
+		// a burst of failures must not flood the controller's message window
+		if (DatalinkNotices.size() < 20)
+			DatalinkNotices.push_back(message);
+	}
+
+	std::vector<std::string> TakeDatalinkNotices()
+	{
+		std::lock_guard<std::mutex> guard(DatalinkNoticesMutex);
+		std::vector<std::string> notices(DatalinkNotices.begin(), DatalinkNotices.end());
+		DatalinkNotices.clear();
+		return notices;
+	}
 
 	DatalinkCredentialsSnapshot SnapshotDatalinkCredentials()
 	{
 		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
 		DatalinkCredentialsSnapshot snapshot;
 		snapshot.callsign = logonCallsign;
-		snapshot.password = logonCode;
+		snapshot.key = logonCode;
+		snapshot.baseUrl = DatalinkBaseUrl;
+		snapshot.frequency = DatalinkStationFrequency;
 		return snapshot;
 	}
 
@@ -197,6 +213,7 @@ bool ActiveProfilesConfigPathClaimed = false;
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
 		AircraftDatalinkClearedCallsigns.clear();
 		AircraftDatalinkClearanceInFlightCallsigns.clear();
+		AircraftWilcoDismissed.clear();
 	}
 
 	bool ContainsCallsignUnlocked(const std::vector<std::string>& collection, const std::string& callsign)
@@ -343,73 +360,4 @@ bool ActiveProfilesConfigPathClaimed = false;
 			return candidates.front();
 
 		return std::filesystem::path("alias.txt");
-	}
-
-	bool SendDatalinkPacketMessage(const DatalinkMessageRequest& request)
-	{
-		if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
-			request.generation != HoppieConnectionGeneration.load(
-				std::memory_order_acquire))
-			return false;
-
-		std::string raw;
-		std::string url = baseUrlDatalink;
-		url += "?logon=";
-		url += EncodeUrlQueryComponent(request.credentials.password);
-		url += "&from=";
-		url += EncodeUrlQueryComponent(request.credentials.callsign);
-		url += "&to=";
-		url += EncodeUrlQueryComponent(request.destination);
-		url += "&type=";
-		url += EncodeUrlQueryComponent(request.type);
-		url += "&packet=";
-		url += EncodeUrlQueryComponent(request.packet);
-
-		raw.assign(VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
-			url,
-			6000,
-			&PluginShutdownRequested,
-			HoppieResponseLimitBytes));
-		if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
-			request.generation != HoppieConnectionGeneration.load(
-				std::memory_order_acquire))
-			return false;
-
-		if (!VsmrRadarUiSupport::startsWith("ok", raw.c_str()))
-			return false;
-
-		if (!request.callsign.empty())
-		{
-			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-			PendingMessages.erase(request.callsign);
-			RemoveCallsignUnlocked(AircraftMessage, request.callsign);
-			AddCallsignUniqueUnlocked(AircraftMessageSent, request.callsign);
-		}
-
-		return true;
-	}
-
-	bool QueueDatalinkMessage(
-		CSMRPlugin* plugin,
-		const std::string& destination,
-		const std::string& type,
-		const std::string& packet,
-		const std::string& callsign)
-	{
-		if (plugin == nullptr ||
-			PluginShutdownRequested.load(std::memory_order_acquire))
-		{
-			return false;
-		}
-		DatalinkMessageRequest request;
-		request.credentials = SnapshotDatalinkCredentials();
-		request.generation = HoppieConnectionGeneration.load(
-			std::memory_order_acquire);
-		request.destination = destination;
-		request.type = type;
-		request.packet = packet;
-		request.callsign = callsign;
-		return plugin->QueueNetworkJob([request]() {
-			(void)SendDatalinkPacketMessage(request);
-		});
 	}
