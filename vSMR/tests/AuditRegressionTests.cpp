@@ -446,11 +446,11 @@ std::vector<std::string> RunAuditRegressionTests()
 	}
 	check(cache.MeasurementCount() > beforeTransform, "graphics transform changes invalidate text measurements");
 
-	check(HttpHelper::IsValidHttpsUrl("https://www.hoppie.nl:443/acars/system/connect.html") &&
-		!HttpHelper::IsValidHttpsUrl("https://www.hoppie.nl:444/acars/system/connect.html"),
+	check(HttpHelper::IsValidHttpsUrl("https://api.cpdlc.vatsim.fr:443/v1/dcl/poll") &&
+		!HttpHelper::IsValidHttpsUrl("https://api.cpdlc.vatsim.fr:444/v1/dcl/poll"),
 		"integration HTTP enforces the default HTTPS port");
-	check(!HttpHelper::IsValidHttpsUrl("http://www.hoppie.nl/") &&
-		!HttpHelper::IsValidHttpsUrl("https://user@www.hoppie.nl/"), "integration HTTP rejects plaintext and userinfo");
+	check(!HttpHelper::IsValidHttpsUrl("http://api.cpdlc.vatsim.fr/") &&
+		!HttpHelper::IsValidHttpsUrl("https://user@api.cpdlc.vatsim.fr/"), "integration HTTP rejects plaintext and userinfo");
 
 	const auto hashPath = std::filesystem::temp_directory_path() /
 		("vsmr-audit-sha256-" + std::to_string(GetCurrentProcessId()) + ".txt");

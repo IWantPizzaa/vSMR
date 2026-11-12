@@ -24,17 +24,13 @@ namespace VsmrDatalinkProtocol
 		EuroScopePlugIn::CPlugIn* plugIn,
 		const EuroScopePlugIn::CFlightPlan& flightPlan);
 
-	bool ProtectHoppieCredential(
+	bool ProtectDatalinkSecret(
 		const std::string& plaintext,
 		std::string& protectedValue);
-	bool UnprotectHoppieCredential(
+	bool UnprotectDatalinkSecret(
 		const std::string& storedValue,
 		std::string& plaintext,
 		bool& wasPlaintext);
 	std::string EncodeUrlQueryComponent(const std::string& text);
-	bool IsHoppieOkResponse(const std::string& raw);
 	std::string RedactSensitiveValue(std::string text, const std::string& secret);
-	std::string BuildHoppieLoginFailureMessage(
-		const std::string& raw,
-		const std::string& password);
 }
