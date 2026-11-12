@@ -584,7 +584,14 @@ bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, 
 					return true;
 			}
 			else if (message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN)
-				FinishRuntimeInlineEdit(false);
+			{
+				const bool saveLogin = RuntimeInlineEditType == RuntimeInlineEditKind::PdcLogon;
+				FinishRuntimeInlineEdit(saveLogin);
+				// Keep an invalid login in the editor rather than passing the click
+				// through to another menu action and hiding the unfinished value.
+				if (RuntimeInlineEditType != RuntimeInlineEditKind::None)
+					return true;
+			}
 		}
 	}
 
@@ -738,8 +745,13 @@ bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, 
 
 void CSMRRadar::CloseRuntimeMenuPopup()
 {
-	if (RuntimeInlineEditType == RuntimeInlineEditKind::Preset ||
-		RuntimeInlineEditType == RuntimeInlineEditKind::PdcLogon)
+	if (RuntimeInlineEditType == RuntimeInlineEditKind::PdcLogon)
+	{
+		FinishRuntimeInlineEdit(true);
+		if (RuntimeInlineEditType != RuntimeInlineEditKind::None)
+			return;
+	}
+	else if (RuntimeInlineEditType == RuntimeInlineEditKind::Preset)
 		FinishRuntimeInlineEdit(false);
 	if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::None)
 		return;
