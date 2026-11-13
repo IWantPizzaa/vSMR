@@ -323,9 +323,11 @@ void pollMessages(DatalinkPollRequest request) {
 		return;
 	}
 
-	if (response.completed && response.status == 401)
+	if (response.completed && (response.status == 401 || response.status == 403))
 	{
-		// the key was withdrawn: polling again would only be refused again
+		// the key was withdrawn (401), or PINEDE refuses this station (403: its
+		// holder lost approval, or the callsign is not theirs on VATSIM): polling
+		// again would only be refused again, so stop and say why
 		DatalinkConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
 		DatalinkConnected.store(false, std::memory_order_release);
 		ClearDatalinkTagState();

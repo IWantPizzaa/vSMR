@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Stop polling and say why when PINEDE refuses the station: its holder is no longer an approved controller, or its callsign is not connected to VATSIM under the key holder's CID.
 - Replace Hoppie with PINEDE for PDC. Pilots now ask LFXX for their departure clearance whatever their airport, and PINEDE gives each request to the controller responsible for that airport: delivery first, then ramp, ground, tower, approach and centre top-down, as the vACC's Airport-Data files describe. A request offered to several equal stations goes to all of them until one acts on it. vSMR polls PINEDE every 10 seconds under the EuroScope callsign and sends the controller's answers; PINEDE builds and sends the clearance text in the same wording as before. The tag items, PDC and message dialogs, Standby, Voice and Reset keep their workflow. Requests and their state survive a EuroScope restart.
 - The runtime menu's PDC section shows the station callsign instead of an editable login, and asks for a PINEDE key instead of a Hoppie code. The saved Hoppie login and code are erased from the EuroScope settings on first start. Errors from PINEDE (key refused, request taken by another controller, server unreachable) appear in the PDC message window.
 - Save a valid PDC login when leaving its Runtime Menu field, without requiring Enter.
