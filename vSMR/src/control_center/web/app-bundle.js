@@ -765,6 +765,7 @@
         aliasFile: "C:\\EuroScope\\Alias\\alias.txt",
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
         rdfEnabled: true,
+        highlightArrivalStand: true,
         uiColorTheme: "night",
         weatherAllAirports: true,
         showNorthIndicator: true,
@@ -4994,6 +4995,7 @@
     $("#settingsKeepAvisoWindowPlacement").checked = settings.keepAvisoWindowPlacement !== false;
     $("#settingsWeatherAirports").value = settings.weatherAllAirports !== false ? "all" : "single";
     $("#settingsRdfEnabled").checked = settings.rdfEnabled !== false;
+    $("#settingsHighlightArrivalStand").checked = settings.highlightArrivalStand !== false;
     const uiColorTheme = settings.uiColorTheme === "day" ? "day" : "night";
     syncToggleButtons('[data-ui-color-theme]', uiColorTheme, "uiColorTheme");
     const avisoColorPalette = normalizeAvisoColorPalette(settings.avisoColorPalette);
@@ -5015,7 +5017,8 @@
       showNorthIndicator: $("#settingsShowNorthIndicator").checked,
       keepAvisoWindowPlacement: $("#settingsKeepAvisoWindowPlacement").checked,
       weatherAllAirports: $("#settingsWeatherAirports").value === "all",
-      rdfEnabled: $("#settingsRdfEnabled").checked
+      rdfEnabled: $("#settingsRdfEnabled").checked,
+      highlightArrivalStand: $("#settingsHighlightArrivalStand").checked
     });
     state.profiles.forEach(record => {
       record.data.targets ||= {};

@@ -64,6 +64,8 @@ public:
 	virtual ~CSMRPlugin();
 	const TimerCountdownState& GetTimerCountdowns() const { return TimerCountdowns; }
 	void ChangeTimerCountdown(int durationMinutes, bool reset);
+	bool HighlightArrivalStandEnabled() const { return HighlightArrivalStand; }
+	void SetStandOptions(bool highlight);
 
 	DatalinkControlState GetDatalinkControlState() const;
 	void SetPdcSelectedAirport(const std::string& airport);
@@ -134,6 +136,9 @@ public:
 	virtual CRadarScreen * OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated);
 
 private:
+	bool HighlightArrivalStand = true;
+	std::string SelectedStandCallsign;
+	void UpdateArrivalsAtStands();
 	PdcLogonSync PdcLogonSynchronization;
 	std::string PdcSelectedAirport;
 	void SyncPdcLogonWithSelectedAirport();

@@ -249,6 +249,7 @@ void CSMRPlugin::OnTimerImpl(int Counter)
 	const bool cdmChanged = VsmrCdm::Poll(bridgeTick);
 	const bool rampAgentChanged = VsmrRampAgent::Poll(bridgeTick);
 	VsmrPluginBridge::EndTick(*this);
+	UpdateArrivalsAtStands();
 	if (vsidChanged || cdmChanged || rampAgentChanged)
 		FlightDataRefreshPending.store(true, std::memory_order_release);
 

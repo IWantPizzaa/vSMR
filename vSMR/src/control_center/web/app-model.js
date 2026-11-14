@@ -760,6 +760,7 @@
         aliasFile: "C:\\EuroScope\\Alias\\alias.txt",
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
         rdfEnabled: true,
+        highlightArrivalStand: true,
         uiColorTheme: "night",
         weatherAllAirports: true,
         showNorthIndicator: true,
