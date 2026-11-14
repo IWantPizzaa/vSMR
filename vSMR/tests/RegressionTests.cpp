@@ -48,6 +48,7 @@
 #include "AuditRegressionTests.hpp"
 #include "PluginBridgeTests.hpp"
 #include "TagColorRuleTests.hpp"
+#include "StandArrivalTests.hpp"
 #include "UpdaterUrlPolicyTests.hpp"
 #include "updater/GroundLayoutAviso.hpp"
 #include "tags/TagDefinitionUtils.hpp"
@@ -2225,6 +2226,8 @@ int wmain(int argc, wchar_t** argv)
 	for (const std::string& failure : RunSharedRenderingBehaviorTests())
 		Expect(false, failure);
 	for (const std::string& failure : RunTagColorRuleTests())
+		Expect(false, failure);
+	for (const std::string& failure : RunStandArrivalTests())
 		Expect(false, failure);
 	for (const std::string& failure : RunUpdaterUrlPolicyTests())
 		Expect(false, failure);

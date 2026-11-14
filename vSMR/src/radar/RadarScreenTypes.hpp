@@ -94,6 +94,7 @@ namespace VsmrRadarTypes
 		std::wstring text;
 		std::wstring fontFamily = L"Arial";
 		std::string labelClass;
+		std::string standKey;
 		std::string textAnchor = "center";
 		Gdiplus::Color textColor = Gdiplus::Color(255, 128, 128, 128);
 		Gdiplus::Color haloColor = Gdiplus::Color(255, 0, 0, 0);
@@ -171,6 +172,7 @@ namespace VsmrRadarTypes
 		std::optional<VsmrAviso::BilinearProjection> preciseProjection;
 		std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
 		std::string colorPalette = "dark";
+		std::string highlightedStand;
 		// Only fully opaque backgrounds are baked in; translucent viewports keep
 		// their transparent overlay and composite over EuroScope on the UI thread.
 		Gdiplus::Color backgroundColor = Gdiplus::Color(0, 0, 0, 0);
