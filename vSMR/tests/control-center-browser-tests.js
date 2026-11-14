@@ -877,7 +877,8 @@
       "UI theme changes shared design colors without changing the AVISO palette");
 
     const rdfToggle = document.querySelector("#settingsRdfEnabled");
-    for (const [id, key] of [["settingsHighlightArrivalStand", "highlightArrivalStand"]]) {
+    for (const [id, key] of [["settingsHighlightArrivalStand", "highlightArrivalStand"],
+      ["settingsResetStatusAtStand", "resetStatusAtStand"]]) {
       const toggle = document.getElementById(id);
       expect(toggle?.checked, `${key} is available and enabled by default`);
       for (const enabled of [false, true]) {

@@ -143,6 +143,8 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 	const char* p_value = nullptr;
 	if ((p_value = GetDataFromSettings("HighlightArrivalStand")) != nullptr)
 		HighlightArrivalStand = strcmp(p_value, "0") != 0;
+	if ((p_value = GetDataFromSettings("ResetStatusAtStand")) != nullptr)
+		ResetStatusAtStand = strcmp(p_value, "0") != 0;
 	if ((p_value = GetDataFromSettings("rdf_enabled")) != NULL)
 		rdfEnabled = atoi(p_value) != 0;
 	VsmrRdf::Start(this, rdfEnabled);

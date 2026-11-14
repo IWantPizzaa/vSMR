@@ -3,6 +3,7 @@
 #include "plugin/PluginMetadata.hpp"
 #include "insets/TimerCountdownState.hpp"
 #include "insets/ProxyTimerState.hpp"
+#include "aircraft/StandArrival.hpp"
 #include "datalink/ProxyDatalinkView.hpp"
 #include "platform/windows/network/HttpHelper.hpp"
 #include "datalink/CpdlcSettingsDialog.hpp"
@@ -65,7 +66,8 @@ public:
 	const TimerCountdownState& GetTimerCountdowns() const { return TimerCountdowns; }
 	void ChangeTimerCountdown(int durationMinutes, bool reset);
 	bool HighlightArrivalStandEnabled() const { return HighlightArrivalStand; }
-	void SetStandOptions(bool highlight);
+	bool ResetStatusAtStandEnabled() const { return ResetStatusAtStand; }
+	void SetStandOptions(bool highlight, bool reset);
 
 	DatalinkControlState GetDatalinkControlState() const;
 	void SetPdcSelectedAirport(const std::string& airport);
@@ -108,6 +110,7 @@ public:
 
 	void OnFlightPlanControllerAssignedDataUpdate(CFlightPlan FlightPlan, int DataType) override;
 	void OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan) override;
+	void OnRadarTargetPositionUpdate(CRadarTarget RadarTarget) override;
 
 	//---OnFlightPlanDisconnect------------------------------------------
 
@@ -137,7 +140,20 @@ public:
 
 private:
 	bool HighlightArrivalStand = true;
+	bool ResetStatusAtStand = true;
 	std::string SelectedStandCallsign;
+	std::uint64_t StandReportSerial = 0;
+	std::map<std::string, std::uint64_t> StandPositionReports;
+	VsmrStand::ArrivalTracker StandArrivals;
+	struct StandCatalogEntry
+	{
+		std::shared_ptr<const std::vector<VsmrStand::Zone>> zones;
+		std::uint64_t nextAttempt = 0;
+		bool inFlight = false;
+	};
+	std::mutex StandCatalogMutex;
+	std::map<std::string, StandCatalogEntry> StandCatalogs;
+	void QueueStandCatalog(const std::string& airport, const std::string& dataPath);
 	void UpdateArrivalsAtStands();
 	PdcLogonSync PdcLogonSynchronization;
 	std::string PdcSelectedAirport;

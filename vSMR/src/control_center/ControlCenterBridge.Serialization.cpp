@@ -380,6 +380,7 @@ void VsmrControlCenterBridgeImpl::BuildSettings(
 	// set through .smr rdf on|off.
 	settings.AddMember("rdfEnabled", VsmrRdf::GetStatus().enabled, allocator);
 	settings.AddMember("highlightArrivalStand", plugin == nullptr || plugin->HighlightArrivalStandEnabled(), allocator);
+	settings.AddMember("resetStatusAtStand", plugin == nullptr || plugin->ResetStatusAtStandEnabled(), allocator);
 	AddString(settings, "uiColorTheme", Owner->GetUiColorTheme(), allocator);
 	AddString(settings, "avisoColorPalette", Owner->GetAvisoColorPalette(), allocator);
 	rapidjson::Value avisoColorPalettes(rapidjson::kArrayType);

@@ -361,6 +361,7 @@
     $("#settingsWeatherAirports").value = settings.weatherAllAirports !== false ? "all" : "single";
     $("#settingsRdfEnabled").checked = settings.rdfEnabled !== false;
     $("#settingsHighlightArrivalStand").checked = settings.highlightArrivalStand !== false;
+    $("#settingsResetStatusAtStand").checked = settings.resetStatusAtStand !== false;
     const uiColorTheme = settings.uiColorTheme === "day" ? "day" : "night";
     syncToggleButtons('[data-ui-color-theme]', uiColorTheme, "uiColorTheme");
     const avisoColorPalette = normalizeAvisoColorPalette(settings.avisoColorPalette);
@@ -383,7 +384,8 @@
       keepAvisoWindowPlacement: $("#settingsKeepAvisoWindowPlacement").checked,
       weatherAllAirports: $("#settingsWeatherAirports").value === "all",
       rdfEnabled: $("#settingsRdfEnabled").checked,
-      highlightArrivalStand: $("#settingsHighlightArrivalStand").checked
+      highlightArrivalStand: $("#settingsHighlightArrivalStand").checked,
+      resetStatusAtStand: $("#settingsResetStatusAtStand").checked
     });
     state.profiles.forEach(record => {
       record.data.targets ||= {};
