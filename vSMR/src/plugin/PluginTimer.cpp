@@ -10,6 +10,7 @@
 #include "insets/InsetWindow.hpp"
 #include "integrations/CdmBridgeClient.hpp"
 #include "integrations/PluginBridgeClient.hpp"
+#include "integrations/SmartGroundIntegration.hpp"
 #include "integrations/RampAgentBridgeClient.hpp"
 #include "integrations/VsidBridgeClient.hpp"
 #include "radar/RadarScreen.Registry.hpp"
@@ -109,6 +110,8 @@ void CSMRPlugin::OnTimer(int Counter)
 	SynchronizeProxyRuntime();
 	SyncPdcLogonWithControllerPosition();
 	VsmrRdf::OnTimer();
+	if (VsmrSmartGroundBridge::Advance())
+		FlightDataRefreshPending.store(true, std::memory_order_release);
 
 	// Consume runway notifications after EuroScope's dialog callback has returned.
 	// Coalesce notifications and read the latest committed state for every ASR;

@@ -1,0 +1,1321 @@
+{
+  "version": 1,
+  "airport": "LFPG",
+  "dataSha256": "4597cfcb70d555ca801427a378d7f8fca297e55677d3062faed0c1718ed5b9c5",
+  "reviewDate": "2026-11-13",
+  "sources": [
+    {
+      "id": "sia-lfpg-ad2-20261029",
+      "title": "SIA LFPG AD 2.20, édition AIRAC 29 OCT 2026",
+      "url": "https://www.sia.aviation-civile.gouv.fr/media/dvd/eAIP_29_OCT_2026/FRANCE/AIRAC-2026-10-29/html/eAIP/FR-AD-2.LFPG-fr-FR.html",
+      "effectiveDate": "2026-10-29",
+      "file": "data-sources/operations/lfpg-ad2-20261029.html",
+      "sha256": "33b7c3c08f6e4ea81676a8a43411c1c1bffba1a39666f6c4777e456fca379ab7"
+    },
+    {
+      "id": "sia-lfpg-forbidden-turn-map-20261029",
+      "title": "SIA LFPG AD2.20.3.3.2.4.3 - carte des virages interdits les plus dangereux",
+      "url": "https://www.sia.aviation-civile.gouv.fr/media/dvd/eAIP_29_OCT_2026/FRANCE/AIRAC-2026-10-29/html/eAIP/Documents_AIP/MIA/AD/LFPG/viragedangereux_1025.png",
+      "file": "data-sources/aircraft/viragedangereux_1025.png",
+      "sha256": "4fe1684c38088e9b171831182d33824a8c9d967e3c7bb2e7cd296eb77f0d2f7b",
+      "effectiveDate": "2026-10-29",
+      "capturedOn": "2026-11-13"
+    },
+    {
+      "id": "sia-lfpg-unmarked-turn-figure-20261029",
+      "title": "SIA LFPG AD2.20.3.3.2.4.2 - presence ou absence de ligne axiale courbe",
+      "url": "https://www.sia.aviation-civile.gouv.fr/media/dvd/eAIP_29_OCT_2026/FRANCE/AIRAC-2026-10-29/html/eAIP/Documents_AIP/MIA/AD/LFPG/LFPG.20_croquis_virages_interdits.png",
+      "file": "data-sources/aircraft/LFPG.20_croquis_virages_interdits.png",
+      "sha256": "d1e190de5ba79f0f4fa4634e4586c6da2b63750efdb8cfb14c74c40996c8178c",
+      "effectiveDate": "2026-10-29",
+      "capturedOn": "2026-11-13"
+    }
+  ],
+  "edgeRules": [],
+  "turnRules": [
+    {
+      "id": "aircraft-turn:MD2-D:000",
+      "viaNodeId": "osm:1690796501",
+      "fromEdgeId": "osm:222939612:0",
+      "toEdgeId": "osm:156840791:43",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2 vers D et D vers MD2 interdits au croisement non marque ; la continuation MD2/D5 et les raccordements courbes distincts sont conserves.",
+      "mappingGroup": "MD2-D"
+    },
+    {
+      "id": "aircraft-turn:MD2-D:001",
+      "viaNodeId": "osm:1690796501",
+      "fromEdgeId": "osm:156840791:43",
+      "toEdgeId": "osm:222939612:0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2 vers D et D vers MD2 interdits au croisement non marque ; la continuation MD2/D5 et les raccordements courbes distincts sont conserves.",
+      "mappingGroup": "MD2-D"
+    },
+    {
+      "id": "aircraft-turn:MD2-D:002",
+      "viaNodeId": "osm:1690796501",
+      "fromEdgeId": "osm:222939612:0",
+      "toEdgeId": "osm:156840791:44",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2 vers D et D vers MD2 interdits au croisement non marque ; la continuation MD2/D5 et les raccordements courbes distincts sont conserves.",
+      "mappingGroup": "MD2-D"
+    },
+    {
+      "id": "aircraft-turn:MD2-D:003",
+      "viaNodeId": "osm:1690796501",
+      "fromEdgeId": "osm:156840791:44",
+      "toEdgeId": "osm:222939612:0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2 vers D et D vers MD2 interdits au croisement non marque ; la continuation MD2/D5 et les raccordements courbes distincts sont conserves.",
+      "mappingGroup": "MD2-D"
+    },
+    {
+      "id": "aircraft-turn:MD1-B:004",
+      "viaNodeId": "intersection:27",
+      "fromEdgeId": "osm:156840762:9:part0",
+      "toEdgeId": "osm:156840795:38:part1",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/B interdits au croisement ; les deux lignes sources restent franchissables dans leur propre continuite.",
+      "mappingGroup": "MD1-B"
+    },
+    {
+      "id": "aircraft-turn:MD1-B:005",
+      "viaNodeId": "intersection:27",
+      "fromEdgeId": "osm:156840795:38:part1",
+      "toEdgeId": "osm:156840762:9:part0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/B interdits au croisement ; les deux lignes sources restent franchissables dans leur propre continuite.",
+      "mappingGroup": "MD1-B"
+    },
+    {
+      "id": "aircraft-turn:MD1-B:006",
+      "viaNodeId": "intersection:27",
+      "fromEdgeId": "osm:156840762:9:part0",
+      "toEdgeId": "osm:156840795:38:part2",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/B interdits au croisement ; les deux lignes sources restent franchissables dans leur propre continuite.",
+      "mappingGroup": "MD1-B"
+    },
+    {
+      "id": "aircraft-turn:MD1-B:007",
+      "viaNodeId": "intersection:27",
+      "fromEdgeId": "osm:156840795:38:part2",
+      "toEdgeId": "osm:156840762:9:part0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/B interdits au croisement ; les deux lignes sources restent franchissables dans leur propre continuite.",
+      "mappingGroup": "MD1-B"
+    },
+    {
+      "id": "aircraft-turn:MD1-B:008",
+      "viaNodeId": "intersection:27",
+      "fromEdgeId": "osm:156840762:9:part1",
+      "toEdgeId": "osm:156840795:38:part1",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/B interdits au croisement ; les deux lignes sources restent franchissables dans leur propre continuite.",
+      "mappingGroup": "MD1-B"
+    },
+    {
+      "id": "aircraft-turn:MD1-B:009",
+      "viaNodeId": "intersection:27",
+      "fromEdgeId": "osm:156840795:38:part1",
+      "toEdgeId": "osm:156840762:9:part1",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/B interdits au croisement ; les deux lignes sources restent franchissables dans leur propre continuite.",
+      "mappingGroup": "MD1-B"
+    },
+    {
+      "id": "aircraft-turn:MD1-B:010",
+      "viaNodeId": "intersection:27",
+      "fromEdgeId": "osm:156840762:9:part1",
+      "toEdgeId": "osm:156840795:38:part2",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/B interdits au croisement ; les deux lignes sources restent franchissables dans leur propre continuite.",
+      "mappingGroup": "MD1-B"
+    },
+    {
+      "id": "aircraft-turn:MD1-B:011",
+      "viaNodeId": "intersection:27",
+      "fromEdgeId": "osm:156840795:38:part2",
+      "toEdgeId": "osm:156840762:9:part1",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/B interdits au croisement ; les deux lignes sources restent franchissables dans leur propre continuite.",
+      "mappingGroup": "MD1-B"
+    },
+    {
+      "id": "aircraft-turn:MD2-B:012",
+      "viaNodeId": "intersection:29",
+      "fromEdgeId": "osm:222939612:3:part0",
+      "toEdgeId": "osm:156840795:38:part0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2/B interdits au croisement non marque.",
+      "mappingGroup": "MD2-B"
+    },
+    {
+      "id": "aircraft-turn:MD2-B:013",
+      "viaNodeId": "intersection:29",
+      "fromEdgeId": "osm:156840795:38:part0",
+      "toEdgeId": "osm:222939612:3:part0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2/B interdits au croisement non marque.",
+      "mappingGroup": "MD2-B"
+    },
+    {
+      "id": "aircraft-turn:MD2-B:014",
+      "viaNodeId": "intersection:29",
+      "fromEdgeId": "osm:222939612:3:part0",
+      "toEdgeId": "osm:156840795:38:part1",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2/B interdits au croisement non marque.",
+      "mappingGroup": "MD2-B"
+    },
+    {
+      "id": "aircraft-turn:MD2-B:015",
+      "viaNodeId": "intersection:29",
+      "fromEdgeId": "osm:156840795:38:part1",
+      "toEdgeId": "osm:222939612:3:part0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2/B interdits au croisement non marque.",
+      "mappingGroup": "MD2-B"
+    },
+    {
+      "id": "aircraft-turn:MD2-B:016",
+      "viaNodeId": "intersection:29",
+      "fromEdgeId": "osm:222939612:3:part1",
+      "toEdgeId": "osm:156840795:38:part0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2/B interdits au croisement non marque.",
+      "mappingGroup": "MD2-B"
+    },
+    {
+      "id": "aircraft-turn:MD2-B:017",
+      "viaNodeId": "intersection:29",
+      "fromEdgeId": "osm:156840795:38:part0",
+      "toEdgeId": "osm:222939612:3:part1",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2/B interdits au croisement non marque.",
+      "mappingGroup": "MD2-B"
+    },
+    {
+      "id": "aircraft-turn:MD2-B:018",
+      "viaNodeId": "intersection:29",
+      "fromEdgeId": "osm:222939612:3:part1",
+      "toEdgeId": "osm:156840795:38:part1",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2/B interdits au croisement non marque.",
+      "mappingGroup": "MD2-B"
+    },
+    {
+      "id": "aircraft-turn:MD2-B:019",
+      "viaNodeId": "intersection:29",
+      "fromEdgeId": "osm:156840795:38:part1",
+      "toEdgeId": "osm:222939612:3:part1",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2/B interdits au croisement non marque.",
+      "mappingGroup": "MD2-B"
+    },
+    {
+      "id": "aircraft-turn:MD2-M:020",
+      "viaNodeId": "osm:1690901700",
+      "fromEdgeId": "osm:222939599:0:part1",
+      "toEdgeId": "osm:156849409:0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2/M interdits. Le court prolongement sud de MD2 porte le nom BM5 dans OSM ; seule cette transition terminale est concernee, pas toute BM5.",
+      "mappingGroup": "MD2-M"
+    },
+    {
+      "id": "aircraft-turn:MD2-M:021",
+      "viaNodeId": "osm:1690901700",
+      "fromEdgeId": "osm:156849409:0",
+      "toEdgeId": "osm:222939599:0:part1",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2/M interdits. Le court prolongement sud de MD2 porte le nom BM5 dans OSM ; seule cette transition terminale est concernee, pas toute BM5.",
+      "mappingGroup": "MD2-M"
+    },
+    {
+      "id": "aircraft-turn:MD2-M:022",
+      "viaNodeId": "osm:1690901700",
+      "fromEdgeId": "osm:222939599:0:part1",
+      "toEdgeId": "osm:222939611:0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2/M interdits. Le court prolongement sud de MD2 porte le nom BM5 dans OSM ; seule cette transition terminale est concernee, pas toute BM5.",
+      "mappingGroup": "MD2-M"
+    },
+    {
+      "id": "aircraft-turn:MD2-M:023",
+      "viaNodeId": "osm:1690901700",
+      "fromEdgeId": "osm:222939611:0",
+      "toEdgeId": "osm:222939599:0:part1",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD2/M interdits. Le court prolongement sud de MD2 porte le nom BM5 dans OSM ; seule cette transition terminale est concernee, pas toute BM5.",
+      "mappingGroup": "MD2-M"
+    },
+    {
+      "id": "aircraft-turn:MD1-BM6:024",
+      "viaNodeId": "osm:1690902025",
+      "fromEdgeId": "osm:156840762:4",
+      "toEdgeId": "osm:156849441:5",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/BM6 interdits au croisement des deux axes sources.",
+      "mappingGroup": "MD1-BM6"
+    },
+    {
+      "id": "aircraft-turn:MD1-BM6:025",
+      "viaNodeId": "osm:1690902025",
+      "fromEdgeId": "osm:156849441:5",
+      "toEdgeId": "osm:156840762:4",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/BM6 interdits au croisement des deux axes sources.",
+      "mappingGroup": "MD1-BM6"
+    },
+    {
+      "id": "aircraft-turn:MD1-BM6:026",
+      "viaNodeId": "osm:1690902025",
+      "fromEdgeId": "osm:156840762:4",
+      "toEdgeId": "osm:156849441:6",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/BM6 interdits au croisement des deux axes sources.",
+      "mappingGroup": "MD1-BM6"
+    },
+    {
+      "id": "aircraft-turn:MD1-BM6:027",
+      "viaNodeId": "osm:1690902025",
+      "fromEdgeId": "osm:156849441:6",
+      "toEdgeId": "osm:156840762:4",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/BM6 interdits au croisement des deux axes sources.",
+      "mappingGroup": "MD1-BM6"
+    },
+    {
+      "id": "aircraft-turn:MD1-BM6:028",
+      "viaNodeId": "osm:1690902025",
+      "fromEdgeId": "osm:156840762:5",
+      "toEdgeId": "osm:156849441:5",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/BM6 interdits au croisement des deux axes sources.",
+      "mappingGroup": "MD1-BM6"
+    },
+    {
+      "id": "aircraft-turn:MD1-BM6:029",
+      "viaNodeId": "osm:1690902025",
+      "fromEdgeId": "osm:156849441:5",
+      "toEdgeId": "osm:156840762:5",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/BM6 interdits au croisement des deux axes sources.",
+      "mappingGroup": "MD1-BM6"
+    },
+    {
+      "id": "aircraft-turn:MD1-BM6:030",
+      "viaNodeId": "osm:1690902025",
+      "fromEdgeId": "osm:156840762:5",
+      "toEdgeId": "osm:156849441:6",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/BM6 interdits au croisement des deux axes sources.",
+      "mappingGroup": "MD1-BM6"
+    },
+    {
+      "id": "aircraft-turn:MD1-BM6:031",
+      "viaNodeId": "osm:1690902025",
+      "fromEdgeId": "osm:156849441:6",
+      "toEdgeId": "osm:156840762:5",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs MD1/BM6 interdits au croisement des deux axes sources.",
+      "mappingGroup": "MD1-BM6"
+    },
+    {
+      "id": "aircraft-turn:BD7-BD8:032",
+      "viaNodeId": "osm:1690795982",
+      "fromEdgeId": "osm:156840739:7",
+      "toEdgeId": "osm:222939638:2",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs BD7/BD8 interdits au croisement ; les courbes propres de chaque raccordement restent utilisables.",
+      "mappingGroup": "BD7-BD8"
+    },
+    {
+      "id": "aircraft-turn:BD7-BD8:033",
+      "viaNodeId": "osm:1690795982",
+      "fromEdgeId": "osm:222939638:2",
+      "toEdgeId": "osm:156840739:7",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs BD7/BD8 interdits au croisement ; les courbes propres de chaque raccordement restent utilisables.",
+      "mappingGroup": "BD7-BD8"
+    },
+    {
+      "id": "aircraft-turn:BD7-BD8:034",
+      "viaNodeId": "osm:1690795982",
+      "fromEdgeId": "osm:156840739:7",
+      "toEdgeId": "osm:222939638:3",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs BD7/BD8 interdits au croisement ; les courbes propres de chaque raccordement restent utilisables.",
+      "mappingGroup": "BD7-BD8"
+    },
+    {
+      "id": "aircraft-turn:BD7-BD8:035",
+      "viaNodeId": "osm:1690795982",
+      "fromEdgeId": "osm:222939638:3",
+      "toEdgeId": "osm:156840739:7",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs BD7/BD8 interdits au croisement ; les courbes propres de chaque raccordement restent utilisables.",
+      "mappingGroup": "BD7-BD8"
+    },
+    {
+      "id": "aircraft-turn:BD7-BD8:036",
+      "viaNodeId": "osm:1690795982",
+      "fromEdgeId": "osm:156840739:8",
+      "toEdgeId": "osm:222939638:2",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs BD7/BD8 interdits au croisement ; les courbes propres de chaque raccordement restent utilisables.",
+      "mappingGroup": "BD7-BD8"
+    },
+    {
+      "id": "aircraft-turn:BD7-BD8:037",
+      "viaNodeId": "osm:1690795982",
+      "fromEdgeId": "osm:222939638:2",
+      "toEdgeId": "osm:156840739:8",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs BD7/BD8 interdits au croisement ; les courbes propres de chaque raccordement restent utilisables.",
+      "mappingGroup": "BD7-BD8"
+    },
+    {
+      "id": "aircraft-turn:BD7-BD8:038",
+      "viaNodeId": "osm:1690795982",
+      "fromEdgeId": "osm:156840739:8",
+      "toEdgeId": "osm:222939638:3",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs BD7/BD8 interdits au croisement ; les courbes propres de chaque raccordement restent utilisables.",
+      "mappingGroup": "BD7-BD8"
+    },
+    {
+      "id": "aircraft-turn:BD7-BD8:039",
+      "viaNodeId": "osm:1690795982",
+      "fromEdgeId": "osm:222939638:3",
+      "toEdgeId": "osm:156840739:8",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs BD7/BD8 interdits au croisement ; les courbes propres de chaque raccordement restent utilisables.",
+      "mappingGroup": "BD7-BD8"
+    },
+    {
+      "id": "aircraft-turn:B-A-west:040",
+      "viaNodeId": "osm:1690796506",
+      "fromEdgeId": "osm:156840795:49",
+      "toEdgeId": "osm:157180716:0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Branche B/A en retour de cap interdite au carrefour occidental du Terminal 1 ; la continuation tangentielle vers B est conservee.",
+      "mappingGroup": "B-A-west"
+    },
+    {
+      "id": "aircraft-turn:B-A-west:041",
+      "viaNodeId": "osm:1690796506",
+      "fromEdgeId": "osm:157180716:0",
+      "toEdgeId": "osm:156840795:49",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Branche B/A en retour de cap interdite au carrefour occidental du Terminal 1 ; la continuation tangentielle vers B est conservee.",
+      "mappingGroup": "B-A-west"
+    },
+    {
+      "id": "aircraft-turn:A-B-east:042",
+      "viaNodeId": "osm:1279879806",
+      "fromEdgeId": "osm:112636526:56",
+      "toEdgeId": "osm:156840795:55",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Branche A/B en retour de cap interdite au carrefour oriental du Terminal 1 ; la continuation tangentielle vers B ouest est conservee.",
+      "mappingGroup": "A-B-east"
+    },
+    {
+      "id": "aircraft-turn:A-B-east:043",
+      "viaNodeId": "osm:1279879806",
+      "fromEdgeId": "osm:156840795:55",
+      "toEdgeId": "osm:112636526:56",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Branche A/B en retour de cap interdite au carrefour oriental du Terminal 1 ; la continuation tangentielle vers B ouest est conservee.",
+      "mappingGroup": "A-B-east"
+    },
+    {
+      "id": "aircraft-turn:Y4-QD1:044",
+      "viaNodeId": "osm:8949536314",
+      "fromEdgeId": "osm:967374627:0",
+      "toEdgeId": "osm:967374610:0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virage Y4 vers QD1 interdit dans ce sens. Le prolongement Y4 est non nomme et la courbe QD1 porte le nom Q dans OSM.",
+      "mappingGroup": "Y4-QD1"
+    },
+    {
+      "id": "aircraft-turn:FN2-F:045",
+      "viaNodeId": "osm:1712613144",
+      "fromEdgeId": "osm:222934041:0",
+      "toEdgeId": "osm:172796083:13",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN2/F interdits ; la continuation E/FN2 et les courbes marquees distinctes restent disponibles.",
+      "mappingGroup": "FN2-F"
+    },
+    {
+      "id": "aircraft-turn:FN2-F:046",
+      "viaNodeId": "osm:1712613144",
+      "fromEdgeId": "osm:172796083:13",
+      "toEdgeId": "osm:222934041:0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN2/F interdits ; la continuation E/FN2 et les courbes marquees distinctes restent disponibles.",
+      "mappingGroup": "FN2-F"
+    },
+    {
+      "id": "aircraft-turn:FN2-F:047",
+      "viaNodeId": "osm:1712613144",
+      "fromEdgeId": "osm:222934041:0",
+      "toEdgeId": "osm:172796083:14",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN2/F interdits ; la continuation E/FN2 et les courbes marquees distinctes restent disponibles.",
+      "mappingGroup": "FN2-F"
+    },
+    {
+      "id": "aircraft-turn:FN2-F:048",
+      "viaNodeId": "osm:1712613144",
+      "fromEdgeId": "osm:172796083:14",
+      "toEdgeId": "osm:222934041:0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN2/F interdits ; la continuation E/FN2 et les courbes marquees distinctes restent disponibles.",
+      "mappingGroup": "FN2-F"
+    },
+    {
+      "id": "aircraft-turn:FN3-F-west-junction:049",
+      "viaNodeId": "osm:43210348",
+      "fromEdgeId": "osm:59465741:6",
+      "toEdgeId": "osm:172796083:16",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN3/F interdits ; le raccordement G3/F est distinct et conserve.",
+      "mappingGroup": "FN3-F-west-junction"
+    },
+    {
+      "id": "aircraft-turn:FN3-F-west-junction:050",
+      "viaNodeId": "osm:43210348",
+      "fromEdgeId": "osm:172796083:16",
+      "toEdgeId": "osm:59465741:6",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN3/F interdits ; le raccordement G3/F est distinct et conserve.",
+      "mappingGroup": "FN3-F-west-junction"
+    },
+    {
+      "id": "aircraft-turn:FN3-F-west-junction:051",
+      "viaNodeId": "osm:43210348",
+      "fromEdgeId": "osm:59465741:6",
+      "toEdgeId": "osm:172796083:17:part0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN3/F interdits ; le raccordement G3/F est distinct et conserve.",
+      "mappingGroup": "FN3-F-west-junction"
+    },
+    {
+      "id": "aircraft-turn:FN3-F-west-junction:052",
+      "viaNodeId": "osm:43210348",
+      "fromEdgeId": "osm:172796083:17:part0",
+      "toEdgeId": "osm:59465741:6",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN3/F interdits ; le raccordement G3/F est distinct et conserve.",
+      "mappingGroup": "FN3-F-west-junction"
+    },
+    {
+      "id": "aircraft-turn:FN3-F-source-crossing:053",
+      "viaNodeId": "intersection:3",
+      "fromEdgeId": "osm:59465743:10:part0",
+      "toEdgeId": "osm:172796083:17:part0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN3/F interdits au second croisement source rapproche ; aucune fermeture de FN3 ni de F.",
+      "mappingGroup": "FN3-F-source-crossing"
+    },
+    {
+      "id": "aircraft-turn:FN3-F-source-crossing:054",
+      "viaNodeId": "intersection:3",
+      "fromEdgeId": "osm:172796083:17:part0",
+      "toEdgeId": "osm:59465743:10:part0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN3/F interdits au second croisement source rapproche ; aucune fermeture de FN3 ni de F.",
+      "mappingGroup": "FN3-F-source-crossing"
+    },
+    {
+      "id": "aircraft-turn:FN3-F-source-crossing:055",
+      "viaNodeId": "intersection:3",
+      "fromEdgeId": "osm:59465743:10:part0",
+      "toEdgeId": "osm:172796083:17:part1",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN3/F interdits au second croisement source rapproche ; aucune fermeture de FN3 ni de F.",
+      "mappingGroup": "FN3-F-source-crossing"
+    },
+    {
+      "id": "aircraft-turn:FN3-F-source-crossing:056",
+      "viaNodeId": "intersection:3",
+      "fromEdgeId": "osm:172796083:17:part1",
+      "toEdgeId": "osm:59465743:10:part0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN3/F interdits au second croisement source rapproche ; aucune fermeture de FN3 ni de F.",
+      "mappingGroup": "FN3-F-source-crossing"
+    },
+    {
+      "id": "aircraft-turn:FN3-F-source-crossing:057",
+      "viaNodeId": "intersection:3",
+      "fromEdgeId": "osm:59465743:10:part1",
+      "toEdgeId": "osm:172796083:17:part0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN3/F interdits au second croisement source rapproche ; aucune fermeture de FN3 ni de F.",
+      "mappingGroup": "FN3-F-source-crossing"
+    },
+    {
+      "id": "aircraft-turn:FN3-F-source-crossing:058",
+      "viaNodeId": "intersection:3",
+      "fromEdgeId": "osm:172796083:17:part0",
+      "toEdgeId": "osm:59465743:10:part1",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN3/F interdits au second croisement source rapproche ; aucune fermeture de FN3 ni de F.",
+      "mappingGroup": "FN3-F-source-crossing"
+    },
+    {
+      "id": "aircraft-turn:FN3-F-source-crossing:059",
+      "viaNodeId": "intersection:3",
+      "fromEdgeId": "osm:59465743:10:part1",
+      "toEdgeId": "osm:172796083:17:part1",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN3/F interdits au second croisement source rapproche ; aucune fermeture de FN3 ni de F.",
+      "mappingGroup": "FN3-F-source-crossing"
+    },
+    {
+      "id": "aircraft-turn:FN3-F-source-crossing:060",
+      "viaNodeId": "intersection:3",
+      "fromEdgeId": "osm:172796083:17:part1",
+      "toEdgeId": "osm:59465743:10:part1",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "reason": "Virages directs FN3/F interdits au second croisement source rapproche ; aucune fermeture de FN3 ni de F.",
+      "mappingGroup": "FN3-F-source-crossing"
+    },
+    {
+      "id": "aircraft-turn:A-bridge-A3-east-span36:061",
+      "viaNodeId": "osm:1279879907",
+      "fromEdgeId": "osm:112642878:57",
+      "toEdgeId": "osm:172859840:109",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029"
+      ],
+      "reason": "Envergure superieure a 36 m : virage entre le pont de A et A3 interdit dans les deux sens. La limite generale A3 de 61 m est une restriction separee.",
+      "mappingGroup": "A-bridge-A3-east-span36",
+      "condition": {
+        "wingspanMetres": {
+          "gt": 36
+        }
+      }
+    },
+    {
+      "id": "aircraft-turn:A-bridge-A3-east-span36:062",
+      "viaNodeId": "osm:1279879907",
+      "fromEdgeId": "osm:172859840:109",
+      "toEdgeId": "osm:112642878:57",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029"
+      ],
+      "reason": "Envergure superieure a 36 m : virage entre le pont de A et A3 interdit dans les deux sens. La limite generale A3 de 61 m est une restriction separee.",
+      "mappingGroup": "A-bridge-A3-east-span36",
+      "condition": {
+        "wingspanMetres": {
+          "gt": 36
+        }
+      }
+    },
+    {
+      "id": "aircraft-turn:A-DA1-span36:063",
+      "viaNodeId": "osm:1693909137",
+      "fromEdgeId": "osm:112642878:0",
+      "toEdgeId": "osm:157174702:0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029"
+      ],
+      "reason": "Envergure superieure a 36 m : virage depuis A vers DA1 interdit. Le texte ne ferme pas automatiquement le mouvement inverse DA1 vers A.",
+      "mappingGroup": "A-DA1-span36",
+      "condition": {
+        "wingspanMetres": {
+          "gt": 36
+        }
+      }
+    },
+    {
+      "id": "aircraft-turn:A-DA1-span36:064",
+      "viaNodeId": "osm:1693909137",
+      "fromEdgeId": "osm:157180716:26",
+      "toEdgeId": "osm:157174702:0",
+      "configuration": "both",
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029"
+      ],
+      "reason": "Envergure superieure a 36 m : virage depuis A vers DA1 interdit. Le texte ne ferme pas automatiquement le mouvement inverse DA1 vers A.",
+      "mappingGroup": "A-DA1-span36",
+      "condition": {
+        "wingspanMetres": {
+          "gt": 36
+        }
+      }
+    }
+  ],
+  "advisories": [
+    {
+      "id": "aircraft-advisory:A388-TA3-R-east-oversteer",
+      "configuration": "both",
+      "viaNodeId": "osm:13917183472",
+      "fromEdgeId": "osm:1527163957:7",
+      "toEdgeId": "osm:170606401:10",
+      "condition": {
+        "typeCodes": [
+          "A388"
+        ]
+      },
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029"
+      ],
+      "reason": "A380 : pratiquer l’oversteering dans le virage TA3 vers R cap a l’est ; obstacle a 47,5 m du rayon de virage (AD2.20.3.3.3.4). Cette precaution ne ferme pas le raccordement."
+    }
+  ],
+  "groups": [
+    {
+      "id": "MD2-D",
+      "viaNodeId": "osm:1690796501",
+      "firstEdgeIds": [
+        "osm:222939612:0"
+      ],
+      "secondEdgeIds": [
+        "osm:156840791:43",
+        "osm:156840791:44"
+      ],
+      "reciprocal": true,
+      "condition": null,
+      "ruleIds": [
+        "aircraft-turn:MD2-D:000",
+        "aircraft-turn:MD2-D:001",
+        "aircraft-turn:MD2-D:002",
+        "aircraft-turn:MD2-D:003"
+      ],
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "sourceWayIds": [
+        156840791,
+        222939612
+      ]
+    },
+    {
+      "id": "MD1-B",
+      "viaNodeId": "intersection:27",
+      "firstEdgeIds": [
+        "osm:156840762:9:part0",
+        "osm:156840762:9:part1"
+      ],
+      "secondEdgeIds": [
+        "osm:156840795:38:part1",
+        "osm:156840795:38:part2"
+      ],
+      "reciprocal": true,
+      "condition": null,
+      "ruleIds": [
+        "aircraft-turn:MD1-B:004",
+        "aircraft-turn:MD1-B:005",
+        "aircraft-turn:MD1-B:006",
+        "aircraft-turn:MD1-B:007",
+        "aircraft-turn:MD1-B:008",
+        "aircraft-turn:MD1-B:009",
+        "aircraft-turn:MD1-B:010",
+        "aircraft-turn:MD1-B:011"
+      ],
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "sourceWayIds": [
+        156840762,
+        156840795
+      ]
+    },
+    {
+      "id": "MD2-B",
+      "viaNodeId": "intersection:29",
+      "firstEdgeIds": [
+        "osm:222939612:3:part0",
+        "osm:222939612:3:part1"
+      ],
+      "secondEdgeIds": [
+        "osm:156840795:38:part0",
+        "osm:156840795:38:part1"
+      ],
+      "reciprocal": true,
+      "condition": null,
+      "ruleIds": [
+        "aircraft-turn:MD2-B:012",
+        "aircraft-turn:MD2-B:013",
+        "aircraft-turn:MD2-B:014",
+        "aircraft-turn:MD2-B:015",
+        "aircraft-turn:MD2-B:016",
+        "aircraft-turn:MD2-B:017",
+        "aircraft-turn:MD2-B:018",
+        "aircraft-turn:MD2-B:019"
+      ],
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "sourceWayIds": [
+        156840795,
+        222939612
+      ]
+    },
+    {
+      "id": "MD2-M",
+      "viaNodeId": "osm:1690901700",
+      "firstEdgeIds": [
+        "osm:222939599:0:part1"
+      ],
+      "secondEdgeIds": [
+        "osm:156849409:0",
+        "osm:222939611:0"
+      ],
+      "reciprocal": true,
+      "condition": null,
+      "ruleIds": [
+        "aircraft-turn:MD2-M:020",
+        "aircraft-turn:MD2-M:021",
+        "aircraft-turn:MD2-M:022",
+        "aircraft-turn:MD2-M:023"
+      ],
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "sourceWayIds": [
+        156849409,
+        222939599,
+        222939611
+      ]
+    },
+    {
+      "id": "MD1-BM6",
+      "viaNodeId": "osm:1690902025",
+      "firstEdgeIds": [
+        "osm:156840762:4",
+        "osm:156840762:5"
+      ],
+      "secondEdgeIds": [
+        "osm:156849441:5",
+        "osm:156849441:6"
+      ],
+      "reciprocal": true,
+      "condition": null,
+      "ruleIds": [
+        "aircraft-turn:MD1-BM6:024",
+        "aircraft-turn:MD1-BM6:025",
+        "aircraft-turn:MD1-BM6:026",
+        "aircraft-turn:MD1-BM6:027",
+        "aircraft-turn:MD1-BM6:028",
+        "aircraft-turn:MD1-BM6:029",
+        "aircraft-turn:MD1-BM6:030",
+        "aircraft-turn:MD1-BM6:031"
+      ],
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "sourceWayIds": [
+        156840762,
+        156849441
+      ]
+    },
+    {
+      "id": "BD7-BD8",
+      "viaNodeId": "osm:1690795982",
+      "firstEdgeIds": [
+        "osm:156840739:7",
+        "osm:156840739:8"
+      ],
+      "secondEdgeIds": [
+        "osm:222939638:2",
+        "osm:222939638:3"
+      ],
+      "reciprocal": true,
+      "condition": null,
+      "ruleIds": [
+        "aircraft-turn:BD7-BD8:032",
+        "aircraft-turn:BD7-BD8:033",
+        "aircraft-turn:BD7-BD8:034",
+        "aircraft-turn:BD7-BD8:035",
+        "aircraft-turn:BD7-BD8:036",
+        "aircraft-turn:BD7-BD8:037",
+        "aircraft-turn:BD7-BD8:038",
+        "aircraft-turn:BD7-BD8:039"
+      ],
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "sourceWayIds": [
+        156840739,
+        222939638
+      ]
+    },
+    {
+      "id": "B-A-west",
+      "viaNodeId": "osm:1690796506",
+      "firstEdgeIds": [
+        "osm:156840795:49"
+      ],
+      "secondEdgeIds": [
+        "osm:157180716:0"
+      ],
+      "reciprocal": true,
+      "condition": null,
+      "ruleIds": [
+        "aircraft-turn:B-A-west:040",
+        "aircraft-turn:B-A-west:041"
+      ],
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "sourceWayIds": [
+        156840795,
+        157180716
+      ]
+    },
+    {
+      "id": "A-B-east",
+      "viaNodeId": "osm:1279879806",
+      "firstEdgeIds": [
+        "osm:112636526:56"
+      ],
+      "secondEdgeIds": [
+        "osm:156840795:55"
+      ],
+      "reciprocal": true,
+      "condition": null,
+      "ruleIds": [
+        "aircraft-turn:A-B-east:042",
+        "aircraft-turn:A-B-east:043"
+      ],
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "sourceWayIds": [
+        112636526,
+        156840795
+      ]
+    },
+    {
+      "id": "Y4-QD1",
+      "viaNodeId": "osm:8949536314",
+      "firstEdgeIds": [
+        "osm:967374627:0"
+      ],
+      "secondEdgeIds": [
+        "osm:967374610:0"
+      ],
+      "reciprocal": false,
+      "condition": null,
+      "ruleIds": [
+        "aircraft-turn:Y4-QD1:044"
+      ],
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "sourceWayIds": [
+        967374610,
+        967374627
+      ]
+    },
+    {
+      "id": "FN2-F",
+      "viaNodeId": "osm:1712613144",
+      "firstEdgeIds": [
+        "osm:222934041:0"
+      ],
+      "secondEdgeIds": [
+        "osm:172796083:13",
+        "osm:172796083:14"
+      ],
+      "reciprocal": true,
+      "condition": null,
+      "ruleIds": [
+        "aircraft-turn:FN2-F:045",
+        "aircraft-turn:FN2-F:046",
+        "aircraft-turn:FN2-F:047",
+        "aircraft-turn:FN2-F:048"
+      ],
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "sourceWayIds": [
+        172796083,
+        222934041
+      ]
+    },
+    {
+      "id": "FN3-F-west-junction",
+      "viaNodeId": "osm:43210348",
+      "firstEdgeIds": [
+        "osm:59465741:6"
+      ],
+      "secondEdgeIds": [
+        "osm:172796083:16",
+        "osm:172796083:17:part0"
+      ],
+      "reciprocal": true,
+      "condition": null,
+      "ruleIds": [
+        "aircraft-turn:FN3-F-west-junction:049",
+        "aircraft-turn:FN3-F-west-junction:050",
+        "aircraft-turn:FN3-F-west-junction:051",
+        "aircraft-turn:FN3-F-west-junction:052"
+      ],
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "sourceWayIds": [
+        59465741,
+        172796083
+      ]
+    },
+    {
+      "id": "FN3-F-source-crossing",
+      "viaNodeId": "intersection:3",
+      "firstEdgeIds": [
+        "osm:59465743:10:part0",
+        "osm:59465743:10:part1"
+      ],
+      "secondEdgeIds": [
+        "osm:172796083:17:part0",
+        "osm:172796083:17:part1"
+      ],
+      "reciprocal": true,
+      "condition": null,
+      "ruleIds": [
+        "aircraft-turn:FN3-F-source-crossing:053",
+        "aircraft-turn:FN3-F-source-crossing:054",
+        "aircraft-turn:FN3-F-source-crossing:055",
+        "aircraft-turn:FN3-F-source-crossing:056",
+        "aircraft-turn:FN3-F-source-crossing:057",
+        "aircraft-turn:FN3-F-source-crossing:058",
+        "aircraft-turn:FN3-F-source-crossing:059",
+        "aircraft-turn:FN3-F-source-crossing:060"
+      ],
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029",
+        "sia-lfpg-forbidden-turn-map-20261029"
+      ],
+      "sourceWayIds": [
+        59465743,
+        172796083
+      ]
+    },
+    {
+      "id": "A-bridge-A3-east-span36",
+      "viaNodeId": "osm:1279879907",
+      "firstEdgeIds": [
+        "osm:112642878:57"
+      ],
+      "secondEdgeIds": [
+        "osm:172859840:109"
+      ],
+      "reciprocal": true,
+      "condition": {
+        "wingspanMetres": {
+          "gt": 36
+        }
+      },
+      "ruleIds": [
+        "aircraft-turn:A-bridge-A3-east-span36:061",
+        "aircraft-turn:A-bridge-A3-east-span36:062"
+      ],
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029"
+      ],
+      "sourceWayIds": [
+        112642878,
+        172859840
+      ]
+    },
+    {
+      "id": "A-DA1-span36",
+      "viaNodeId": "osm:1693909137",
+      "firstEdgeIds": [
+        "osm:112642878:0",
+        "osm:157180716:26"
+      ],
+      "secondEdgeIds": [
+        "osm:157174702:0"
+      ],
+      "reciprocal": false,
+      "condition": {
+        "wingspanMetres": {
+          "gt": 36
+        }
+      },
+      "ruleIds": [
+        "aircraft-turn:A-DA1-span36:063",
+        "aircraft-turn:A-DA1-span36:064"
+      ],
+      "sourceIds": [
+        "sia-lfpg-ad2-20261029"
+      ],
+      "sourceWayIds": [
+        112642878,
+        157174702,
+        157180716
+      ]
+    }
+  ],
+  "coverage": {
+    "unconditionalDirectedTurns": 61,
+    "conditionalDirectedTurns": 4,
+    "genericUnmarkedTurns": "The AIP rule applies everywhere, but this layer digitizes the specifically illustrated dangerous junctions. Existing synthetic-crossing continuity and no-U-turn controls remain independent.",
+    "A3BridgeScope": "Eastern bridge-side approach only (A segment57 / A3 segment109); the western A3 access is not treated as the bridge without source proof.",
+    "MD2southScope": "The short source continuation222939599 is tagged BM5; only its terminal junction with M is mapped as the prohibited MD2/M crossing."
+  }
+}

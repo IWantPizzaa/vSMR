@@ -7,6 +7,7 @@
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "integrations/PluginBridgeClient.hpp"
+#include "integrations/SmartGroundIntegration.hpp"
 #include "plugin/PluginCommandHandler.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "radar/InsetHostPolicy.hpp"
@@ -16,6 +17,14 @@
 #include <atomic>
 #include <memory>
 #include <string>
+
+void CSMRPlugin::OnRadarTargetPositionUpdate(CRadarTarget target)
+{
+	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnRadarTargetPositionUpdate");
+	if (PluginShutdownRequested.load(std::memory_order_relaxed)) return;
+	VsmrSmartGroundBridge::Observe(target);
+	FlightDataRefreshPending.store(true, std::memory_order_release);
+}
 
 bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnCompileCommand");
@@ -54,6 +63,8 @@ void CSMRPlugin::OnFunctionCall(
 	}
 	if (HandleHoldingPointFunctionCall(FunctionId, sItemString, Area))
 		return;
+	if (HandleSmartGroundRouteFunctionCall(FunctionId, sItemString, Area))
+		return;
 	HandleDatalinkFunctionCall(FunctionId, sItemString, Area);
 }
 
@@ -77,6 +88,8 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	VsmrRdf::ForgetAircraft(normalizedCallsign.c_str());
 	VsmrHoldingPoint::ForgetPending(normalizedCallsign);
 	VsmrPluginBridge::ForgetAircraft(normalizedCallsign);
+	VsmrSmartGroundBridge::Forget(normalizedCallsign);
+	ForgetSmartGroundRouteMenus(normalizedCallsign);
 
 	ForgetDatalinkFlightPlan(normalizedCallsign);
 }
@@ -120,9 +133,10 @@ void CSMRPlugin::OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan)
 		const char* callsign = FlightPlan.GetCallsign();
 		VsmrPluginBridge::ObserveAircraft(callsign != nullptr ? callsign : "");
 		const char* remarks = FlightPlan.GetFlightPlanData().GetRemarks();
-		(void)VsmrHoldingPoint::Resolve(
+        const auto holdingPoint = VsmrHoldingPoint::Resolve(
 			callsign != nullptr ? callsign : "",
 			remarks != nullptr ? remarks : "");
+        VsmrSmartGroundBridge::UpdateHoldingPoint(callsign != nullptr ? callsign : "", holdingPoint);
 	}
 
 	// Flight-plan amendments are synchronized between controllers. Defer the

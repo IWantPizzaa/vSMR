@@ -8,6 +8,7 @@
 #include "aircraft/GroundState.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashRuntime.hpp"
+#include "radar/SmartGroundOverlayLogic.hpp"
 
 #include <cmath>
 
@@ -440,6 +441,8 @@ void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId,
 		return; // The compass must not select/raise its parent inset or start a pan.
 	if (IsPointInRuntimeMenuOverlay(this, Pt))
 		return;
+	if (ObjectType == VsmrSmartGroundOverlay::RoutePointObjectType)
+		return; // Route handles own their drag; they never start an inset pan.
 
 	if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
 	{
@@ -514,6 +517,11 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 	if (Logger::is_verbose_mode())
 		Logger::info(std::string(__FUNCSIG__));
 	if (HandleRuntimeMenuMove(ObjectType, sObjectId, Pt, Area, Released))
+	{
+		mouseLocation = Pt;
+		return;
+	}
+	if (HandleSmartGroundMove(ObjectType, sObjectId, Pt, Area, Released))
 	{
 		mouseLocation = Pt;
 		return;
@@ -1174,6 +1182,8 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		return;
 	if (ActiveRuntimeMenuPopup != RuntimeMenuPopup::None)
 		CloseRuntimeMenuPopup();
+	if (HandleSmartGroundClick(ObjectType, sObjectId, Pt, Area, Button))
+		return;
 	// EuroScope can report the inset/tag parent rectangle instead of a cell.
 	// Resolve the topmost visible AVISO's painted cell before any left/right
 	// action. Keep owned text since opening a popup may trigger a repaint.

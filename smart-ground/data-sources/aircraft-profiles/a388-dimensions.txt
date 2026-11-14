@@ -1,0 +1,51 @@
+@A380
+AIRCRAFT CHARACTERISTICS - AIRPORT AND MAINTENANCE PLANNING
+**ON A/C A380-800
+72.73 m
+70.4 m
+53.94 m
+4.7 m
+(15.42 ft)
+12.06 m
+(39.57 ft)
+14.59 m
+8.41 m
+14.08 m
+(46.19 ft)
+33.58 m − WLG
+36.85 m − BLG
+4.97 m
+(16.31 ft)
+(27.59 ft)
+8.56 m
+(28.08 ft)
+(176.97 ft)
+(230.97 ft)
+(238.62 ft)
+(47.87 ft)
+12.46 m
+(40.88 ft)
+7.14 m
+(23.43 ft)
+14.34 m
+29.6 m
+51.4 m
+79.75 m
+30.37 m
+(261.65 ft)
+(99.64 ft)
+5.26 m
+(17.26 ft)
+(47.05 ft)
+(97.11 ft)
+(168.64 ft)
+NOTE: RELATED TO AIRCRAFT ATTITUDE AND WEIGHT.
+(110.17 ft)
+(120.9 ft)
+L_AC_020200_1_0010101_01_02
+General Aircraft Dimensions
+(Sheet 1 of 2)
+FIGURE-2-2-0-991-001-A01
+2-2-0
+Page 2
+Nov 01/20

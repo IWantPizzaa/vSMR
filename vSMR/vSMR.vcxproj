@@ -228,6 +228,12 @@
     <ClCompile Include="src\plugin\PluginDatalinkControl.cpp" />
     <ClCompile Include="src\plugin\PluginDatalinkTransport.cpp" />
     <ClCompile Include="src\plugin\PluginEuroScopeCallbacks.cpp" />
+    <ClCompile Include="src\integrations\SmartGroundIntegration.cpp" />
+    <ClCompile Include="src\smart_ground\SmartGroundData.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="src\smart_ground\SmartGroundRouting.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="src\smart_ground\SmartGroundTracking.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="src\smart_ground\SmartGroundCollision.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="src\smart_ground\SmartGroundEditing.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="src\plugin\PluginGroundState.cpp" />
     <ClCompile Include="src\plugin\PluginLifecycle.cpp" />
     <ClCompile Include="src\plugin\PluginRuntimeAudio.cpp" />
@@ -235,6 +241,7 @@
     <ClCompile Include="src\plugin\PluginControllerCallbacks.cpp" />
     <ClCompile Include="src\plugin\PluginCommandHandler.cpp" />
     <ClCompile Include="src\plugin\PluginTagCallbacks.cpp" />
+    <ClCompile Include="src\plugin\PluginSmartGround.cpp" />
     <ClCompile Include="src\plugin\PluginWeather.cpp" />
     <ClCompile Include="src\plugin\PluginRuntimeServices.cpp" />
     <ClCompile Include="src\profiles\RadarScreen.ProfileEditor.cpp" />
@@ -255,6 +262,7 @@
     <ClCompile Include="src\radar\RadarScreen.ProfileNormalization.cpp" />
     <ClCompile Include="src\radar\RadarScreen.ProfileSession.cpp" />
     <ClCompile Include="src\radar\RadarScreen.Refresh.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.SmartGround.cpp" />
     <ClCompile Include="src\radar\RadarScreen.RuntimeMenu.cpp" />
     <ClCompile Include="src\radar\RadarScreen.RuntimeMenuActions.cpp" />
     <ClCompile Include="src\radar\RadarScreen.TargetFiltering.cpp" />
@@ -270,6 +278,12 @@
     <ClCompile Include="src\weather\WeatherStore.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\integrations\SmartGroundIntegration.hpp" />
+    <ClInclude Include="src\plugin\SmartGroundListLogic.hpp" />
+    <ClInclude Include="src\radar\SmartGroundOverlayLogic.hpp" />
+    <ClInclude Include="src\smart_ground\SmartGroundEngine.hpp" />
+    <ClInclude Include="src\smart_ground\SmartGroundInternal.hpp" />
+    <ClInclude Include="src\smart_ground\TagAlerts.hpp" />
     <ClInclude Include="src\config\ProfileNormalization.hpp" />
     <ClInclude Include="src\rendering\TargetProjection.hpp" />
     <ClInclude Include="src\safety\RunwayTraffic.hpp" />

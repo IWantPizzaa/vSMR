@@ -838,7 +838,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			int appWindowId;
 		} insetRows[] = {
 			{ "runtime.inset.aviso", "runtime.inset.reset.aviso", "AVISO", avisoWindowId },
-			{ "runtime.inset.srw1", "runtime.inset.reset.srw1", "SRW 1", 1 },
+			{ "runtime.inset.srw1", "runtime.inset.reset.srw1", "SRW", 1 },
 			{ "runtime.inset.weather", nullptr, "Weather", weatherWindowId },
 			{ "runtime.inset.timer", nullptr, "Timer", timerWindowId }
 		};

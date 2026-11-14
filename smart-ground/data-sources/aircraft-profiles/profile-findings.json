@@ -1,0 +1,37 @@
+[
+  {
+    "typeCode": "A388",
+    "defaultWingspanMetres": 79.75,
+    "file": "airbus-a380-acp.pdf",
+    "pdfPage": 29,
+    "note": "Published aircraft planning span.",
+    "otherMatchingPages": []
+  },
+  {
+    "typeCode": "B744",
+    "defaultWingspanMetres": 64.92,
+    "file": "boeing-747-400-rev-f.pdf",
+    "pdfPage": 31,
+    "note": "Maximum gross weight with full fuel; jig span is 64.44 m.",
+    "otherMatchingPages": []
+  },
+  {
+    "typeCode": "B748",
+    "defaultWingspanMetres": 68.4,
+    "file": "boeing-747-8-rev-e.pdf",
+    "pdfPage": 15,
+    "note": "Published aircraft planning span.",
+    "otherMatchingPages": []
+  },
+  {
+    "typeCode": "A320",
+    "defaultWingspanMetres": 35.8,
+    "file": "easa-a320-tcds.pdf",
+    "pdfPage": 37,
+    "note": "Issue 62, 26 June 2026. Sharklet-equipped profile; the unmodified 34.10 m variant may be declared separately.",
+    "otherMatchingPages": [
+      92,
+      138
+    ]
+  }
+]

@@ -1,0 +1,667 @@
+{
+  "airport": "LFPG",
+  "dataSha256": "4597cfcb70d555ca801427a378d7f8fca297e55677d3062faed0c1718ed5b9c5",
+  "units": {
+    "distance": "metres",
+    "time": "simulation seconds",
+    "benchmark": "wall-clock milliseconds"
+  },
+  "topology": {
+    "nodes": 7650,
+    "edges": 8487,
+    "components": [
+      {
+        "id": 0,
+        "nodes": 7601
+      },
+      {
+        "id": 1,
+        "nodes": 24
+      },
+      {
+        "id": 2,
+        "nodes": 5
+      },
+      {
+        "id": 3,
+        "nodes": 5
+      },
+      {
+        "id": 4,
+        "nodes": 4
+      },
+      {
+        "id": 5,
+        "nodes": 3
+      },
+      {
+        "id": 6,
+        "nodes": 2
+      },
+      {
+        "id": 7,
+        "nodes": 2
+      },
+      {
+        "id": 8,
+        "nodes": 2
+      },
+      {
+        "id": 9,
+        "nodes": 1
+      },
+      {
+        "id": 10,
+        "nodes": 1
+      }
+    ],
+    "primaryComponentIsZero": true,
+    "edgeKinds": {
+      "taxiway": 7288,
+      "parking_position": 1102,
+      "runway": 97
+    },
+    "maxEdgeLengthErrorMetres": 1.1368683772161603e-13,
+    "sourceCounts": {
+      "nodes": 7650,
+      "edges": 8487,
+      "sourceWays": {
+        "taxiway": 779,
+        "parking_position": 478,
+        "runway": 7
+      },
+      "stands": 523,
+      "routableStands": 460,
+      "primaryComponentStands": 451,
+      "unavailableStands": 72,
+      "holdingPoints": 158,
+      "runwayEnds": 8,
+      "surfaces": 430,
+      "avisoGateLabels": 492,
+      "rampAgentStands": 448,
+      "referenceLines": 1458
+    }
+  },
+  "geometry": {
+    "intersectionCandidatePairs": 98675,
+    "unresolvedSameLayerIntersections": [],
+    "intentionallySeparatedLayerCrossings": [],
+    "buildingPolygons": 74,
+    "buildingCandidatePairs": 401,
+    "buildingSamples": 6,
+    "buildingInteriorPenetrations": [],
+    "buildingCheck": "Independent point-in-polygon and distance-to-boundary samples at <=0.25m along exact inside intervals; fails >1.25m of segment >1m inside a building. Thin sub-sample penetrations remain below this check resolution."
+  },
+  "routes": [
+    {
+      "origin": "A01",
+      "destination": "08L",
+      "distanceMetres": 1399.819,
+      "edges": 76,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "A01",
+      "destination": "08R",
+      "distanceMetres": 1449.7,
+      "edges": 56,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "A01",
+      "destination": "09L",
+      "distanceMetres": 4846.296,
+      "edges": 226,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "A01",
+      "destination": "09R",
+      "distanceMetres": 5296.115,
+      "edges": 239,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "A01",
+      "destination": "26L",
+      "distanceMetres": 3944.934,
+      "edges": 131,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "A01",
+      "destination": "26R",
+      "distanceMetres": 3637.602,
+      "edges": 125,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "A01",
+      "destination": "27L",
+      "distanceMetres": 3680.4,
+      "edges": 149,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "A01",
+      "destination": "27R",
+      "distanceMetres": 3955.701,
+      "edges": 160,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "C03",
+      "destination": "08L",
+      "distanceMetres": 1814.291,
+      "edges": 74,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "C03",
+      "destination": "08R",
+      "distanceMetres": 1075.855,
+      "edges": 46,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "C03",
+      "destination": "09L",
+      "distanceMetres": 5300.464,
+      "edges": 244,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "C03",
+      "destination": "09R",
+      "distanceMetres": 5750.283,
+      "edges": 257,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "C03",
+      "destination": "26L",
+      "distanceMetres": 3447.153,
+      "edges": 121,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "C03",
+      "destination": "26R",
+      "distanceMetres": 3139.821,
+      "edges": 115,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "C03",
+      "destination": "27L",
+      "distanceMetres": 4134.568,
+      "edges": 167,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "C03",
+      "destination": "27R",
+      "distanceMetres": 4409.869,
+      "edges": 178,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "E16",
+      "destination": "08L",
+      "distanceMetres": 2250.808,
+      "edges": 85,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "E16",
+      "destination": "08R",
+      "distanceMetres": 1416.742,
+      "edges": 78,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "E16",
+      "destination": "09L",
+      "distanceMetres": 6044.97,
+      "edges": 262,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "E16",
+      "destination": "09R",
+      "distanceMetres": 6494.789,
+      "edges": 275,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "E16",
+      "destination": "26L",
+      "distanceMetres": 2758.035,
+      "edges": 105,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "E16",
+      "destination": "26R",
+      "distanceMetres": 2450.703,
+      "edges": 99,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "E16",
+      "destination": "27L",
+      "distanceMetres": 4879.074,
+      "edges": 185,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "E16",
+      "destination": "27R",
+      "distanceMetres": 5154.375,
+      "edges": 196,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "F09",
+      "destination": "08L",
+      "distanceMetres": 3863.691,
+      "edges": 213,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "F09",
+      "destination": "08R",
+      "distanceMetres": 3684.189,
+      "edges": 116,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "F09",
+      "destination": "09L",
+      "distanceMetres": 6145.827,
+      "edges": 249,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "F09",
+      "destination": "09R",
+      "distanceMetres": 6595.646,
+      "edges": 262,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "F09",
+      "destination": "26L",
+      "distanceMetres": 3068.072,
+      "edges": 113,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "F09",
+      "destination": "26R",
+      "distanceMetres": 2647.859,
+      "edges": 144,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "F09",
+      "destination": "27L",
+      "distanceMetres": 3155.017,
+      "edges": 79,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "F09",
+      "destination": "27R",
+      "distanceMetres": 3573.519,
+      "edges": 98,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "I24",
+      "destination": "08L",
+      "distanceMetres": 6484.388,
+      "edges": 241,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "I24",
+      "destination": "08R",
+      "distanceMetres": 6902.134,
+      "edges": 266,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "I24",
+      "destination": "09L",
+      "distanceMetres": 2848.679,
+      "edges": 104,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "I24",
+      "destination": "09R",
+      "distanceMetres": 1801.559,
+      "edges": 62,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "I24",
+      "destination": "26L",
+      "distanceMetres": 9602.207,
+      "edges": 319,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "I24",
+      "destination": "26R",
+      "distanceMetres": 9311.215,
+      "edges": 323,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "I24",
+      "destination": "27L",
+      "distanceMetres": 5178.924,
+      "edges": 181,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "I24",
+      "destination": "27R",
+      "distanceMetres": 5454.225,
+      "edges": 192,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "N41",
+      "destination": "08L",
+      "distanceMetres": 1966.351,
+      "edges": 65,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "N41",
+      "destination": "08R",
+      "distanceMetres": 3141.878,
+      "edges": 119,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "N41",
+      "destination": "09L",
+      "distanceMetres": 6426.59,
+      "edges": 260,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "N41",
+      "destination": "09R",
+      "distanceMetres": 6876.409,
+      "edges": 273,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "N41",
+      "destination": "26L",
+      "distanceMetres": 5861.003,
+      "edges": 166,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "N41",
+      "destination": "26R",
+      "distanceMetres": 5593.266,
+      "edges": 164,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "N41",
+      "destination": "27L",
+      "distanceMetres": 5349.938,
+      "edges": 204,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "N41",
+      "destination": "27R",
+      "distanceMetres": 5625.239,
+      "edges": 215,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "R 11",
+      "destination": "08L",
+      "distanceMetres": 2575.388,
+      "edges": 90,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "R 11",
+      "destination": "08R",
+      "distanceMetres": 2903.89,
+      "edges": 94,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "R 11",
+      "destination": "09L",
+      "distanceMetres": 3083.29,
+      "edges": 116,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "R 11",
+      "destination": "09R",
+      "distanceMetres": 3605.264,
+      "edges": 125,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "R 11",
+      "destination": "26L",
+      "distanceMetres": 5603.964,
+      "edges": 147,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "R 11",
+      "destination": "26R",
+      "distanceMetres": 5312.971,
+      "edges": 151,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "R 11",
+      "destination": "27L",
+      "distanceMetres": 1770.919,
+      "edges": 89,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "R 11",
+      "destination": "27R",
+      "distanceMetres": 2046.22,
+      "edges": 100,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "Y06/Y07",
+      "destination": "08L",
+      "distanceMetres": 3426.644,
+      "edges": 138,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "Y06/Y07",
+      "destination": "08R",
+      "distanceMetres": 3844.39,
+      "edges": 163,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "Y06/Y07",
+      "destination": "09L",
+      "distanceMetres": 1988.564,
+      "edges": 83,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "Y06/Y07",
+      "destination": "09R",
+      "distanceMetres": 2432.579,
+      "edges": 102,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "Y06/Y07",
+      "destination": "26L",
+      "distanceMetres": 6544.464,
+      "edges": 216,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "Y06/Y07",
+      "destination": "26R",
+      "distanceMetres": 6253.471,
+      "edges": 220,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "Y06/Y07",
+      "destination": "27L",
+      "distanceMetres": 2655.921,
+      "edges": 126,
+      "differenceFromDijkstra": 0
+    },
+    {
+      "origin": "Y06/Y07",
+      "destination": "27R",
+      "distanceMetres": 2931.222,
+      "edges": 137,
+      "differenceFromDijkstra": 0
+    }
+  ],
+  "reviewedRoutes": [
+    {
+      "origin": "A01",
+      "destination": "08L",
+      "differenceMetres": 0
+    },
+    {
+      "origin": "D02",
+      "destination": "08R",
+      "differenceMetres": 0
+    },
+    {
+      "origin": "EN55",
+      "destination": "09L",
+      "differenceMetres": 0
+    },
+    {
+      "origin": "H02",
+      "destination": "09R",
+      "differenceMetres": 0
+    },
+    {
+      "origin": "I43",
+      "destination": "26L",
+      "differenceMetres": 0
+    },
+    {
+      "origin": "J51",
+      "destination": "26R",
+      "differenceMetres": 0
+    },
+    {
+      "origin": "N11",
+      "destination": "27L",
+      "differenceMetres": 0
+    },
+    {
+      "origin": "R6",
+      "destination": "27R",
+      "differenceMetres": 0
+    }
+  ],
+  "scenarios": [
+    {
+      "aircraft": 10,
+      "seed": 20261112,
+      "seconds": 150,
+      "stepSeconds": 0.25,
+      "positionChecks": 6000,
+      "arrived": 0,
+      "maxConflictPairs": 3,
+      "conflictObservationsByType": {
+        "head-on": 52,
+        "crossing": 3
+      },
+      "generationMs": 8.336,
+      "motionAndPredictionMs": 7.813,
+      "predictionMeanMs": 0.187,
+      "predictionMaxMs": 0.841
+    },
+    {
+      "aircraft": 25,
+      "seed": 20261112,
+      "seconds": 150,
+      "stepSeconds": 0.25,
+      "positionChecks": 15000,
+      "arrived": 1,
+      "maxConflictPairs": 13,
+      "conflictObservationsByType": {
+        "crossing": 86,
+        "head-on": 149,
+        "overtaking": 51
+      },
+      "generationMs": 18.004,
+      "motionAndPredictionMs": 15.576,
+      "predictionMeanMs": 0.353,
+      "predictionMaxMs": 0.763
+    },
+    {
+      "aircraft": 50,
+      "seed": 20261112,
+      "seconds": 150,
+      "stepSeconds": 0.25,
+      "positionChecks": 30000,
+      "arrived": 1,
+      "maxConflictPairs": 31,
+      "conflictObservationsByType": {
+        "crossing": 206,
+        "head-on": 497,
+        "overtaking": 109
+      },
+      "generationMs": 33.874,
+      "motionAndPredictionMs": 27.159,
+      "predictionMeanMs": 0.637,
+      "predictionMaxMs": 1.275
+    },
+    {
+      "aircraft": 100,
+      "seed": 20261112,
+      "seconds": 150,
+      "stepSeconds": 0.25,
+      "positionChecks": 60000,
+      "arrived": 2,
+      "maxConflictPairs": 122,
+      "conflictObservationsByType": {
+        "crossing": 740,
+        "head-on": 2048,
+        "overtaking": 606,
+        "blockage": 6
+      },
+      "generationMs": 70.794,
+      "motionAndPredictionMs": 41.263,
+      "predictionMeanMs": 1.165,
+      "predictionMaxMs": 3.023
+    }
+  ],
+  "interpretation": [
+    "Conflicts are predictions under constant taxi speed and the manually selected hold state; no ATC clearances or automatic conflict resolution.",
+    "45m edge separation and 30m node clearance are simplified simulator parameters, not operational separation standards.",
+    "Disconnected components, unavailable stands and layer-separated crossings remain explicit; validation does not invent geometry."
+  ],
+  "totalValidationMs": 366.33
+}

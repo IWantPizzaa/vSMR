@@ -1,0 +1,5897 @@
+{
+  "$schema": "../.github/schema/airportConfig.schema.json",
+  "version": "v1.1.3",
+  "ICAO": "LFPG",
+  "Coordinates": "49.010965:2.560501:6000",
+  "Hoppie": {
+    "MessageTemplate": "LFPG GATE INFO EXPECT TERMINAL {terminal} BRIEFING {briefingUrl}",
+    "BriefingUrl": "VATS.IM/LFPGBRIEF"
+  },
+  "Stands": {
+    "A01": {
+      "Coordinates": "48.999947:2.560557:25",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 5,
+      "Terminal": "2A"
+    },
+    "A03": {
+      "Coordinates": "49.000000:2.561388:25",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 5,
+      "Terminal": "2A"
+    },
+    "A04": {
+      "Coordinates": "49.001779:2.560396:25",
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["A06"],
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 2,
+      "Terminal": "2A"
+    },
+    "A05": {
+      "Coordinates": "49.000075:2.562435:25",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 5,
+      "Terminal": "2A"
+    },
+    "A06": {
+      "Coordinates": "49.001666:2.560469:25",
+      "Code": "C",
+      "Use": "A",
+      "Block": ["A04"],
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 1,
+      "Terminal": "2A"
+    },
+    "A07": {
+      "Coordinates": "49.000167:2.563342:25",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 5,
+      "Terminal": "2A"
+    },
+    "A08": {
+      "Coordinates": "49.001652:2.561325:25",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 1,
+      "Terminal": "2A"
+    },
+    "A09": {
+      "Coordinates": "49.000172:2.564267:25",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 5,
+      "Terminal": "2A"
+    },
+    "A10": {
+      "Coordinates": "49.001656:2.562258:25",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 1,
+      "Terminal": "2A"
+    },
+    "A12": {
+      "Coordinates": "49.001661:2.563092:20",
+      "Code": "C",
+      "Use": "A",
+      "Block": ["A14"],
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 1,
+      "Terminal": "2A"
+    },
+    "A14": {
+      "Coordinates": "49.001744:2.563540:25",
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["A12", "A16"],
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 2,
+      "Terminal": "2A"
+    },
+    "A16": {
+      "Coordinates": "49.001707:2.563680:20",
+      "Code": "C",
+      "Use": "A",
+      "Block": ["A14"],
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 1,
+      "Terminal": "2A"
+    },
+    "A18": {
+      "Coordinates": "49.001921:2.564409:35",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 1,
+      "Terminal": "2A"
+    },
+    "A30": {
+      "Coordinates": "49.002361:2.557897:25",
+      "Remark": {
+        "D": "Push W",
+        "C": "Push S/W"
+      },
+      "Code": "CD",
+      "Use": "A",
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 1,
+      "Terminal": "2A"
+    },
+    "A32": {
+      "Coordinates": "49.001819:2.558023:20",
+      "Remark": {
+        "C": "Push S"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["A34"],
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 1,
+      "Terminal": "2A"
+    },
+    "A34": {
+      "Coordinates": "49.001770:2.558299:25",
+      "Remark": {
+        "D": "Push W",
+        "C": "Push S/W"
+      },
+      "Code": "CD",
+      "Use": "A",
+      "Block": ["A32"],
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 2,
+      "Terminal": "2A"
+    },
+    "A38": {
+      "Coordinates": "49.001492:2.559018:25",
+      "Remark": {
+        "CDE": "Push W"
+      },
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 1,
+      "Terminal": "2A"
+    },
+    "A39": {
+      "Coordinates": "48.999929:2.558964:25",
+      "Remark": {
+        "CDE": "Push W"
+      },
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": ["TAM", "ACA", "CES", "AAL"],
+      "Priority": 5,
+      "Terminal": "2A"
+    },
+    "B01": {
+      "Coordinates": "49.006853:2.563352:25",
+      "Remark": {
+        "C": "Push orange/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB"
+      ],
+      "Priority": 5,
+      "Terminal": "2B"
+    },
+    "B02": {
+      "Coordinates": "49.005453:2.564071:20",
+      "Remark": {
+        "C": "Push blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["B04"],
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB"
+      ],
+      "Priority": 1,
+      "Terminal": "2B"
+    },
+    "B03": {
+      "Coordinates": "49.006839:2.562727:25",
+      "Remark": {
+        "C": "Push orange/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB",
+        "NPV"
+      ],
+      "Priority": 5,
+      "Terminal": "2B"
+    },
+    "B04": {
+      "Coordinates": "49.005518:2.563661:25",
+      "Remark": {
+        "DE": "Push yellow"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["B02", "B06"],
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB",
+        "NPV"
+      ],
+      "Priority": 2,
+      "Terminal": "2B"
+    },
+    "B05": {
+      "Coordinates": "49.006767:2.562172:25",
+      "Remark": {
+        "C": "Push orange/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB",
+        "NPV"
+      ],
+      "Priority": 5,
+      "Terminal": "2B"
+    },
+    "B06": {
+      "Coordinates": "49.005537:2.563513:25",
+      "Remark": {
+        "C": "Push blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["B04"],
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB",
+        "NPV"
+      ],
+      "Priority": 1,
+      "Terminal": "2B"
+    },
+    "B07": {
+      "Coordinates": "49.006757:2.561644:25",
+      "Remark": {
+        "C": "Push orange/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB",
+        "NPV"
+      ],
+      "Priority": 5,
+      "Terminal": "2B"
+    },
+    "B08": {
+      "Coordinates": "49.005535:2.562912:20",
+      "Remark": {
+        "C": "Push blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["B10"],
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB"
+      ],
+      "Priority": 1,
+      "Terminal": "2B"
+    },
+    "B09": {
+      "Coordinates": "49.006753:2.561067:20",
+      "Remark": {
+        "C": "Push orange/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB"
+      ],
+      "Priority": 5,
+      "Terminal": "2B"
+    },
+    "B10": {
+      "Coordinates": "49.005447:2.562534:25",
+      "Remark": {
+        "DE": "Push yellow"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["B08", "B12"],
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB"
+      ],
+      "Priority": 2,
+      "Terminal": "2B"
+    },
+    "B11": {
+      "Coordinates": "49.006718:2.560520:20",
+      "Remark": {
+        "C": "Push orange/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["B13"],
+      "Priority": 65,
+      "Terminal": "2B"
+    },
+    "B12": {
+      "Coordinates": "49.005497:2.562389:20",
+      "Remark": {
+        "C": "Push blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["B10"],
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB"
+      ],
+      "Priority": 1,
+      "Terminal": "2B"
+    },
+    "B13": {
+      "Coordinates": "49.006732:2.560354:20",
+      "Remark": {
+        "DE": "Push W yellow"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["B11", "B15"],
+      "Priority": 60,
+      "Terminal": "2B"
+    },
+    "B14": {
+      "Coordinates": "49.005437:2.561633:25",
+      "Remark": {
+        "C": "Push blue/yellow",
+        "DE": "Push yellow"
+      },
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB"
+      ],
+      "Priority": 1,
+      "Terminal": "2B"
+    },
+    "B15": {
+      "Coordinates": "49.006677:2.559962:20",
+      "Remark": {
+        "C": "Push W orange/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["B13"],
+      "Priority": 65,
+      "Terminal": "2B"
+    },
+    "B16": {
+      "Coordinates": "49.005389:2.560879:15",
+      "Remark": {
+        "C": "Push blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["B18"],
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB"
+      ],
+      "Priority": 1,
+      "Terminal": "2B"
+    },
+    "B18": {
+      "Coordinates": "49.005222:2.560791:20",
+      "Remark": {
+        "DE": "Push yellow"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["B16", "B20"],
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB"
+      ],
+      "Priority": 2,
+      "Terminal": "2B"
+    },
+    "B20": {
+      "Coordinates": "49.005277:2.560335:20",
+      "Remark": {
+        "C": "Push blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["B18"],
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB"
+      ],
+      "Priority": 1,
+      "Terminal": "2B"
+    },
+    "B22": {
+      "Coordinates": "49.005106:2.559796:20",
+      "Remark": {
+        "C": "Push W blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["B24"],
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB"
+      ],
+      "Priority": 2,
+      "Terminal": "2B"
+    },
+    "B24": {
+      "Coordinates": "49.004895:2.559541:25",
+      "Remark": {
+        "DE": "Push W yellow"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["B26", "B22"],
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB"
+      ],
+      "Priority": 1,
+      "Terminal": "2B"
+    },
+    "B26": {
+      "Coordinates": "49.004862:2.559401:20",
+      "Remark": {
+        "C": "Push W blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["B24"],
+      "Callsigns": [
+        "EJU",
+        "EZY",
+        "ITY",
+        "RAM",
+        "DAH",
+        "ASL",
+        "ELY",
+        "AEE",
+        "JBU",
+        "MAS",
+        "WJA",
+        "TGZ",
+        "REU",
+        "UZB"
+      ],
+      "Priority": 2,
+      "Terminal": "2B"
+    },
+    "C02": {
+      "Coordinates": "49.001958:2.565705:25",
+      "Code": "CDE",
+      "Use": "A",
+      "Block": ["CFW"],
+      "Callsigns": [
+        "ACI",
+        "AMX",
+        "AIC",
+        "BAW",
+        "ETH",
+        "GFA",
+        "LAN",
+        "MEA",
+        "QFA",
+        "RJA",
+        "SZN",
+        "TAM",
+        "UAE",
+        "VRE"
+      ],
+      "Priority": 3,
+      "Terminal": "2C"
+    },
+    "C03": {
+      "Coordinates": "49.000456:2.566853:25",
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": [
+        "ACI",
+        "AMX",
+        "AIC",
+        "BAW",
+        "ETH",
+        "GFA",
+        "LAN",
+        "MEA",
+        "QFA",
+        "RJA",
+        "SZN",
+        "TAM",
+        "UAE",
+        "VRE"
+      ],
+      "Priority": 4,
+      "Terminal": "2C"
+    },
+    "C04": {
+      "Coordinates": "49.001891:2.566603:20",
+      "Code": "DE",
+      "Wingspan": 61,
+      "Use": "A",
+      "Block": ["C4A", "CFW"],
+      "Callsigns": [
+        "ACI",
+        "AMX",
+        "AIC",
+        "BAW",
+        "ETH",
+        "GFA",
+        "LAN",
+        "MEA",
+        "QFA",
+        "RJA",
+        "SZN",
+        "TAM",
+        "UAE",
+        "VRE"
+      ],
+      "Priority": 3,
+      "Terminal": "2C"
+    },
+    "C4A": {
+      "Coordinates": "49.001823:2.566659:20",
+      "Code": "C",
+      "Use": "A",
+      "Block": ["C04"],
+      "Callsigns": [
+        "ACI",
+        "AMX",
+        "AIC",
+        "BAW",
+        "ETH",
+        "GFA",
+        "LAN",
+        "MEA",
+        "QFA",
+        "RJA",
+        "SZN",
+        "TAM",
+        "UAE",
+        "VRE"
+      ],
+      "Priority": 1,
+      "Terminal": "2C"
+    },
+    "C05": {
+      "Coordinates": "49.000403:2.567754:25",
+      "Code": "CDE",
+      "Use": "A",
+      "Block": ["CF9"],
+      "Callsigns": [
+        "ACI",
+        "AMX",
+        "AIC",
+        "BAW",
+        "ETH",
+        "GFA",
+        "LAN",
+        "MEA",
+        "QFA",
+        "RJA",
+        "SZN",
+        "TAM",
+        "UAE",
+        "VRE"
+      ],
+      "Priority": 5,
+      "Terminal": "2C"
+    },
+    "C06": {
+      "Coordinates": "49.001828:2.567397:25",
+      "Code": "CD",
+      "Wingspan": 52,
+      "Use": "A",
+      "Callsigns": [
+        "ACI",
+        "AMX",
+        "AIC",
+        "BAW",
+        "ETH",
+        "GFA",
+        "LAN",
+        "MEA",
+        "QFA",
+        "RJA",
+        "SZN",
+        "TAM",
+        "UAE",
+        "VRE"
+      ],
+      "Priority": 1,
+      "Terminal": "2C"
+    },
+    "C07": {
+      "Coordinates": "49.000380:2.568663:25",
+      "Code": "CDE",
+      "Use": "A",
+      "Block": ["CF9"],
+      "Callsigns": [
+        "ACI",
+        "AMX",
+        "AIC",
+        "BAW",
+        "ETH",
+        "GFA",
+        "LAN",
+        "MEA",
+        "QFA",
+        "RJA",
+        "SZN",
+        "TAM",
+        "UAE",
+        "VRE",
+        "NPV"
+      ],
+      "Priority": 5,
+      "Terminal": "2C"
+    },
+    "C08": {
+      "Coordinates": "49.001948:2.568253:25",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": [
+        "ACI",
+        "AMX",
+        "AIC",
+        "BAW",
+        "ETH",
+        "GFA",
+        "LAN",
+        "MEA",
+        "QFA",
+        "RJA",
+        "SZN",
+        "TAM",
+        "UAE",
+        "VRE",
+        "NPV"
+      ],
+      "Priority": 2,
+      "Terminal": "2C"
+    },
+    "C10": {
+      "Coordinates": "49.001907:2.569033:20",
+      "Code": "C",
+      "Use": "A",
+      "Block": ["C12"],
+      "Callsigns": [
+        "ACI",
+        "AMX",
+        "AIC",
+        "BAW",
+        "ETH",
+        "GFA",
+        "LAN",
+        "MEA",
+        "QFA",
+        "RJA",
+        "SZN",
+        "TAM",
+        "UAE",
+        "VRE"
+      ],
+      "Priority": 1,
+      "Terminal": "2C"
+    },
+    "C12": {
+      "Coordinates": "49.002027:2.569146:25",
+      "Code": "DE",
+      "Use": "A",
+      "Callsigns": [
+        "ACI",
+        "AMX",
+        "AIC",
+        "BAW",
+        "ETH",
+        "GFA",
+        "LAN",
+        "MEA",
+        "QFA",
+        "RJA",
+        "SZN",
+        "TAM",
+        "UAE",
+        "VRE"
+      ],
+      "Block": ["C10", "CFE"],
+      "Priority": 3,
+      "Terminal": "2C"
+    },
+    "C14": {
+      "Coordinates": "49.002293:2.570004:20",
+      "Code": "CDE",
+      "Use": "A",
+      "Block": ["CFE"],
+      "Callsigns": [
+        "ACI",
+        "AMX",
+        "AIC",
+        "BAW",
+        "ETH",
+        "GFA",
+        "LAN",
+        "MEA",
+        "QFA",
+        "RJA",
+        "SZN",
+        "TAM",
+        "UAE",
+        "VRE"
+      ],
+      "Priority": 3,
+      "Terminal": "2C"
+    },
+    "CF9": {
+      "Coordinates": "49.000475:2.568376:30",
+      "Remark": {
+        "F": "Push W, pull TA3"
+      },
+      "Code": "F",
+      "Use": "A",
+      "Block": ["C05", "C07"],
+      "Callsigns": [
+        "ACI",
+        "AMX",
+        "AIC",
+        "BAW",
+        "ETH",
+        "GFA",
+        "LAN",
+        "MEA",
+        "QFA",
+        "RJA",
+        "SZN",
+        "TAM",
+        "UAE",
+        "VRE"
+      ],
+      "Priority": 2,
+      "Terminal": "2C"
+    },
+    "CFE": {
+      "Coordinates": "49.002206:2.569857:30",
+      "Remark": {
+        "F": "Push W, pull TA3"
+      },
+      "Code": "F",
+      "Use": "A",
+      "Block": ["C14", "C12"],
+      "Schengen": false,
+      "Callsigns": [
+        "ACI",
+        "AMX",
+        "AIC",
+        "BAW",
+        "ETH",
+        "GFA",
+        "LAN",
+        "MEA",
+        "QFA",
+        "RJA",
+        "SZN",
+        "TAM",
+        "UAE",
+        "VRE"
+      ],
+      "Priority": 1,
+      "Terminal": "2C"
+    },
+    "CFW": {
+      "Coordinates": "49.001923:2.565798:30",
+      "Remark": {
+        "F": "Push W, exit TA2"
+      },
+      "Code": "F",
+      "Use": "A",
+      "Block": ["C02", "C04"],
+      "Schengen": false,
+      "Callsigns": [
+        "ACI",
+        "AMX",
+        "AIC",
+        "BAW",
+        "ETH",
+        "GFA",
+        "LAN",
+        "MEA",
+        "QFA",
+        "RJA",
+        "SZN",
+        "TAM",
+        "UAE",
+        "VRE"
+      ],
+      "Priority": 1,
+      "Terminal": "2C"
+    },
+    "D02": {
+      "Coordinates": "49.005421:2.569570:20",
+      "Remark": {
+        "C": "Push blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": [
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 1,
+      "Terminal": "2D"
+    },
+    "D03": {
+      "Coordinates": "49.007138:2.568438:20",
+      "Remark": {
+        "C": "Push orange/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": [
+        "AFR",
+        "FBT",
+        "LNR",
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 5,
+      "Terminal": "2D"
+    },
+    "D05": {
+      "Coordinates": "49.007077:2.567901:20",
+      "Remark": {
+        "C": "Push orange/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": [
+        "AFR",
+        "FBT",
+        "LNR",
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 5,
+      "Terminal": "2D"
+    },
+    "D06": {
+      "Coordinates": "49.005590:2.569052:20",
+      "Remark": {
+        "C": "Push blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": [
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 1,
+      "Terminal": "2D"
+    },
+    "D07": {
+      "Coordinates": "49.007077:2.567386:20",
+      "Remark": {
+        "D": "Push yellow"
+      },
+      "Code": "D",
+      "Wingspan": 48,
+      "Use": "A",
+      "Block": ["D09"],
+      "Callsigns": [
+        "AFR",
+        "FBT",
+        "LNR",
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 3,
+      "Terminal": "2D"
+    },
+    "D08": {
+      "Coordinates": "49.005785:2.568623:20",
+      "Remark": {
+        "C": "Push blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["D10"],
+      "Callsigns": [
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 2,
+      "Terminal": "2D"
+    },
+    "D09": {
+      "Coordinates": "49.007056:2.567303:20",
+      "Remark": {
+        "C": "Push orange/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["D07"],
+      "Callsigns": [
+        "AFR",
+        "FBT",
+        "LNR",
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 5,
+      "Terminal": "2D"
+    },
+    "D10": {
+      "Coordinates": "49.005708:2.568255:25",
+      "Remark": {
+        "DE": "Push yellow"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["D08", "D12"],
+      "Callsigns": [
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 1,
+      "Terminal": "2D"
+    },
+    "D11": {
+      "Coordinates": "49.007024:2.566743:20",
+      "Remark": {
+        "C": "Push orange/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["D13"],
+      "Callsigns": [
+        "AFR",
+        "FBT",
+        "LNR",
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 5,
+      "Terminal": "2D"
+    },
+    "D12": {
+      "Coordinates": "49.005713:2.567982:20",
+      "Remark": {
+        "C": "Push blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["D10"],
+      "Callsigns": [
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 2,
+      "Terminal": "2D"
+    },
+    "D13": {
+      "Coordinates": "49.007050:2.566635:25",
+      "Remark": {
+        "D": "Push yellow"
+      },
+      "Code": "D",
+      "Wingspan": 48,
+      "Use": "A",
+      "Block": ["D11"],
+      "Callsigns": [
+        "AFR",
+        "FBT",
+        "LNR",
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 3,
+      "Terminal": "2D"
+    },
+    "D14": {
+      "Coordinates": "49.005699:2.567354:20",
+      "Remark": {
+        "C": "Push blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": [
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 1,
+      "Terminal": "2D"
+    },
+    "D15": {
+      "Coordinates": "49.006968:2.566182:20",
+      "Remark": {
+        "C": "Push orange/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["D17"],
+      "Priority": 70,
+      "Terminal": "2D"
+    },
+    "D16": {
+      "Coordinates": "49.005699:2.566587:20",
+      "Remark": {
+        "C": "Push blue/yellow",
+        "DE": "Push yellow"
+      },
+      "Code": "CDE",
+      "Wingspan": 52,
+      "Use": "A",
+      "Callsigns": [
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 2,
+      "Terminal": "2D"
+    },
+    "D17": {
+      "Coordinates": "49.007012:2.565879:25",
+      "Remark": {
+        "D": "Push yellow"
+      },
+      "Code": "D",
+      "Wingspan": 48,
+      "Use": "A",
+      "Block": ["D15", "D19"],
+      "Priority": 75,
+      "Terminal": "2D"
+    },
+    "D18": {
+      "Coordinates": "49.005666:2.565874:20",
+      "Remark": {
+        "C": "Push blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": [
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 1,
+      "Terminal": "2D"
+    },
+    "D19": {
+      "Coordinates": "49.007010:2.565603:20",
+      "Remark": {
+        "C": "Push orange/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["D17"],
+      "Priority": 70,
+      "Terminal": "2D"
+    },
+    "D20": {
+      "Coordinates": "49.005588:2.565283:20",
+      "Remark": {
+        "C": "Push blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["D22"],
+      "Callsigns": [
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 2,
+      "Terminal": "2D"
+    },
+    "D22": {
+      "Coordinates": "49.005460:2.565015:25",
+      "Remark": {
+        "DE": "Push yellow"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["D20", "D24"],
+      "Callsigns": [
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 1,
+      "Terminal": "2D"
+    },
+    "D24": {
+      "Coordinates": "49.005377:2.564814:20",
+      "Remark": {
+        "C": "Push blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["D22"],
+      "Callsigns": [
+        "EJU",
+        "BTI",
+        "SAS",
+        "KMM",
+        "AEE",
+        "LOT",
+        "FIN",
+        "TVS",
+        "CTN",
+        "NOZ",
+        "NSZ",
+        "ITY",
+        "SEH",
+        "TGL"
+      ],
+      "Priority": 2,
+      "Terminal": "2D"
+    },
+    "E01": {
+      "Coordinates": "49.003663:2.583777:20",
+      "Remark": {
+        "C": "Push E"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN"],
+      "Priority": 1,
+      "Terminal": "S3"
+    },
+    "E05": {
+      "Coordinates": "49.003282:2.583831:20",
+      "Remark": {
+        "C": "Push E"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "S3"
+    },
+    "E08": {
+      "Coordinates": "49.001114:2.573580:20",
+      "Remark": {
+        "C": "Push/pull E"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "2E"
+    },
+    "E09": {
+      "Coordinates": "49.002900:2.583890:20",
+      "Remark": {
+        "C": "Push S blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "S3"
+    },
+    "E14": {
+      "Coordinates": "49.001172:2.574373:35",
+      "Remark": {
+        "DE": "Push E"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["E16"],
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 2,
+      "Terminal": "2E"
+    },
+    "E15": {
+      "Coordinates": "49.002516:2.583992:20",
+      "Remark": {
+        "C": "Push S blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "S3"
+    },
+    "E16": {
+      "Coordinates": "49.001216:2.574360:35",
+      "Remark": {
+        "DE": "Push E"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["E14"],
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "2E"
+    },
+    "E17": {
+      "Coordinates": "49.002045:2.584019:20",
+      "Remark": {
+        "C": "Push S blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "S3"
+    },
+    "E18": {
+      "Coordinates": "49.001228:2.575280:35",
+      "Remark": {
+        "DE": "Push E"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "2E"
+    },
+    "E20": {
+      "Coordinates": "49.001235:2.576264:35",
+      "Remark": {
+        "DE": "Push E"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "2E"
+    },
+    "E21": {
+      "Coordinates": "49.001689:2.584064:20",
+      "Remark": {
+        "C": "Push S blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "S3"
+    },
+    "E22": {
+      "Coordinates": "49.001342:2.577233:35",
+      "Remark": {
+        "DE": "Push E"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX", "KFR"],
+      "Priority": 1,
+      "Terminal": "2E"
+    },
+    "E24": {
+      "Coordinates": "49.001429:2.578214:35",
+      "Remark": {
+        "DE": "Push E"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "2E"
+    },
+    "E25": {
+      "Coordinates": "49.001274:2.584121:20",
+      "Remark": {
+        "C": "Push S blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["E27"],
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "S3"
+    },
+    "E26": {
+      "Coordinates": "49.001446:2.579212:35",
+      "Remark": {
+        "DE": "Push E"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "2E"
+    },
+    "E27": {
+      "Coordinates": "49.001131:2.584150:25",
+      "Remark": {
+        "DE": "Push S yellow"
+      },
+      "Code": "DE",
+      "Wingspan": 61,
+      "Use": "A",
+      "Block": ["E25", "E29"],
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 2,
+      "Terminal": "S3"
+    },
+    "E29": {
+      "Coordinates": "49.000894:2.584164:20",
+      "Remark": {
+        "C": "Push S blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["E27"],
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "S3"
+    },
+    "E30": {
+      "Coordinates": "49.001473:2.580197:35",
+      "Remark": {
+        "DE": "Push E"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "2E"
+    },
+    "E32": {
+      "Coordinates": "49.001455:2.581173:30",
+      "Remark": {
+        "DE": "Push E"
+      },
+      "Code": "DE",
+      "Wingspan": 61,
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "2E"
+    },
+    "E34": {
+      "Coordinates": "49.001481:2.582074:25",
+      "Remark": {
+        "C": "Push E"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "2E"
+    },
+    "E38": {
+      "Coordinates": "49.002652:2.581747:30",
+      "Remark": {
+        "C": "Push S/E",
+        "DE": "Push S"
+      },
+      "Code": "CDE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "KQA", "MEA", "HVN", "AMX"],
+      "Priority": 1,
+      "Terminal": "2E"
+    },
+    "F02": {
+      "Coordinates": "49.005458:2.573384:20",
+      "Remark": {
+        "C": "Push N-E"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F03": {
+      "Coordinates": "49.007411:2.583388:35",
+      "Remark": {
+        "DE": "Push N"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 3,
+      "Terminal": "S3"
+    },
+    "F04": {
+      "Coordinates": "49.005819:2.5732476:20",
+      "Remark": {
+        "C": "Push N-E"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F08": {
+      "Coordinates": "49.006178:2.573121:20",
+      "Remark": {
+        "C": "Push N"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F09": {
+      "Coordinates": "49.006676:2.583455:35",
+      "Remark": {
+        "DE": "Push N"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 3,
+      "Terminal": "S3"
+    },
+    "F10": {
+      "Coordinates": "49.006531:2.573032:20",
+      "Remark": {
+        "C": "Push N"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F14": {
+      "Coordinates": "49.006841:2.573153:20",
+      "Remark": {
+        "C": "Push N or E/W blue"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F15": {
+      "Coordinates": "49.005880:2.583563:35",
+      "Remark": {
+        "DE": "Push N"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 3,
+      "Terminal": "S3"
+    },
+    "F16": {
+      "Coordinates": "49.007075:2.573531:20",
+      "Remark": {
+        "C": "Push G4 blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F20": {
+      "Coordinates": "49.007223:2.573995:20",
+      "Remark": {
+        "C": "Push G4 blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F22": {
+      "Coordinates": "49.007281:2.574537:20",
+      "Remark": {
+        "C": "Push G4 blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F26": {
+      "Coordinates": "49.007216:2.575234:20",
+      "Remark": {
+        "C": "Push G4 blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["F28"],
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F28": {
+      "Coordinates": "49.007128:2.575492:25",
+      "Remark": {
+        "DE": "Push G4 yellow"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["F26", "F30"],
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 5,
+      "Terminal": "2F"
+    },
+    "F30": {
+      "Coordinates": "49.007049:2.575779:20",
+      "Remark": {
+        "C": "Push G4 blue/yellow or N E2"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["F28"],
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F32": {
+      "Coordinates": "49.006632:2.575843:20",
+      "Remark": {
+        "C": "Push N"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F34": {
+      "Coordinates": "49.006308:2.576063:20",
+      "Remark": {
+        "C": "Push N pull F68"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F66": {
+      "Coordinates": "49.006341:2.577522:20",
+      "Remark": {
+        "C": "Push N pull F68"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F68": {
+      "Coordinates": "49.006723:2.577488:25",
+      "Remark": {
+        "C": "Push N"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F70": {
+      "Coordinates": "49.007114:2.577552:20",
+      "Remark": {
+        "C": "Push G4 blue/yellow or N"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["F72", "F74"],
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F72": {
+      "Coordinates": "49.007247:2.577619:25",
+      "Remark": {
+        "D": "Push G4 yellow line"
+      },
+      "Code": "D",
+      "Wingspan": 48,
+      "Use": "A",
+      "Block": ["F70", "F74"],
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 4,
+      "Terminal": "2F"
+    },
+    "F74": {
+      "Coordinates": "49.007216:2.577718:25",
+      "Remark": {
+        "E": "Push G4 yellow"
+      },
+      "Code": "E",
+      "Use": "A",
+      "Block": ["F70", "F72", "F76"],
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 5,
+      "Terminal": "2F"
+    },
+    "F76": {
+      "Coordinates": "49.007358:2.577917:20",
+      "Remark": {
+        "C": "Push G4 blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Block": ["F72", "F74"],
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F80": {
+      "Coordinates": "49.007444:2.578426:20",
+      "Remark": {
+        "C": "Push G4 blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F82": {
+      "Coordinates": "49.007464:2.579132:20",
+      "Remark": {
+        "C": "Push E blue or W yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F84": {
+      "Coordinates": "49.007453:2.579692:20",
+      "Remark": {
+        "C": "Push E blue/yellow"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F86": {
+      "Coordinates": "49.007244:2.580151:20",
+      "Remark": {
+        "C": "Push N pull F86"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F90": {
+      "Coordinates": "49.006883:2.580301:20",
+      "Remark": {
+        "C": "Push N"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F92": {
+      "Coordinates": "49.006521:2.580304:25",
+      "Remark": {
+        "C": "Push N"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F94": {
+      "Coordinates": "49.006146:2.580374:20",
+      "Remark": {
+        "C": "Push N-W"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "F96": {
+      "Coordinates": "49.005787:2.580315:20",
+      "Remark": {
+        "C": "Push W"
+      },
+      "Code": "C",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": ["AFR", "FBT", "LNR", "CCM", "ROT", "KLM"],
+      "Priority": 2,
+      "Terminal": "2F"
+    },
+    "G10": {
+      "Coordinates": "49.003396:2.556223:10",
+      "Code": "AB",
+      "Wingspan": 22,
+      "Use": "A",
+      "Block": ["G11"],
+      "Priority": 55,
+      "Terminal": "GA"
+    },
+    "G11": {
+      "Coordinates": "49.003406:2.556346:10",
+      "Code": "AB",
+      "Wingspan": 28,
+      "Use": "A",
+      "Block": ["G10"],
+      "Priority": 50,
+      "Terminal": "GA"
+    },
+    "G12": {
+      "Coordinates": "49.003405:2.556580:10",
+      "Code": "AB",
+      "Wingspan": 22,
+      "Use": "A",
+      "Priority": 55,
+      "Terminal": "GA"
+    },
+    "G13": {
+      "Coordinates": "49.003413:2.556859:10",
+      "Remark": {
+        "AB": "Push/Pull"
+      },
+      "Code": "AB",
+      "Wingspan": 28,
+      "Use": "A",
+      "Block": ["G14"],
+      "Priority": 50,
+      "Terminal": "GA"
+    },
+    "G14": {
+      "Coordinates": "49.003406:2.556969:10",
+      "Code": "AB",
+      "Wingspan": 22,
+      "Use": "A",
+      "Block": ["G13"],
+      "Priority": 55,
+      "Terminal": "GA"
+    },
+    "G20": {
+      "Coordinates": "49.004109:2.556022:15",
+      "Remark": {
+        "AB": "Taxi Out"
+      },
+      "Code": "AB",
+      "Wingspan": 28,
+      "Use": "A",
+      "Block": ["G21"],
+      "Priority": 50,
+      "Terminal": "GA"
+    },
+    "G21": {
+      "Coordinates": "49.004101:2.556145:15",
+      "Remark": {
+        "AB": "Taxi Out"
+      },
+      "Code": "AB",
+      "Wingspan": 28,
+      "Use": "A",
+      "Block": ["G20", "G22"],
+      "Priority": 55,
+      "Terminal": "GA"
+    },
+    "G22": {
+      "Coordinates": "49.004144:2.556478:15",
+      "Remark": {
+        "AB": "Taxi Out"
+      },
+      "Code": "AB",
+      "Wingspan": 28,
+      "Use": "A",
+      "Block": ["G21", "G24"],
+      "Priority": 50,
+      "Terminal": "GA"
+    },
+    "G23": {
+      "Coordinates": "49.004140:2.556947:15",
+      "Remark": {
+        "AB": "Taxi Out"
+      },
+      "Code": "AB",
+      "Wingspan": 28,
+      "Use": "A",
+      "Block": ["G21", "G24"],
+      "Priority": 50,
+      "Terminal": "GA"
+    },
+    "G24": {
+      "Coordinates": "49.004123:2.556767:15",
+      "Remark": {
+        "AB": "Taxi Out"
+      },
+      "Code": "AB",
+      "Wingspan": 28,
+      "Block": ["G22", "G23"],
+      "Priority": 55,
+      "Terminal": "GA"
+    },
+    "G31": {
+      "Coordinates": "49.004819:2.556167:20",
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": ["EZY", "EJU", "EZS"],
+      "Priority": 5,
+      "Terminal": "GA"
+    },
+    "G35": {
+      "Coordinates": "49.004835:2.556977:20",
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": ["EZY", "EJU", "EZS"],
+      "Priority": 5,
+      "Terminal": "GA"
+    },
+    "H01": {
+      "Coordinates": "49.015908:2.578681:25",
+      "Code": "DE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H20", "H21", "H23"],
+      "Priority": 40,
+      "Terminal": "H"
+    },
+    "H02": {
+      "Coordinates": "49.015859:2.577705:25",
+      "Code": "DE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H21", "H22", "H23"],
+      "Priority": 40,
+      "Terminal": "H"
+    },
+    "H03": {
+      "Coordinates": "49.015856:2.576718:25",
+      "Code": "DE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H30", "H34"],
+      "Priority": 40,
+      "Terminal": "H"
+    },
+    "H04": {
+      "Coordinates": "49.015754:2.575731:25",
+      "Code": "DE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H40", "H34"],
+      "Priority": 40,
+      "Terminal": "H"
+    },
+    "H05": {
+      "Coordinates": "49.013797:2.578933:25",
+      "Code": "DE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H50", "H55", "H65"],
+      "Priority": 45,
+      "Terminal": "H"
+    },
+    "H06": {
+      "Coordinates": "49.013713:2.577952:25",
+      "Code": "DE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H55", "H60", "H65"],
+      "Priority": 45,
+      "Terminal": "H"
+    },
+    "H07": {
+      "Coordinates": "49.013676:2.576951:25",
+      "Code": "DE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H70", "H87"],
+      "Priority": 45,
+      "Terminal": "H"
+    },
+    "H08": {
+      "Coordinates": "49.013628:2.575988:25",
+      "Code": "DE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H80", "H87"],
+      "Priority": 45,
+      "Terminal": "H"
+    },
+    "H09": {
+      "Coordinates": "49.015331:2.574567:25",
+      "Code": "BCDE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Priority": 40,
+      "Terminal": "H"
+    },
+    "H10": {
+      "Coordinates": "49.015264:2.573596:25",
+      "Code": "BCDE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Priority": 40,
+      "Terminal": "H"
+    },
+    "H11": {
+      "Coordinates": "49.013945:2.574765:25",
+      "Code": "BCDE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Priority": 40,
+      "Terminal": "H"
+    },
+    "H12": {
+      "Coordinates": "49.013896:2.573810:25",
+      "Code": "BCDE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Priority": 40,
+      "Terminal": "H"
+    },
+    "H20": {
+      "Coordinates": "49.015894:2.578783:25",
+      "Code": "BC",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H01", "H23"],
+      "Priority": 45,
+      "Terminal": "H"
+    },
+    "H21": {
+      "Coordinates": "49.015909:2.578167:25",
+      "Code": "BC",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H01", "H02", "H23"],
+      "Priority": 45,
+      "Terminal": "H"
+    },
+    "H22": {
+      "Coordinates": "49.015850:2.577592:25",
+      "Code": "BC",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H02"],
+      "Priority": 45,
+      "Terminal": "H"
+    },
+    "H23": {
+      "Coordinates": "49.015921:2.578542:25",
+      "Code": "F",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H01", "H02", "H20", "H21"],
+      "Priority": 45,
+      "Terminal": "H"
+    },
+    "H30": {
+      "Coordinates": "49.015782:2.576809:25",
+      "Code": "BC",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H03"],
+      "Priority": 45,
+      "Terminal": "H"
+    },
+    "H34": {
+      "Coordinates": "49.015806:2.576205:25",
+      "Code": "BC",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H03", "H04"],
+      "Priority": 45,
+      "Terminal": "H"
+    },
+    "H40": {
+      "Coordinates": "49.015754:2.575629:25",
+      "Code": "BC",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H04"],
+      "Priority": 45,
+      "Terminal": "H"
+    },
+    "H50": {
+      "Coordinates": "49.013859:2.579030:25",
+      "Code": "BC",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H05", "H55"],
+      "Priority": 40,
+      "Terminal": "H"
+    },
+    "H55": {
+      "Coordinates": "49.013738:2.578520:25",
+      "Code": "F",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H05", "H06", "H50", "H60", "H65"],
+      "Priority": 40,
+      "Terminal": "H"
+    },
+    "H60": {
+      "Coordinates": "49.013739:2.577847:25",
+      "Code": "BC",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H06", "H55"],
+      "Priority": 40,
+      "Terminal": "H"
+    },
+    "H65": {
+      "Coordinates": "49.013752:2.578442:25",
+      "Code": "BC",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H05", "H06", "H55"],
+      "Priority": 45,
+      "Terminal": "H"
+    },
+    "H70": {
+      "Coordinates": "49.013711:2.577054:25",
+      "Code": "BC",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H07"],
+      "Priority": 40,
+      "Terminal": "H"
+    },
+    "H80": {
+      "Coordinates": "49.013681:2.575867:25",
+      "Code": "BC",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H08"],
+      "Priority": 40,
+      "Terminal": "H"
+    },
+    "H87": {
+      "Coordinates": "49.013699:2.576460:25",
+      "Code": "BC",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Block": ["H07", "H08"],
+      "Priority": 40,
+      "Terminal": "H"
+    },
+    "I04": {
+      "Coordinates": "49.013460:2.504953:20",
+      "Code": "CD",
+      "Wingspan": 42,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I05": {
+      "Coordinates": "49.013498:2.505569:20",
+      "Code": "CD",
+      "Wingspan": 42,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I06": {
+      "Coordinates": "49.013516:2.506202:20",
+      "Code": "CD",
+      "Wingspan": 42,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I09": {
+      "Coordinates": "49.012334:2.505092:20",
+      "Code": "CD",
+      "Wingspan": 42,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I10": {
+      "Coordinates": "49.012327:2.505722:20",
+      "Code": "CD",
+      "Wingspan": 42,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I11": {
+      "Coordinates": "49.012379:2.506337:20",
+      "Code": "CD",
+      "Wingspan": 42,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I14": {
+      "Coordinates": "49.011496:2.505347:25",
+      "Code": "BCDE",
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I15": {
+      "Coordinates": "49.010961:2.505392:25",
+      "Code": "BCD",
+      "Use": "C",
+      "Block": ["I16"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I16": {
+      "Coordinates": "49.010851:2.505417:25",
+      "Code": "DE",
+      "Use": "C",
+      "Block": ["I15", "I17"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I17": {
+      "Coordinates": "49.010434:2.505489:25",
+      "Code": "BCD",
+      "Use": "C",
+      "Block": ["I16", "I18"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I18": {
+      "Coordinates": "49.010203:2.505556:25",
+      "Code": "DE",
+      "Use": "C",
+      "Block": ["I17", "I19"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I19": {
+      "Coordinates": "49.009894:2.505529:25",
+      "Code": "BCD",
+      "Use": "C",
+      "Block": ["I18"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I20": {
+      "Coordinates": "49.013150:2.502898:18",
+      "Code": "BC",
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I21": {
+      "Coordinates": "49.012538:2.502708:22",
+      "Code": "BCD",
+      "Use": "C",
+      "Block": ["I22"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I22": {
+      "Coordinates": "49.012371:2.502662:25",
+      "Code": "E",
+      "Use": "C",
+      "Block": ["I21", "I23"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I23": {
+      "Coordinates": "49.012002:2.502712:20",
+      "Code": "BCD",
+      "Use": "C",
+      "Block": ["I22"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I24": {
+      "Coordinates": "49.011468:2.502730:20",
+      "Code": "BCDE",
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I25": {
+      "Coordinates": "49.010946:2.502874:25",
+      "Code": "BCD",
+      "Use": "C",
+      "Block": ["I26"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I26": {
+      "Coordinates": "49.010580:2.502895:25",
+      "Code": "E",
+      "Use": "C",
+      "Block": ["I25", "I27"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I27": {
+      "Coordinates": "49.010402:2.502818:25",
+      "Code": "BCD",
+      "Wingspan": 48,
+      "Use": "C",
+      "Block": ["I26"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I30": {
+      "Coordinates": "49.015148:2.506943:25",
+      "Code": "CD",
+      "Wingspan": 38,
+      "Use": "C",
+      "Block": ["I31"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I31": {
+      "Coordinates": "49.015177:2.506774:25",
+      "Code": "DE",
+      "Use": "C",
+      "Block": ["I30", "I32"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I32": {
+      "Coordinates": "49.015072:2.506287:25",
+      "Code": "CD",
+      "Wingspan": 38,
+      "Use": "C",
+      "Block": ["I31", "I33"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I33": {
+      "Coordinates": "49.015059:2.505795:25",
+      "Code": "DE",
+      "Use": "C",
+      "Block": ["I32", "I34"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I34": {
+      "Coordinates": "49.015075:2.505620:25",
+      "Code": "CD",
+      "Wingspan": 38,
+      "Use": "C",
+      "Block": ["I33"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I35": {
+      "Coordinates": "49.014856:2.503233:25",
+      "Code": "BCD",
+      "Wingspan": 48,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I36": {
+      "Coordinates": "49.014828:2.502525:25",
+      "Code": "BCD",
+      "Wingspan": 48,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I37": {
+      "Coordinates": "49.014763:2.501806:25",
+      "Code": "BCD",
+      "Wingspan": 48,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I38": {
+      "Coordinates": "49.014712:2.500851:25",
+      "Code": "BCD",
+      "Wingspan": 48,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I39": {
+      "Coordinates": "49.014675:2.500133:25",
+      "Code": "BCD",
+      "Wingspan": 48,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I40": {
+      "Coordinates": "49.013579:2.502713:18",
+      "Code": "C",
+      "Wingspan": 30,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I41": {
+      "Coordinates": "49.013421:2.502197:25",
+      "Code": "D",
+      "Use": "C",
+      "Block": ["I42"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I42": {
+      "Coordinates": "49.013442:2.502128:25",
+      "Code": "CD",
+      "Wingspan": 40,
+      "Use": "C",
+      "Block": ["I41"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I43": {
+      "Coordinates": "49.013376:2.501168:30",
+      "Code": "BCDE",
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I44": {
+      "Coordinates": "49.013353:2.500361:30",
+      "Code": "BCDE",
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I45": {
+      "Coordinates": "49.013265:2.499559:30",
+      "Code": "BCDE",
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I46": {
+      "Coordinates": "49.013248:2.498736:30",
+      "Code": "BCDE",
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I47": {
+      "Coordinates": "49.013155:2.497944:30",
+      "Code": "BCDE",
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I48": {
+      "Coordinates": "49.013132:2.496968:30",
+      "Code": "BCDE",
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I49": {
+      "Coordinates": "49.013127:2.496141:30",
+      "Code": "BCDE",
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I50": {
+      "Coordinates": "49.013039:2.495334:30",
+      "Code": "BCDE",
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I51": {
+      "Coordinates": "49.012450:2.494183:25",
+      "Code": "BCD",
+      "Use": "C",
+      "Block": ["I52"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I52": {
+      "Coordinates": "49.012225:2.494293:25",
+      "Code": "E",
+      "Use": "C",
+      "Block": ["I51", "A53"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I53": {
+      "Coordinates": "49.011924:2.494293:25",
+      "Code": "BCD",
+      "Use": "C",
+      "Block": ["I52", "I54"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I54": {
+      "Coordinates": "49.011570:2.494354:25",
+      "Code": "E",
+      "Use": "C",
+      "Block": ["I55"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I55": {
+      "Coordinates": "49.011380:2.494244:25",
+      "Code": "BCD",
+      "Use": "C",
+      "Block": ["I54"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I60": {
+      "Coordinates": "49.017231:2.507871:30",
+      "Code": "CDE",
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I61": {
+      "Coordinates": "49.017149:2.507055:30",
+      "Code": "CD",
+      "Use": "C",
+      "Block": ["I62"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I62": {
+      "Coordinates": "49.017141:2.506886:30",
+      "Code": "CE",
+      "Use": "C",
+      "Block": ["I61", "I63"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I63": {
+      "Coordinates": "49.017073:2.506232:30",
+      "Code": "CD",
+      "Use": "C",
+      "Block": ["I64", "I62"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I64": {
+      "Coordinates": "49.017127:2.505894:30",
+      "Code": "CE",
+      "Use": "C",
+      "Block": ["I63", "I65"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I65": {
+      "Coordinates": "49.017029:2.505411:30",
+      "Code": "CD",
+      "Use": "C",
+      "Block": ["I64", "I66"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I66": {
+      "Coordinates": "49.017011:2.504915:30",
+      "Code": "CE",
+      "Use": "C",
+      "Block": ["I65", "I67"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I67": {
+      "Coordinates": "49.016995:2.504582:30",
+      "Code": "CD",
+      "Use": "C",
+      "Block": ["I66", "I68"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I68": {
+      "Coordinates": "49.016966:2.503925:30",
+      "Code": "CE",
+      "Use": "C",
+      "Block": ["I67", "I69"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I69": {
+      "Coordinates": "49.016959:2.503759:30",
+      "Code": "CD",
+      "Use": "C",
+      "Block": ["I68"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I70": {
+      "Coordinates": "49.016926:2.502943:30",
+      "Code": "CDE",
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I71": {
+      "Coordinates": "49.016859:2.501763:30",
+      "Code": "CD",
+      "Use": "C",
+      "Block": ["I72"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I72": {
+      "Coordinates": "49.016855:2.501666:30",
+      "Code": "CE",
+      "Use": "C",
+      "Block": ["I71", "I73"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I73": {
+      "Coordinates": "49.016818:2.500945:30",
+      "Code": "CD",
+      "Use": "C",
+      "Block": ["I74", "I72"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I74": {
+      "Coordinates": "49.016788:2.500674:30",
+      "Code": "CE",
+      "Use": "C",
+      "Block": ["I73", "I75"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I75": {
+      "Coordinates": "49.016722:2.500137:30",
+      "Code": "CD",
+      "Use": "C",
+      "Block": ["I74", "I76"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I76": {
+      "Coordinates": "49.016718:2.499657:30",
+      "Code": "CE",
+      "Use": "C",
+      "Block": ["I75", "I77"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I77": {
+      "Coordinates": "49.016688:2.499322:30",
+      "Code": "CD",
+      "Use": "C",
+      "Block": ["I76"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I78": {
+      "Coordinates": "49.016693:2.498590:30",
+      "Code": "CE",
+      "Use": "C",
+      "Block": ["I79"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 3,
+      "Terminal": "FEDEX"
+    },
+    "I79": {
+      "Coordinates": "49.016671:2.498504:30",
+      "Code": "CD",
+      "Use": "C",
+      "Block": ["I78"],
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I80": {
+      "Coordinates": "49.014614:2.494979:20",
+      "Remark": {
+        "CD": "Push E"
+      },
+      "Code": "CD",
+      "Wingspan": 39,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I81": {
+      "Coordinates": "49.015038:2.495263:20",
+      "Code": "CD",
+      "Wingspan": 39,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I82": {
+      "Coordinates": "49.015428:2.495408:20",
+      "Code": "CD",
+      "Wingspan": 39,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I83": {
+      "Coordinates": "49.015810:2.495612:20",
+      "Code": "CD",
+      "Wingspan": 39,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I84": {
+      "Coordinates": "49.016199:2.495724:20",
+      "Code": "CD",
+      "Wingspan": 39,
+      "Use": "C",
+      "Callsigns": ["FDX", "TAY", "ABR", "SWT", "FPO", "ABV"],
+      "Priority": 2,
+      "Terminal": "FEDEX"
+    },
+    "I85": {
+      "Coordinates": "49.014899:2.496271:15",
+      "Code": "C",
+      "Wingspan": 28,
+      "Use": "C",
+      "Callsigns": ["FDX", "ABR", "SWT"],
+      "Priority": 1,
+      "Terminal": "FEDEX"
+    },
+    "I86": {
+      "Coordinates": "49.014556:2.496242:15",
+      "Code": "C",
+      "Wingspan": 28,
+      "Use": "C",
+      "Callsigns": ["FDX", "ABR", "SWT"],
+      "Priority": 1,
+      "Terminal": "FEDEX"
+    },
+    "I90": {
+      "Coordinates": "49.014568:2.497837:15",
+      "Remark": {
+        "C": "Taxi Out"
+      },
+      "Code": "C",
+      "Wingspan": 28,
+      "Use": "C",
+      "Callsigns": ["FDX", "ABR", "SWT"],
+      "Priority": 1,
+      "Terminal": "FEDEX"
+    },
+    "I91": {
+      "Coordinates": "49.015083:2.497703:15",
+      "Remark": {
+        "C": "Taxi Out"
+      },
+      "Code": "C",
+      "Wingspan": 28,
+      "Use": "C",
+      "Callsigns": ["FDX", "ABR", "SWT"],
+      "Priority": 1,
+      "Terminal": "FEDEX"
+    },
+    "J01": {
+      "Coordinates": "49.004200:2.597598:20",
+      "Remark": {
+        "BC": "Push N exit TJ3"
+      },
+      "Use": "A",
+      "Code": "BC",
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 35,
+      "Terminal": "2G"
+    },
+    "J02": {
+      "Coordinates": "49.003908:2.597639:20",
+      "Use": "A",
+      "Code": "BC",
+      "Wingspan": 29,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 2,
+      "Terminal": "2G"
+    },
+    "J03": {
+      "Coordinates": "49.003602:2.597649:20",
+      "Use": "A",
+      "Code": "BC",
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 35,
+      "Terminal": "2G"
+    },
+    "J04": {
+      "Coordinates": "49.003652:2.598616:20",
+      "Use": "A",
+      "Code": "BC",
+      "Wingspan": 29,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 2,
+      "Terminal": "2G"
+    },
+    "J05": {
+      "Coordinates": "49.004066:2.598569:20",
+      "Use": "A",
+      "Code": "BC",
+      "Wingspan": 29,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 2,
+      "Terminal": "2G"
+    },
+    "J06": {
+      "Coordinates": "49.004385:2.598516:20",
+      "Use": "A",
+      "Code": "BC",
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 35,
+      "Terminal": "2G"
+    },
+    "J10": {
+      "Coordinates": "49.004807:2.599822:20",
+      "Remark": {
+        "BC": "Push E"
+      },
+      "Use": "A",
+      "Code": "BC",
+      "Wingspan": 29,
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 1,
+      "Terminal": "2G"
+    },
+    "J11": {
+      "Coordinates": "49.004459:2.599895:20",
+      "Use": "A",
+      "Code": "BC",
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 25,
+      "Terminal": "2G"
+    },
+    "J12": {
+      "Coordinates": "49.004126:2.599913:20",
+      "Use": "A",
+      "Code": "BC",
+      "Wingspan": 29,
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 1,
+      "Terminal": "2G"
+    },
+    "J13": {
+      "Coordinates": "49.003787:2.599895:20",
+      "Use": "A",
+      "Code": "BC",
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 25,
+      "Terminal": "2G"
+    },
+    "J14": {
+      "Coordinates": "49.003772:2.600453:20",
+      "Use": "A",
+      "Code": "BC",
+      "Wingspan": 29,
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 1,
+      "Terminal": "2G"
+    },
+    "J16": {
+      "Coordinates": "49.003836:2.600925:20",
+      "Use": "A",
+      "Code": "BC",
+      "Wingspan": 29,
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 1,
+      "Terminal": "2G"
+    },
+    "J18": {
+      "Coordinates": "49.004119:2.601241:20",
+      "Use": "A",
+      "Code": "BC",
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 25,
+      "Terminal": "2G"
+    },
+    "J20": {
+      "Coordinates": "49.004422:2.601185:20",
+      "Use": "A",
+      "Code": "BC",
+      "Wingspan": 29,
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 1,
+      "Terminal": "2G"
+    },
+    "J21": {
+      "Coordinates": "49.004730:2.601171:20",
+      "Remark": {
+        "BC": "Push S-W"
+      },
+      "Use": "A",
+      "Code": "BC",
+      "Wingspan": 29,
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 1,
+      "Terminal": "2G"
+    },
+    "J30": {
+      "Coordinates": "49.004816:2.602652:20",
+      "Remark": {
+        "BC": "Push S-W"
+      },
+      "Use": "A",
+      "Code": "BC",
+      "Wingspan": 29,
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 1,
+      "Terminal": "2G"
+    },
+    "J31": {
+      "Coordinates": "49.004506:2.602631:20",
+      "Use": "A",
+      "Code": "BC",
+      "Wingspan": 29,
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 1,
+      "Terminal": "2G"
+    },
+    "J33": {
+      "Coordinates": "49.004204:2.602657:20",
+      "Use": "A",
+      "Code": "BC",
+      "Wingspan": 29,
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 1,
+      "Terminal": "2G"
+    },
+    "J34": {
+      "Coordinates": "49.003894:2.602759:20",
+      "Use": "A",
+      "Code": "BC",
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 25,
+      "Terminal": "2G"
+    },
+    "J37": {
+      "Coordinates": "49.003952:2.603561:20",
+      "Use": "A",
+      "Code": "BC",
+      "Wingspan": 29,
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 1,
+      "Terminal": "2G"
+    },
+    "J38": {
+      "Coordinates": "49.003971:2.604114:20",
+      "Use": "A",
+      "Code": "BC",
+      "Wingspan": 29,
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 1,
+      "Terminal": "2G"
+    },
+    "J39": {
+      "Coordinates": "49.004335:2.604039:20",
+      "Use": "A",
+      "Code": "BC",
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 25,
+      "Terminal": "2G"
+    },
+    "J40": {
+      "Coordinates": "49.004652:2.603998:20",
+      "Remark": {
+        "BC": "Push S-W"
+      },
+      "Use": "A",
+      "Code": "BC",
+      "Wingspan": 29,
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 1,
+      "Terminal": "2G"
+    },
+    "J41": {
+      "Coordinates": "49.004978:2.603902:20",
+      "Remark": {
+        "BC": "Push W"
+      },
+      "Use": "A",
+      "Code": "BC",
+      "Schengen": true,
+      "Callsigns": ["AFR", "HOP", "LGL"],
+      "Priority": 25,
+      "Terminal": "2G"
+    },
+    "J51": {
+      "Coordinates": "49.010088:2.597677:35",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Priority": 30,
+      "Terminal": "2G"
+    },
+    "J53": {
+      "Coordinates": "49.009431:2.597773:35",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Priority": 30,
+      "Terminal": "2G"
+    },
+    "J55": {
+      "Coordinates": "49.008782:2.597883:35",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Priority": 30,
+      "Terminal": "2G"
+    },
+    "J57": {
+      "Coordinates": "49.008142:2.597977:35",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": ["AFR"],
+      "Priority": 30,
+      "Terminal": "2G"
+    },
+    "K01": {
+      "Coordinates": "49.007596:2.585762:35",
+      "Remark": {
+        "DE": "Push N"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["K05"],
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 5,
+      "Terminal": "S3"
+    },
+    "K05": {
+      "Coordinates": "49.007503:2.585754:35",
+      "Remark": {
+        "DEF": "Push N"
+      },
+      "Code": "DEF",
+      "Use": "A",
+      "Block": ["K01"],
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 4,
+      "Terminal": "S3"
+    },
+    "K09": {
+      "Coordinates": "49.006910:2.585757:35",
+      "Code": "DE",
+      "Use": "A",
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 4,
+      "Terminal": "S3"
+    },
+    "K13": {
+      "Coordinates": "49.006333:2.585904:35",
+      "Code": "DEF",
+      "Use": "A",
+      "Block": ["K17"],
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 4,
+      "Terminal": "S3"
+    },
+    "K17": {
+      "Coordinates": "49.006216:2.585922:35",
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["K13"],
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 5,
+      "Terminal": "S3"
+    },
+    "K21": {
+      "Coordinates": "49.005597:2.586012:35",
+      "Code": "DE",
+      "Use": "A",
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 4,
+      "Terminal": "S3"
+    },
+    "K26": {
+      "Coordinates": "49.007671:2.589303:35",
+      "Remark": {
+        "DE": "Push N"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "K32": {
+      "Coordinates": "49.007038:2.589399:35",
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "K38": {
+      "Coordinates": "49.006375:2.589439:35",
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "K44": {
+      "Coordinates": "49.005734:2.589525:35",
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "K52": {
+      "Coordinates": "49.003931:2.589769:35",
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "K53": {
+      "Coordinates": "49.003674:2.586127:35",
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 1,
+      "Terminal": "S3"
+    },
+    "K58": {
+      "Coordinates": "49.003266:2.589823:35",
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "K59": {
+      "Coordinates": "49.002868:2.586245:35",
+      "Code": "DEF",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 2,
+      "Terminal": "S3"
+    },
+    "K64": {
+      "Coordinates": "49.002629:2.589909:35",
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "K65": {
+      "Coordinates": "49.002069:2.586374:35",
+      "Code": "DEF",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 2,
+      "Terminal": "S3"
+    },
+    "K70": {
+      "Coordinates": "49.001971:2.589989:35",
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "K71": {
+      "Coordinates": "49.001325:2.586504:35",
+      "Remark": {
+        "DEF": "Push S"
+      },
+      "Code": "DEF",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 2,
+      "Terminal": "S3"
+    },
+    "K76": {
+      "Coordinates": "49.001320:2.590064:35",
+      "Remark": {
+        "DE": "Push S"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "CES", "CXA", "DAL", "JAL", "KAL", "MAU"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "L27": {
+      "Coordinates": "49.007788:2.591545:35",
+      "Remark": {
+        "DEF": "Push N"
+      },
+      "Code": "DEF",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "DAL", "HVN"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "L33": {
+      "Coordinates": "49.006999:2.591631:35",
+      "Remark": {
+        "DEF": "Push N"
+      },
+      "Code": "DEF",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "DAL", "HVN"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "L39": {
+      "Coordinates": "49.006215:2.591706:35",
+      "Remark": {
+        "DEF": "Push N"
+      },
+      "Code": "DEF",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "DAL", "HVN"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "L53": {
+      "Coordinates": "49.003913:2.592065:35",
+      "Remark": {
+        "DEF": "Push S"
+      },
+      "Code": "DEF",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "DAL", "HVN"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "L59": {
+      "Coordinates": "49.003118:2.592194:35",
+      "Remark": {
+        "DEF": "Push S"
+      },
+      "Code": "DEF",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "DAL", "HVN"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "L65": {
+      "Coordinates": "49.002333:2.592253:35",
+      "Remark": {
+        "DEF": "Push S"
+      },
+      "Code": "DEF",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "DAL", "HVN"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "L71": {
+      "Coordinates": "49.001552:2.592334:35",
+      "Remark": {
+        "DEF": "Push S"
+      },
+      "Code": "DEF",
+      "Use": "A",
+      "Schengen": false,
+      "Callsigns": ["AFR", "FBT", "LNR", "DAL", "HVN"],
+      "Priority": 1,
+      "Terminal": "S4"
+    },
+    "M06": {
+      "Coordinates": "49.000114:2.545950:25",
+      "Code": "BCDE",
+      "Use": "C",
+      "Priority": 8,
+      "Terminal": "FREIGHT"
+    },
+    "M07": {
+      "Coordinates": "49.000031:2.544976:25",
+      "Code": "BCDE",
+      "Use": "C",
+      "Priority": 8,
+      "Terminal": "FREIGHT"
+    },
+    "M08": {
+      "Coordinates": "48.999991:2.544008:35",
+      "Code": "BCDE",
+      "Use": "C",
+      "Priority": 8,
+      "Terminal": "FREIGHT"
+    },
+    "M09": {
+      "Coordinates": "48.999940:2.542992:30",
+      "Code": "BCDE",
+      "Use": "C",
+      "Priority": 8,
+      "Terminal": "FREIGHT"
+    },
+    "M10": {
+      "Coordinates": "48.999935:2.541997:30",
+      "Code": "BCDE",
+      "Use": "C",
+      "Priority": 8,
+      "Terminal": "FREIGHT"
+    },
+    "M11": {
+      "Coordinates": "48.999852:2.541026:25",
+      "Code": "BCDE",
+      "Use": "C",
+      "Priority": 8,
+      "Terminal": "FREIGHT"
+    },
+    "M12": {
+      "Coordinates": "48.999866:2.540039:35",
+      "Code": "BCDE",
+      "Use": "C",
+      "Priority": 8,
+      "Terminal": "FREIGHT"
+    },
+    "M13": {
+      "Coordinates": "48.999824:2.539097:25",
+      "Code": "BCDE",
+      "Use": "C",
+      "Priority": 8,
+      "Terminal": "FREIGHT"
+    },
+    "M14": {
+      "Coordinates": "48.999662:2.538040:30",
+      "Code": "BCDE",
+      "Use": "C",
+      "Priority": 6,
+      "Terminal": "FREIGHT"
+    },
+    "M15": {
+      "Coordinates": "48.999648:2.537085:30",
+      "Code": "BCDE",
+      "Use": "C",
+      "Priority": 6,
+      "Terminal": "FREIGHT"
+    },
+    "M16": {
+      "Coordinates": "48.999690:2.536152:20",
+      "Code": "BCDE",
+      "Use": "C",
+      "Block": ["M17", "M21", "M23"],
+      "Priority": 6,
+      "Terminal": "FREIGHT"
+    },
+    "M17": {
+      "Coordinates": "48.999704:2.534907:30",
+      "Code": "BCDEF",
+      "Block": ["M16", "M23"],
+      "Use": "C",
+      "Priority": 5,
+      "Terminal": "FREIGHT"
+    },
+    "M21": {
+      "Coordinates": "48.999602:2.536302:20",
+      "Code": "BC",
+      "Use": "C",
+      "Block": ["M16", "M23"],
+      "Priority": 4,
+      "Terminal": "FREIGHT"
+    },
+    "M23": {
+      "Coordinates": "48.999722:2.535868:20",
+      "Code": "B",
+      "Use": "C",
+      "Block": ["M16", "M17", "M21"],
+      "Priority": 6,
+      "Terminal": "FREIGHT"
+    },
+    "N01": {
+      "Coordinates": "48.996737:2.531453:25",
+      "Code": "C",
+      "Use": "C",
+      "Priority": 5,
+      "Terminal": "FREIGHT"
+    },
+    "N02": {
+      "Coordinates": "48.996188:2.531576:25",
+      "Code": "C",
+      "Use": "C",
+      "Priority": 5,
+      "Terminal": "FREIGHT"
+    },
+    "N03": {
+      "Coordinates": "48.995474:2.531906:25",
+      "Code": "C",
+      "Use": "C",
+      "Priority": 5,
+      "Block": ["N31", "N33"],
+      "Terminal": "FREIGHT"
+    },
+    "N04": {
+      "Coordinates": "48.995013:2.532078:25",
+      "Code": "DE",
+      "Use": "C",
+      "Priority": 6,
+      "Block": ["N43", "N41"],
+      "Terminal": "FREIGHT"
+    },
+    "N05": {
+      "Coordinates": "48.994354:2.532193:25",
+      "Use": "C",
+      "Priority": 6,
+      "Code": "CDE",
+      "Block": ["N53", "N51"],
+      "Terminal": "FREIGHT"
+    },
+    "N06": {
+      "Coordinates": "48.993673:2.532322:35",
+      "Code": "CDE",
+      "Use": "C",
+      "Block": ["N53"],
+      "Priority": 6,
+      "Terminal": "FREIGHT"
+    },
+    "N08": {
+      "Coordinates": "48.992271:2.532432:35",
+      "Code": "CDE",
+      "Use": "C",
+      "Block": ["N63"],
+      "Priority": 6,
+      "Terminal": "FREIGHT"
+    },
+    "N09": {
+      "Coordinates": "48.991600:2.532582:20",
+      "Code": "CDE",
+      "Use": "C",
+      "Block": ["N63"],
+      "Priority": 6,
+      "Terminal": "FREIGHT"
+    },
+    "N10": {
+      "Coordinates": "48.990890:2.532569:35",
+      "Code": "CDE",
+      "Use": "C",
+      "Priority": 6,
+      "Block": ["N73"],
+      "Terminal": "FREIGHT"
+    },
+    "N11": {
+      "Coordinates": "48.990226:2.532703:20",
+      "Code": "CDE",
+      "Use": "C",
+      "Priority": 6,
+      "Block": ["N73"],
+      "Terminal": "FREIGHT"
+    },
+    "N31": {
+      "Coordinates": "48.995669:2.531869:20",
+      "Code": "C",
+      "Use": "C",
+      "Priority": 6,
+      "Block": ["N03"],
+      "Terminal": "FREIGHT"
+    },
+    "N33": {
+      "Coordinates": "48.995306:2.531914:20",
+      "Code": "C",
+      "Use": "C",
+      "Priority": 6,
+      "Block": ["N03"],
+      "Terminal": "FREIGHT"
+    },
+    "N41": {
+      "Coordinates": "48.995152:2.532071:20",
+      "Code": "C",
+      "Use": "C",
+      "Priority": 5,
+      "Block": ["N04"],
+      "Terminal": "FREIGHT"
+    },
+    "N43": {
+      "Coordinates": "48.994842:2.532198:20",
+      "Code": "C",
+      "Use": "C",
+      "Priority": 5,
+      "Block": ["N04"],
+      "Terminal": "FREIGHT"
+    },
+    "N51": {
+      "Coordinates": "48.994471:2.532271:20",
+      "Code": "C",
+      "Use": "C",
+      "Priority": 5,
+      "Block": ["N05"],
+      "Terminal": "FREIGHT"
+    },
+    "N53": {
+      "Coordinates": "48.994120:2.532341:20",
+      "Code": "C",
+      "Use": "C",
+      "Priority": 5,
+      "Block": ["N05", "N06"],
+      "Terminal": "FREIGHT"
+    },
+    "N63": {
+      "Coordinates": "48.991748:2.532402:30",
+      "Code": "F",
+      "Use": "C",
+      "Block": ["N08", "N09"],
+      "Priority": 5,
+      "Terminal": "FREIGHT"
+    },
+    "N73": {
+      "Coordinates": "48.990350:2.532550:30",
+      "Code": "F",
+      "Use": "C",
+      "Block": ["N10", "N11"],
+      "Priority": 5,
+      "Terminal": "FREIGHT"
+    },
+    "P70": {
+      "Coordinates": "48.992732:2.535704:20",
+      "Use": "C",
+      "Priority": 4,
+      "Code": "BC",
+      "Callsigns": ["FPO", "SWN", "NPT"],
+      "Terminal": "FREIGHT"
+    },
+    "P71": {
+      "Coordinates": "48.992427:2.535720:20",
+      "Use": "C",
+      "Priority": 4,
+      "Code": "BC",
+      "Callsigns": ["FPO", "SWN", "NPT"],
+      "Terminal": "FREIGHT"
+    },
+    "P72": {
+      "Coordinates": "48.992102:2.535750:20",
+      "Use": "C",
+      "Priority": 4,
+      "Code": "BC",
+      "Callsigns": ["FPO", "SWN", "NPT"],
+      "Terminal": "FREIGHT"
+    },
+    "P73": {
+      "Coordinates": "48.991732:2.535766:20",
+      "Use": "C",
+      "Priority": 4,
+      "Code": "BC",
+      "Callsigns": ["FPO", "SWN", "NPT"],
+      "Terminal": "FREIGHT"
+    },
+    "P74": {
+      "Coordinates": "48.991042:2.535865:20",
+      "Use": "C",
+      "Priority": 4,
+      "Code": "BC",
+      "Callsigns": ["FPO", "SWN", "NPT"],
+      "Terminal": "FREIGHT"
+    },
+    "P75": {
+      "Coordinates": "48.990703:2.535929:20",
+      "Use": "C",
+      "Priority": 4,
+      "Code": "BC",
+      "Callsigns": ["FPO", "SWN", "NPT"],
+      "Terminal": "FREIGHT"
+    },
+    "P80": {
+      "Coordinates": "48.992790:2.536603:20",
+      "Use": "C",
+      "Priority": 4,
+      "Code": "BC",
+      "Callsigns": ["FPO", "SWN", "NPT"],
+      "Terminal": "FREIGHT"
+    },
+    "P81": {
+      "Coordinates": "48.992346:2.536957:20",
+      "Use": "C",
+      "Priority": 4,
+      "Code": "BC",
+      "Callsigns": ["FPO", "SWN", "NPT"],
+      "Terminal": "FREIGHT"
+    },
+    "P82": {
+      "Coordinates": "48.992353:2.537528:20",
+      "Use": "C",
+      "Priority": 4,
+      "Code": "BC",
+      "Callsigns": ["FPO", "SWN", "NPT"],
+      "Terminal": "FREIGHT"
+    },
+    "P83": {
+      "Coordinates": "48.992876:2.537702:20",
+      "Use": "C",
+      "Priority": 4,
+      "Code": "BC",
+      "Callsigns": ["FPO", "SWN", "NPT"],
+      "Terminal": "FREIGHT"
+    },
+    "P84": {
+      "Coordinates": "48.993203:2.537941:20",
+      "Use": "C",
+      "Priority": 4,
+      "Code": "BC",
+      "Callsigns": ["FPO", "SWN", "NPT"],
+      "Terminal": "FREIGHT"
+    },
+    "P90": {
+      "Coordinates": "48.990772:2.536884:30",
+      "Use": "C",
+      "Priority": 2,
+      "Code": "DE",
+      "Block": ["P92", "P93"],
+      "Callsigns": ["BCS", "AWC"],
+      "Terminal": "FREIGHT"
+    },
+    "P91": {
+      "Coordinates": "48.990867:2.537895:30",
+      "Use": "C",
+      "Priority": 2,
+      "Code": "DE",
+      "Block": ["P93", "P94"],
+      "Callsigns": ["BCS", "AWC"],
+      "Terminal": "FREIGHT"
+    },
+    "P92": {
+      "Coordinates": "48.990752:2.536680:20",
+      "Use": "C",
+      "Priority": 1,
+      "Code": "BC",
+      "Block": ["P90"],
+      "Callsigns": ["BCS", "AWC"],
+      "Terminal": "FREIGHT"
+    },
+    "P93": {
+      "Coordinates": "48.990772:2.537340:20",
+      "Use": "C",
+      "Priority": 1,
+      "Code": "BC",
+      "Block": ["P91", "P90"],
+      "Callsigns": ["BCS", "AWC"],
+      "Terminal": "FREIGHT"
+    },
+    "P94": {
+      "Coordinates": "48.990809:2.538054:20",
+      "Use": "C",
+      "Priority": 1,
+      "Code": "BC",
+      "Block": ["P91"],
+      "Callsigns": ["BCS", "AWC"],
+      "Terminal": "FREIGHT"
+    },
+    "Q01": {
+      "Coordinates": "49.011811:2.552830:25",
+      "Code": "BC",
+      "Use": "A",
+      "Callsigns": [
+        "AIZ",
+        "AUR",
+        "AWG",
+        "BCI",
+        "CFG",
+        "EUP",
+        "ENT",
+        "EXS",
+        "FPO",
+        "HAT",
+        "IBE",
+        "LBT",
+        "MAC",
+        "NBT",
+        "PGT",
+        "SXS",
+        "TSC",
+        "VLG"
+      ],
+      "Priority": 1,
+      "Terminal": "3"
+    },
+    "Q02": {
+      "Coordinates": "49.011860:2.553720:22",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Q03"],
+      "Callsigns": [
+        "AIZ",
+        "AUR",
+        "AWG",
+        "BCI",
+        "CFG",
+        "EUP",
+        "ENT",
+        "EXS",
+        "FPO",
+        "HAT",
+        "IBE",
+        "LBT",
+        "MAC",
+        "NBT",
+        "PGT",
+        "SXS",
+        "TSC",
+        "VLG"
+      ],
+      "Priority": 1,
+      "Terminal": "3"
+    },
+    "Q03": {
+      "Coordinates": "49.011867:2.553975:25",
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["Q02", "Q04"],
+      "Callsigns": [
+        "AIZ",
+        "AUR",
+        "AWG",
+        "BCI",
+        "CFG",
+        "EUP",
+        "ENT",
+        "EXS",
+        "FPO",
+        "HAT",
+        "IBE",
+        "LBT",
+        "MAC",
+        "NBT",
+        "PGT",
+        "SXS",
+        "TSC",
+        "VLG"
+      ],
+      "Priority": 2,
+      "Terminal": "3"
+    },
+    "Q04": {
+      "Coordinates": "49.011880:2.554270:22",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Q03"],
+      "Callsigns": [
+        "AIZ",
+        "AUR",
+        "AWG",
+        "BCI",
+        "CFG",
+        "EUP",
+        "ENT",
+        "EXS",
+        "FPO",
+        "HAT",
+        "IBE",
+        "LBT",
+        "MAC",
+        "NBT",
+        "PGT",
+        "SXS",
+        "TSC",
+        "VLG"
+      ],
+      "Priority": 1,
+      "Terminal": "3"
+    },
+    "Q05": {
+      "Coordinates": "49.011936:2.554807:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Q06"],
+      "Callsigns": [
+        "AIZ",
+        "AUR",
+        "AWG",
+        "BCI",
+        "CFG",
+        "EUP",
+        "ENT",
+        "EXS",
+        "FPO",
+        "HAT",
+        "IBE",
+        "LBT",
+        "MAC",
+        "NBT",
+        "PGT",
+        "SXS",
+        "TSC",
+        "VLG"
+      ],
+      "Priority": 1,
+      "Terminal": "3"
+    },
+    "Q06": {
+      "Coordinates": "49.011924:2.555054:25",
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["Q05", "Q07"],
+      "Callsigns": [
+        "AIZ",
+        "AUR",
+        "AWG",
+        "BCI",
+        "CFG",
+        "EUP",
+        "ENT",
+        "EXS",
+        "FPO",
+        "HAT",
+        "IBE",
+        "LBT",
+        "MAC",
+        "NBT",
+        "PGT",
+        "SXS",
+        "TSC",
+        "VLG"
+      ],
+      "Priority": 2,
+      "Terminal": "3"
+    },
+    "Q07": {
+      "Coordinates": "49.011957:2.555354:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Q06"],
+      "Callsigns": [
+        "AIZ",
+        "AUR",
+        "AWG",
+        "BCI",
+        "CFG",
+        "EUP",
+        "ENT",
+        "EXS",
+        "FPO",
+        "HAT",
+        "IBE",
+        "LBT",
+        "MAC",
+        "NBT",
+        "PGT",
+        "SXS",
+        "TSC",
+        "VLG"
+      ],
+      "Priority": 1,
+      "Terminal": "3"
+    },
+    "Q08": {
+      "Coordinates": "49.011999:2.555890:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Q09"],
+      "Callsigns": [
+        "AIZ",
+        "AUR",
+        "AWG",
+        "BCI",
+        "CFG",
+        "EUP",
+        "ENT",
+        "EXS",
+        "FPO",
+        "HAT",
+        "IBE",
+        "LBT",
+        "MAC",
+        "NBT",
+        "PGT",
+        "SXS",
+        "TSC",
+        "VLG"
+      ],
+      "Priority": 2,
+      "Terminal": "3"
+    },
+    "Q09": {
+      "Coordinates": "49.012017:2.556169:25",
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["Q08", "Q10"],
+      "Priority": 90,
+      "Terminal": "3"
+    },
+    "Q10": {
+      "Coordinates": "49.011978:2.556470:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Q09"],
+      "Priority": 91,
+      "Terminal": "3"
+    },
+    "Q11": {
+      "Coordinates": "49.012013:2.556995:25",
+      "Code": "BC",
+      "Wingspan": 30,
+      "Use": "A",
+      "Priority": 90,
+      "Terminal": "3"
+    },
+    "Q12": {
+      "Coordinates": "49.013423:2.556641:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Q13"],
+      "Priority": 91,
+      "Terminal": "3"
+    },
+    "Q13": {
+      "Coordinates": "49.013437:2.556513:25",
+      "Code": "DE",
+      "Wingspan": 61,
+      "Use": "A",
+      "Block": ["Q12", "Q14"],
+      "Priority": 90,
+      "Terminal": "3"
+    },
+    "Q14": {
+      "Coordinates": "49.013338:2.556024:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Q13", "Q15"],
+      "Priority": 91,
+      "Terminal": "3"
+    },
+    "Q15": {
+      "Coordinates": "49.013333:2.555531:25",
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["Q14", "Q16"],
+      "Priority": 90,
+      "Terminal": "3"
+    },
+    "Q16": {
+      "Coordinates": "49.013307:2.555383:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Q15"],
+      "Priority": 91,
+      "Terminal": "3"
+    },
+    "Q17": {
+      "Coordinates": "49.013270:2.554681:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Q18"],
+      "Callsigns": [
+        "AIZ",
+        "AUR",
+        "AWG",
+        "BCI",
+        "CFG",
+        "EUP",
+        "ENT",
+        "EXS",
+        "FPO",
+        "HAT",
+        "IBE",
+        "LBT",
+        "MAC",
+        "PGT",
+        "SXS",
+        "TSC",
+        "VLG"
+      ],
+      "Priority": 1,
+      "Terminal": "3"
+    },
+    "Q18": {
+      "Coordinates": "49.013271:2.554509:25",
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["Q17", "Q19"],
+      "Callsigns": [
+        "AIZ",
+        "AUR",
+        "AWG",
+        "BCI",
+        "CFG",
+        "EUP",
+        "ENT",
+        "EXS",
+        "FPO",
+        "HAT",
+        "IBE",
+        "LBT",
+        "MAC",
+        "PGT",
+        "SXS",
+        "TSC",
+        "VLG"
+      ],
+      "Priority": 2,
+      "Terminal": "3"
+    },
+    "Q19": {
+      "Coordinates": "49.013227:2.554061:30",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Q18", "Q20"],
+      "Callsigns": [
+        "AIZ",
+        "AUR",
+        "AWG",
+        "BCI",
+        "CFG",
+        "EUP",
+        "ENT",
+        "EXS",
+        "FPO",
+        "HAT",
+        "IBE",
+        "LBT",
+        "MAC",
+        "PGT",
+        "SXS",
+        "TSC",
+        "VLG"
+      ],
+      "Priority": 1,
+      "Terminal": "3"
+    },
+    "Q20": {
+      "Coordinates": "49.013240:2.553522:30",
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["Q19", "Q21"],
+      "Callsigns": [
+        "AIZ",
+        "AUR",
+        "AWG",
+        "BCI",
+        "CFG",
+        "EUP",
+        "ENT",
+        "EXS",
+        "FPO",
+        "HAT",
+        "IBE",
+        "LBT",
+        "MAC",
+        "PGT",
+        "SXS",
+        "TSC",
+        "VLG"
+      ],
+      "Priority": 2,
+      "Terminal": "3"
+    },
+    "Q21": {
+      "Coordinates": "49.013227:2.553404:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Q20"],
+      "Callsigns": [
+        "AIZ",
+        "AUR",
+        "AWG",
+        "BCI",
+        "CFG",
+        "EUP",
+        "ENT",
+        "EXS",
+        "FPO",
+        "HAT",
+        "IBE",
+        "LBT",
+        "MAC",
+        "PGT",
+        "SXS",
+        "TSC",
+        "VLG"
+      ],
+      "Priority": 1,
+      "Terminal": "3"
+    },
+    "R01": {
+      "Coordinates": "49.017687:2.550094:25",
+      "Code": "BC",
+      "Use": "AH",
+      "Priority": 92
+    },
+    "R02": {
+      "Coordinates": "49.017152:2.550132:25",
+      "Code": "ABC",
+      "Use": "AP",
+      "Block": ["R03", "R39"],
+      "Priority": 93
+    },
+    "R03": {
+      "Coordinates": "49.017073:2.550169:25",
+      "Use": "H",
+      "Block": ["R02", "R03", "R39", "R04"],
+      "Priority": 94
+    },
+    "R04": {
+      "Coordinates": "49.016658:2.550201:25",
+      "Code": "ABC",
+      "Use": "A",
+      "Block": ["R03", "R39"],
+      "Priority": 93
+    },
+    "R05": {
+      "Coordinates": "49.016183:2.550266:25",
+      "Code": "ABCD",
+      "Use": "A",
+      "Block": ["R06"],
+      "Priority": 94
+    },
+    "R06": {
+      "Coordinates": "49.016102:2.550204:25",
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["R05", "R07"],
+      "Priority": 92
+    },
+    "R07": {
+      "Coordinates": "49.015701:2.550250:25",
+      "Code": "ABCD",
+      "Use": "A",
+      "Block": ["R06"],
+      "Priority": 94
+    },
+    "R08": {
+      "Coordinates": "49.015231:2.550319:25",
+      "Code": "ABCD",
+      "Use": "A",
+      "Block": ["R09"],
+      "Priority": 94
+    },
+    "R09": {
+      "Coordinates": "49.015136:2.550341:25",
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["R08", "R10"],
+      "Priority": 92
+    },
+    "R10": {
+      "Coordinates": "49.014728:2.550376:25",
+      "Code": "ABCD",
+      "Use": "A",
+      "Block": ["R09"],
+      "Priority": 94
+    },
+    "R11": {
+      "Coordinates": "49.014255:2.550480:25",
+      "Code": "ABC",
+      "Use": "A",
+      "Block": ["R12"],
+      "Priority": 92
+    },
+    "R12": {
+      "Coordinates": "49.014023:2.550593:25",
+      "Use": "H",
+      "Block": ["R11", "R13"],
+      "Priority": 94
+    },
+    "R13": {
+      "Coordinates": "49.013843:2.550706:25",
+      "Code": "ABC",
+      "Use": "A",
+      "Block": ["R12"],
+      "Callsigns": ["TVF"],
+      "Priority": 1
+    },
+    "R14": {
+      "Coordinates": "49.013336:2.550969:25",
+      "Code": "ABCD",
+      "Use": "A",
+      "Callsigns": ["TVF"],
+      "Priority": 1
+    },
+    "R39": {
+      "Coordinates": "49.017020:2.550145:25",
+      "Use": "AC",
+      "Block": ["R02", "R03", "R04"],
+      "Priority": 92
+    },
+    "S06": {
+      "Coordinates": "49.011658:2.536356:25",
+      "Code": "ABCDE",
+      "Block": ["S06B", "S07", "S07B", "S08", "S08B"],
+      "Priority": 97,
+      "Terminal": "1"
+    },
+    "S06B": {
+      "Coordinates": "49.011797:2.536308:15",
+      "Remark": {
+        "BCDE": "Taxi out"
+      },
+      "Code": "BCDE",
+      "Block": ["S06", "S07", "S07B", "S08", "S08B"],
+      "Priority": 99,
+      "Terminal": "1"
+    },
+    "S07": {
+      "Coordinates": "49.011934:2.536385:15",
+      "Code": "ABC",
+      "Use": "A",
+      "Block": ["S06", "S06B", "S07B"],
+      "Priority": 98,
+      "Terminal": "1"
+    },
+    "S07B": {
+      "Coordinates": "49.011665:2.536383:15",
+      "Remark": {
+        "ABC": "Taxi out"
+      },
+      "Code": "ABC",
+      "Block": ["S06", "S06B", "S07", "S08"],
+      "Priority": 99,
+      "Terminal": "1"
+    },
+    "S08": {
+      "Coordinates": "49.011677:2.536662:15",
+      "Code": "ABC",
+      "Block": ["S06", "S06B", "S07B", "S08B"],
+      "Priority": 98,
+      "Terminal": "1"
+    },
+    "S08B": {
+      "Coordinates": "49.011424:2.536444:10",
+      "Remark": {
+        "AB": "Taxi out"
+      },
+      "Code": "AB",
+      "Block": ["S06", "S06B", "S08"],
+      "Priority": 99,
+      "Terminal": "1"
+    },
+    "S09": {
+      "Coordinates": "49.011391:2.537163:20",
+      "Code": "ABC",
+      "Block": ["S09B", "S10", "S11"],
+      "Priority": 98,
+      "Terminal": "1"
+    },
+    "S09B": {
+      "Coordinates": "49.011253:2.537126:15",
+      "Remark": {
+        "ABCD": "Taxi out"
+      },
+      "Code": "ABCD",
+      "Block": ["S09", "S10", "S11", "S12"],
+      "Priority": 99,
+      "Terminal": "1"
+    },
+    "S10": {
+      "Coordinates": "49.011213:2.537252:25",
+      "Code": "DE",
+      "Block": ["S09", "S09B", "S11", "S12"],
+      "Priority": 97,
+      "Terminal": "1"
+    },
+    "S11": {
+      "Coordinates": "49.011150:2.537372:25",
+      "Code": "F",
+      "Block": ["S09", "S09B", "S10", "S12", "S13"],
+      "Priority": 99,
+      "Terminal": "1"
+    },
+    "S12": {
+      "Coordinates": "49.011134:2.537753:25",
+      "Code": "ABCD",
+      "Block": ["S09B", "S10", "S11", "S13"],
+      "Priority": 98,
+      "Terminal": "1"
+    },
+    "S13": {
+      "Coordinates": "49.011007:2.538236:30",
+      "Code": "DE",
+      "Block": ["S11", "S12", "S14"],
+      "Priority": 97,
+      "Terminal": "1"
+    },
+    "S14": {
+      "Coordinates": "49.011099:2.538461:25",
+      "Code": "ABC",
+      "Block": ["S13"],
+      "Priority": 98,
+      "Terminal": "1"
+    },
+    "S15": {
+      "Coordinates": "49.011067:2.539051:25",
+      "Code": "ABC",
+      "Block": ["S16"],
+      "Priority": 98,
+      "Terminal": "1"
+    },
+    "S16": {
+      "Coordinates": "49.011028:2.539161:25",
+      "Code": "D",
+      "Block": ["S15", "S17"],
+      "Priority": 97,
+      "Terminal": "1"
+    },
+    "S17": {
+      "Coordinates": "49.011099:2.539620:25",
+      "Code": "ABC",
+      "Block": ["S16", "S18"],
+      "Priority": 98,
+      "Terminal": "1"
+    },
+    "S18": {
+      "Coordinates": "49.011076:2.540028:25",
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["S17", "S19"],
+      "Priority": 97,
+      "Terminal": "1"
+    },
+    "S19": {
+      "Coordinates": "49.011129:2.540194:25",
+      "Code": "ABC",
+      "Use": "A",
+      "Block": ["S18"],
+      "Priority": 98,
+      "Terminal": "1"
+    },
+    "S20": {
+      "Coordinates": "49.011185:2.540857:25",
+      "Code": "ABC",
+      "Use": "A",
+      "Block": ["S21"],
+      "Priority": 98,
+      "Terminal": "1"
+    },
+    "S21": {
+      "Coordinates": "49.011166:2.541085:25",
+      "Code": "CDE",
+      "Use": "A",
+      "Block": ["S21", "S22"],
+      "Priority": 97,
+      "Terminal": "1"
+    },
+    "S22": {
+      "Coordinates": "49.011222:2.541323:25",
+      "Code": "AC",
+      "Use": "A",
+      "Block": ["S21"],
+      "Priority": 98,
+      "Terminal": "1"
+    },
+    "S23": {
+      "Coordinates": "49.011275:2.543517:25",
+      "Code": "ABCD",
+      "Callsigns": ["CTM", "FAF"],
+      "Priority": 1,
+      "Terminal": "1"
+    },
+    "S24": {
+      "Coordinates": "49.011327:2.544413:25",
+      "Code": "ABC",
+      "Block": ["S25"],
+      "Priority": 98,
+      "Terminal": "1"
+    },
+    "S25": {
+      "Coordinates": "49.011264:2.544625:30",
+      "Code": "DE",
+      "Block": ["S24", "S26"],
+      "Priority": 97,
+      "Terminal": "1"
+    },
+    "S26": {
+      "Coordinates": "49.011350:2.545017:25",
+      "Code": "BC",
+      "Block": ["S25", "S26"],
+      "Priority": 98,
+      "Terminal": "1"
+    },
+    "S27": {
+      "Coordinates": "49.011361:2.545609:35",
+      "Code": "BCDEF",
+      "Block": ["S26", "S28"],
+      "Priority": 97,
+      "Terminal": "1"
+    },
+    "S28": {
+      "Coordinates": "49.011454:2.546194:25",
+      "Code": "BC",
+      "Block": ["S27", "S29"],
+      "Priority": 98,
+      "Terminal": "1"
+    },
+    "S29": {
+      "Coordinates": "49.011451:2.546597:35",
+      "Code": "DE",
+      "Block": ["S28", "S30"],
+      "Priority": 97,
+      "Terminal": "1"
+    },
+    "S30": {
+      "Coordinates": "49.011510:2.546787:25",
+      "Code": "ABC",
+      "Block": ["S29"],
+      "Priority": 98,
+      "Terminal": "1"
+    },
+    "S31": {
+      "Coordinates": "49.011533:2.547390:35",
+      "Code": "ABCD",
+      "Priority": 97,
+      "Terminal": "1"
+    },
+    "U03": {
+      "Coordinates": "49.014751:2.544620:25",
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": [
+        "AAR",
+        "AHY",
+        "ANA",
+        "AUA",
+        "AVA",
+        "BEL",
+        "CCA",
+        "CHH",
+        "CPA",
+        "CYP",
+        "DLH",
+        "DTH",
+        "EIN",
+        "ETD",
+        "EVA",
+        "EWG",
+        "FIA",
+        "ICE",
+        "KAC",
+        "LHX",
+        "LZB",
+        "MSR",
+        "OMA",
+        "PIA",
+        "QTR",
+        "RZO",
+        "SIA",
+        "SVA",
+        "SWR",
+        "TCV",
+        "THA",
+        "THY",
+        "TKJ",
+        "TWB",
+        "UAL",
+        "VLU"
+      ],
+      "Priority": 1,
+      "Terminal": "1"
+    },
+    "U04": {
+      "Coordinates": "49.014387:2.544612:25",
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": [
+        "THY",
+        "SVA",
+        "AVA",
+        "ANA",
+        "AAR",
+        "CCA",
+        "QTR",
+        "UAL",
+        "EIN",
+        "ETD",
+        "EVA",
+        "THA",
+        "TKJ",
+        "MSR",
+        "TWB",
+        "RWD",
+        "SIA"
+      ],
+      "Priority": 1,
+      "Terminal": "1"
+    },
+    "U05": {
+      "Coordinates": "49.014001:2.544585:25",
+      "Code": "C",
+      "Use": "A",
+      "Callsigns": [
+        "THY",
+        "SVA",
+        "AVA",
+        "ANA",
+        "AAR",
+        "CCA",
+        "QTR",
+        "UAL",
+        "EIN",
+        "ETD",
+        "EVA",
+        "THA",
+        "TKJ",
+        "MSR",
+        "TWB",
+        "RWD",
+        "SIA"
+      ],
+      "Priority": 1,
+      "Terminal": "1"
+    },
+    "U06": {
+      "Coordinates": "49.013175:2.544043:20",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["U07"],
+      "Callsigns": [
+        "THY",
+        "SVA",
+        "AVA",
+        "ANA",
+        "AAR",
+        "CCA",
+        "QTR",
+        "UAL",
+        "EIN",
+        "ETD",
+        "EVA",
+        "THA",
+        "TKJ",
+        "MSR",
+        "TWB",
+        "RWD",
+        "SIA"
+      ],
+      "Priority": 2,
+      "Terminal": "1"
+    },
+    "U07": {
+      "Coordinates": "49.012796:2.544303:25",
+      "Code": "DE",
+      "Wingspan": 61,
+      "Use": "A",
+      "Block": ["U06", "U08"],
+      "Callsigns": [
+        "THY",
+        "SVA",
+        "AVA",
+        "ANA",
+        "AAR",
+        "CCA",
+        "QTR",
+        "UAL",
+        "EIN",
+        "ETD",
+        "EVA",
+        "THA",
+        "TKJ",
+        "MSR",
+        "TWB",
+        "RWD",
+        "SIA"
+      ],
+      "Priority": 1,
+      "Terminal": "1"
+    },
+    "U08": {
+      "Coordinates": "49.012719:2.544148:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["U07"],
+      "Callsigns": [
+        "THY",
+        "SVA",
+        "AVA",
+        "ANA",
+        "AAR",
+        "CCA",
+        "QTR",
+        "UAL",
+        "EIN",
+        "ETD",
+        "EVA",
+        "THA",
+        "TKJ",
+        "MSR",
+        "TWB",
+        "RWD",
+        "SIA"
+      ],
+      "Priority": 2,
+      "Terminal": "1"
+    },
+    "U10": {
+      "Coordinates": "49.012839:2.545612:25",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": [
+        "THY",
+        "SVA",
+        "AVA",
+        "ANA",
+        "AAR",
+        "CCA",
+        "QTR",
+        "UAL",
+        "EIN",
+        "ETD",
+        "EVA",
+        "THA",
+        "TKJ",
+        "MSR",
+        "TWB",
+        "RWD",
+        "SIA"
+      ],
+      "Priority": 2,
+      "Terminal": "1"
+    },
+    "U11": {
+      "Coordinates": "49.013541:2.546143:30",
+      "Code": "CDEF",
+      "Use": "A",
+      "Callsigns": [
+        "THY",
+        "SVA",
+        "AVA",
+        "ANA",
+        "AAR",
+        "CCA",
+        "QTR",
+        "UAL",
+        "EIN",
+        "ETD",
+        "EVA",
+        "THA",
+        "TKJ",
+        "MSR",
+        "TWB",
+        "RWD",
+        "SIA"
+      ],
+      "Priority": 3,
+      "Terminal": "1"
+    },
+    "U12": {
+      "Coordinates": "49.014295:2.546328:30",
+      "Code": "CDEF",
+      "Use": "A",
+      "Callsigns": [
+        "THY",
+        "SVA",
+        "AVA",
+        "ANA",
+        "AAR",
+        "CCA",
+        "QTR",
+        "UAL",
+        "EIN",
+        "ETD",
+        "EVA",
+        "THA",
+        "TKJ",
+        "MSR",
+        "TWB",
+        "RWD",
+        "SIA"
+      ],
+      "Priority": 3,
+      "Terminal": "1"
+    },
+    "U13": {
+      "Coordinates": "49.015076:2.546237:30",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": [
+        "THY",
+        "SVA",
+        "AVA",
+        "ANA",
+        "AAR",
+        "CCA",
+        "QTR",
+        "UAL",
+        "EIN",
+        "ETD",
+        "EVA",
+        "THA",
+        "TKJ",
+        "MSR",
+        "TWB",
+        "RWD",
+        "SIA"
+      ],
+      "Priority": 3,
+      "Terminal": "1"
+    },
+    "U14": {
+      "Coordinates": "49.015778:2.545829:30",
+      "Code": "CDEF",
+      "Use": "A",
+      "Callsigns": [
+        "THY",
+        "SVA",
+        "AVA",
+        "ANA",
+        "AAR",
+        "CCA",
+        "QTR",
+        "UAL",
+        "EIN",
+        "ETD",
+        "EVA",
+        "THA",
+        "TKJ",
+        "MSR",
+        "TWB",
+        "RWD",
+        "SIA"
+      ],
+      "Priority": 3,
+      "Terminal": "1"
+    },
+    "U15": {
+      "Coordinates": "49.016392:2.545245:30",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": [
+        "THY",
+        "SVA",
+        "AVA",
+        "ANA",
+        "AAR",
+        "CCA",
+        "QTR",
+        "UAL",
+        "EIN",
+        "ETD",
+        "EVA",
+        "THA",
+        "TKJ",
+        "MSR",
+        "TWB",
+        "RWD",
+        "SIA"
+      ],
+      "Priority": 3,
+      "Terminal": "1"
+    },
+    "U16": {
+      "Coordinates": "49.016849:2.544341:30",
+      "Code": "CDEF",
+      "Use": "A",
+      "Callsigns": [
+        "THY",
+        "SVA",
+        "AVA",
+        "ANA",
+        "AAR",
+        "CCA",
+        "QTR",
+        "UAL",
+        "EIN",
+        "ETD",
+        "EVA",
+        "THA",
+        "TKJ",
+        "MSR",
+        "TWB",
+        "RWD",
+        "SIA"
+      ],
+      "Priority": 3,
+      "Terminal": "1"
+    },
+    "U17": {
+      "Coordinates": "49.016944:2.543067:45",
+      "Code": "CDE",
+      "Use": "A",
+      "Callsigns": [
+        "THY",
+        "SVA",
+        "AVA",
+        "ANA",
+        "AAR",
+        "CCA",
+        "QTR",
+        "UAL",
+        "EIN",
+        "ETD",
+        "EVA",
+        "THA",
+        "TKJ",
+        "MSR",
+        "TWB",
+        "RWD",
+        "SIA"
+      ],
+      "Priority": 3,
+      "Terminal": "1"
+    },
+    "W04": {
+      "Coordinates": "49.017330:2.541994:30",
+      "Code": "BCDE",
+      "Use": "A",
+      "Callsigns": [
+        "AAR",
+        "AHY",
+        "ANA",
+        "AUA",
+        "AVA",
+        "BEL",
+        "CCA",
+        "CHH",
+        "CPA",
+        "CYP",
+        "DLH",
+        "DTH",
+        "EIN",
+        "ETD",
+        "EVA",
+        "EWG",
+        "FIA",
+        "ICE",
+        "KAC",
+        "LHX",
+        "LZB",
+        "MSR",
+        "OMA",
+        "PIA",
+        "QTR",
+        "RZO",
+        "SIA",
+        "SVA",
+        "SWR",
+        "TCV",
+        "THA",
+        "THY",
+        "TKJ",
+        "TWB",
+        "UAL",
+        "VLU"
+      ],
+      "Priority": 2,
+      "Terminal": "1"
+    },
+    "W05": {
+      "Coordinates": "49.017252:2.541028:25",
+      "Code": "BCD",
+      "Wingspan": 48,
+      "Use": "A",
+      "Callsigns": [
+        "AAR",
+        "AHY",
+        "ANA",
+        "AUA",
+        "AVA",
+        "BEL",
+        "CCA",
+        "CHH",
+        "CPA",
+        "CYP",
+        "DLH",
+        "DTH",
+        "EIN",
+        "ETD",
+        "EVA",
+        "EWG",
+        "FIA",
+        "ICE",
+        "KAC",
+        "LHX",
+        "LZB",
+        "MSR",
+        "OMA",
+        "PIA",
+        "QTR",
+        "RZO",
+        "SIA",
+        "SVA",
+        "SWR",
+        "TCV",
+        "THA",
+        "THY",
+        "TKJ",
+        "TWB",
+        "UAL",
+        "VLU"
+      ],
+      "Priority": 1,
+      "Terminal": "1"
+    },
+    "W06": {
+      "Coordinates": "49.016934:2.540409:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["W07", "W08"],
+      "Callsigns": [
+        "AAR",
+        "AHY",
+        "ANA",
+        "AUA",
+        "AVA",
+        "BEL",
+        "CCA",
+        "CHH",
+        "CPA",
+        "CYP",
+        "DLH",
+        "DTH",
+        "EIN",
+        "ETD",
+        "EVA",
+        "EWG",
+        "FIA",
+        "ICE",
+        "KAC",
+        "LHX",
+        "LZB",
+        "MSR",
+        "OMA",
+        "PIA",
+        "QTR",
+        "RZO",
+        "SIA",
+        "SVA",
+        "SWR",
+        "TCV",
+        "THA",
+        "THY",
+        "TKJ",
+        "TWB",
+        "UAL",
+        "VLU"
+      ],
+      "Priority": 3,
+      "Terminal": "1"
+    },
+    "W07": {
+      "Coordinates": "49.016399:2.540768:25",
+      "Remark": {
+        "BC": "Pull on A3"
+      },
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["W08", "X03"],
+      "Callsigns": [
+        "AAR",
+        "AHY",
+        "ANA",
+        "AUA",
+        "AVA",
+        "BEL",
+        "CCA",
+        "CHH",
+        "CPA",
+        "CYP",
+        "DLH",
+        "DTH",
+        "EIN",
+        "ETD",
+        "EVA",
+        "EWG",
+        "FIA",
+        "ICE",
+        "KAC",
+        "LHX",
+        "LZB",
+        "MSR",
+        "OMA",
+        "PIA",
+        "QTR",
+        "RZO",
+        "SIA",
+        "SVA",
+        "SWR",
+        "TCV",
+        "THA",
+        "THY",
+        "TKJ",
+        "TWB",
+        "UAL",
+        "VLU"
+      ],
+      "Priority": 2,
+      "Terminal": "1"
+    },
+    "W08": {
+      "Coordinates": "49.016703:2.540406:25",
+      "Remark": {
+        "DE": "Green push"
+      },
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["W06", "W07", "X02"],
+      "Callsigns": [
+        "AAR",
+        "AHY",
+        "ANA",
+        "AUA",
+        "AVA",
+        "BEL",
+        "CCA",
+        "CHH",
+        "CPA",
+        "CYP",
+        "DLH",
+        "DTH",
+        "EIN",
+        "ETD",
+        "EVA",
+        "EWG",
+        "FIA",
+        "ICE",
+        "KAC",
+        "LHX",
+        "LZB",
+        "MSR",
+        "OMA",
+        "PIA",
+        "QTR",
+        "RZO",
+        "SIA",
+        "SVA",
+        "SWR",
+        "TCV",
+        "THA",
+        "THY",
+        "TKJ",
+        "TWB",
+        "UAL",
+        "VLU"
+      ],
+      "Priority": 1,
+      "Terminal": "1"
+    },
+    "X01": {
+      "Coordinates": "49.016056:2.540368:25",
+      "Code": "BC",
+      "Use": "A",
+      "Schengen": true,
+      "Block": ["X02", "X03"],
+      "Callsigns": [
+        "AAR",
+        "AHY",
+        "ANA",
+        "AUA",
+        "AVA",
+        "BEL",
+        "CCA",
+        "CHH",
+        "CPA",
+        "CYP",
+        "DLH",
+        "DTH",
+        "EIN",
+        "ETD",
+        "EVA",
+        "EWG",
+        "FIA",
+        "ICE",
+        "KAC",
+        "LHX",
+        "LZB",
+        "MSR",
+        "OMA",
+        "PIA",
+        "QTR",
+        "RZO",
+        "SIA",
+        "SVA",
+        "SWR",
+        "TCV",
+        "THA",
+        "THY",
+        "TKJ",
+        "TWB",
+        "UAL",
+        "VLU"
+      ],
+      "Priority": 3,
+      "Terminal": "1"
+    },
+    "X02": {
+      "Coordinates": "49.016559:2.540049:25",
+      "Code": "BC",
+      "Use": "A",
+      "Schengen": true,
+      "Block": ["W08", "X03"],
+      "Callsigns": [
+        "AAR",
+        "AHY",
+        "ANA",
+        "AUA",
+        "AVA",
+        "BEL",
+        "CCA",
+        "CHH",
+        "CPA",
+        "CYP",
+        "DLH",
+        "DTH",
+        "EIN",
+        "ETD",
+        "EVA",
+        "EWG",
+        "FIA",
+        "ICE",
+        "KAC",
+        "LHX",
+        "LZB",
+        "MSR",
+        "OMA",
+        "PIA",
+        "QTR",
+        "RZO",
+        "SIA",
+        "SVA",
+        "SWR",
+        "TCV",
+        "THA",
+        "THY",
+        "TKJ",
+        "TWB",
+        "UAL",
+        "VLU"
+      ],
+      "Priority": 2,
+      "Terminal": "1"
+    },
+    "X03": {
+      "Coordinates": "49.016181:2.540446:25",
+      "Remark": {
+        "DE": "Push A3"
+      },
+      "Code": "DE",
+      "Wingspan": 61,
+      "Use": "A",
+      "Schengen": true,
+      "Block": ["W07", "X01", "X02"],
+      "Callsigns": [
+        "AAR",
+        "AHY",
+        "ANA",
+        "AUA",
+        "AVA",
+        "BEL",
+        "CCA",
+        "CHH",
+        "CPA",
+        "CYP",
+        "DLH",
+        "DTH",
+        "EIN",
+        "ETD",
+        "EVA",
+        "EWG",
+        "FIA",
+        "ICE",
+        "KAC",
+        "LHX",
+        "LZB",
+        "MSR",
+        "OMA",
+        "PIA",
+        "QTR",
+        "RZO",
+        "SIA",
+        "SVA",
+        "SWR",
+        "TCV",
+        "THA",
+        "THY",
+        "TKJ",
+        "TWB",
+        "UAL",
+        "VLU"
+      ],
+      "Priority": 1,
+      "Terminal": "1"
+    },
+    "X04": {
+      "Coordinates": "49.016612:2.539078:25",
+      "Code": "BCDE",
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": [
+        "AAR",
+        "AHY",
+        "ANA",
+        "AUA",
+        "AVA",
+        "BEL",
+        "CCA",
+        "CHH",
+        "CPA",
+        "CYP",
+        "DLH",
+        "DTH",
+        "EIN",
+        "ETD",
+        "EVA",
+        "EWG",
+        "FIA",
+        "ICE",
+        "KAC",
+        "LHX",
+        "LZB",
+        "MSR",
+        "OMA",
+        "PIA",
+        "QTR",
+        "RZO",
+        "SIA",
+        "SVA",
+        "SWR",
+        "TCV",
+        "THA",
+        "THY",
+        "TKJ",
+        "TWB",
+        "UAL",
+        "VLU"
+      ],
+      "Priority": 2,
+      "Terminal": "1"
+    },
+    "X05": {
+      "Coordinates": "49.016285:2.538424:30",
+      "Code": "BCD",
+      "Wingspan": 48,
+      "Use": "A",
+      "Schengen": true,
+      "Callsigns": [
+        "AAR",
+        "AHY",
+        "ANA",
+        "AUA",
+        "AVA",
+        "BEL",
+        "CCA",
+        "CHH",
+        "CPA",
+        "CYP",
+        "DLH",
+        "DTH",
+        "EIN",
+        "ETD",
+        "EVA",
+        "EWG",
+        "FIA",
+        "ICE",
+        "KAC",
+        "LHX",
+        "LZB",
+        "MSR",
+        "OMA",
+        "PIA",
+        "QTR",
+        "RZO",
+        "SIA",
+        "SVA",
+        "SWR",
+        "TCV",
+        "THA",
+        "THY",
+        "TKJ",
+        "TWB",
+        "UAL",
+        "VLU"
+      ],
+      "Priority": 1,
+      "Terminal": "1"
+    },
+    "X06": {
+      "Coordinates": "49.015708:2.538378:25",
+      "Code": "BC",
+      "Use": "A",
+      "Schengen": true,
+      "Block": ["X07", "X08"],
+      "Priority": 84,
+      "Terminal": "1"
+    },
+    "X07": {
+      "Coordinates": "49.015428:2.539228:25",
+      "Code": "BC",
+      "Use": "A",
+      "Schengen": true,
+      "Block": ["X08", "Y03"],
+      "Priority": 83,
+      "Terminal": "1"
+    },
+    "X08": {
+      "Coordinates": "49.015562:2.538418:30",
+      "Code": "DE",
+      "Use": "A",
+      "Schengen": true,
+      "Block": ["X06", "X07", "Y02"],
+      "Priority": 82,
+      "Terminal": "1"
+    },
+    "Y01": {
+      "Coordinates": "49.015057:2.539086:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Y02", "Y03"],
+      "Priority": 84,
+      "Terminal": "1"
+    },
+    "Y02": {
+      "Coordinates": "49.015316:2.538311:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["X08", "Y03"],
+      "Priority": 83,
+      "Terminal": "1"
+    },
+    "Y03": {
+      "Coordinates": "49.015159:2.539081:25",
+      "Code": "DE",
+      "Wingspan": 61,
+      "Use": "A",
+      "Block": ["X07", "Y01", "Y02"],
+      "Priority": 82,
+      "Terminal": "1"
+    },
+    "Y04": {
+      "Coordinates": "49.014994:2.537536:25",
+      "Code": "BCDE",
+      "Use": "A",
+      "Priority": 81,
+      "Terminal": "1"
+    },
+    "Y05": {
+      "Coordinates": "49.014401:2.537389:25",
+      "Code": "BCD",
+      "Wingspan": 48,
+      "Use": "A",
+      "Priority": 80,
+      "Terminal": "1"
+    },
+    "Y06": {
+      "Coordinates": "49.013936:2.537895:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Y07", "Y08"],
+      "Priority": 84,
+      "Terminal": "1"
+    },
+    "Y07": {
+      "Coordinates": "49.014095:2.538874:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Y08", "Z03"],
+      "Priority": 83,
+      "Terminal": "1"
+    },
+    "Y08": {
+      "Coordinates": "49.013898:2.538212:25",
+      "Code": "DE",
+      "Use": "A",
+      "Block": ["Y06", "Y07", "Z02"],
+      "Priority": 82,
+      "Terminal": "1"
+    },
+    "Z01": {
+      "Coordinates": "49.013745:2.539161:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Z02", "Z03"],
+      "Priority": 84,
+      "Terminal": "1"
+    },
+    "Z02": {
+      "Coordinates": "49.013627:2.538319:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Y08", "Z03"],
+      "Priority": 83,
+      "Terminal": "1"
+    },
+    "Z03": {
+      "Coordinates": "49.013792:2.538931:25",
+      "Code": "DE",
+      "Wingspan": 61,
+      "Use": "A",
+      "Block": ["Y07", "Z01", "Z02"],
+      "Priority": 82,
+      "Terminal": "1"
+    },
+    "Z04": {
+      "Coordinates": "49.013055:2.537861:30",
+      "Code": "BCDE",
+      "Use": "A",
+      "Priority": 81,
+      "Terminal": "1"
+    },
+    "Z05": {
+      "Coordinates": "49.012520:2.538394:30",
+      "Code": "BCD",
+      "Wingspan": 48,
+      "Use": "A",
+      "Priority": 80,
+      "Terminal": "1"
+    },
+    "Z06": {
+      "Coordinates": "49.012430:2.539526:25",
+      "Code": "BC",
+      "Use": "A",
+      "Block": ["Z07", "Z09"],
+      "Priority": 81,
+      "Terminal": "1"
+    },
+    "Z07": {
+      "Coordinates": "49.012580:2.539837:25",
+      "Remark": {
+        "CDE": "Push A"
+      },
+      "Code": "CDE",
+      "Use": "A",
+      "Block": ["Z06", "Z09"],
+      "Priority": 82,
+      "Terminal": "1"
+    },
+    "Z09": {
+      "Coordinates": "49.012689:2.539797:25",
+      "Code": "DEF",
+      "Use": "A",
+      "Block": ["Z06", "Z07"],
+      "Priority": 80,
+      "Terminal": "1"
+    }
+  }
+}

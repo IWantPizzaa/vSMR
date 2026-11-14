@@ -1,0 +1,93 @@
+Page 1/6
+FR
+© SIA
+Internet : www.sia.aviation-civile.gouv.fr
+SUP AIP AIRAC 169/26
+Date AIRAC : 03 SEP 2026
+Date de publication : 30 JUL 2026
+Objet :
+Balisage : Test One color REL (système RWSL) sur voie de traversée S3
+En vigueur :
+Du jeudi 03 septembre 2026 au jeudi 02 septembre 2027
+Lieu : AD : PARIS CHARLES DE GAULLE LFPG
+PRÉAMBULE
+Le système RWSL (Runway Status Lights), est entièrement automatisé et fournit aux pilotes et aux conducteurs de
+véhicules des indications claires sur l'état d'occupation des pistes aﬁn de prévenir tout risque d'incursion sur piste,
+traversée ou mise en puissance dangereuse. 
+À CDG, ce système est déployé sur les deux pistes intérieures (09R/27L depuis 2016 & 08L/26R depuis 2017) et se
+compose des THL (Takeoﬀ Hold Lights) et des REL (Runway Entrance Lights). 
+ 
+Les feux rouges des THL, positionnés de part et d'autre de l'axe de piste, signalent à un avion prêt au décollage
+qu’une mise en puissance serait dangereuse en raison de la présence ou de l’arrivée imminente d’un autre aéronef ou
+d’un véhicule sur cette même piste.
+ 
+Les feux rouges des REL, implantés sur les voies d’alignement et de traversée, s’activent lors de la mise en puissance
+d'un aéronef au décollage, lorsqu’un avion est en approche ﬁnale dans la zone d’activation ou encore lors de la
+présence d'un véhicule sur piste. 
+Lorsque les REL s’allument, l’axial vert entre le point d'attente CAT I et l’axe de piste reste aujourd’hui allumé. Deux
+lignes de feux de couleurs diﬀérentes en simultané (vertes et rouges) sont alors visibles. 
+DATES ET HEURES D'ACTIVITÉ
+Les évaluations concernant le One Color REL sont réalisées sur la voie S3. Durant cette phase, le système s'intègre en
+H24 dans le dispositif opérationnel de fonctionnement des REL et de l'axial de voie. 
+Le principe est illustré dans les schémas du paragraphe 2. 
+INFORMATION DES USAGERS
+Le projet One Color REL consiste à éteindre les feux verts de la portion d’axial comprise entre le point d'attente CAT I
+et l’axe de piste lorsque les REL s’activent. Seule une information lumineuse cohérente (soit du vert, soit du rouge)
+sera alors transmise aﬁn de limiter le risque de confusion et de renforcer le message d'arrêt lorsque les REL sont
+rouges. 
+ 
+le projet One Color REL fait l'objet d'une évaluation opérationnelle sur la voie S3. Cette dernière dure 1
+an. 
+ 
+
+SUP AIP AIRAC 169/26
+Date AIRAC : 03 SEP 2026
+Date de publication : 30 JUL 2026
+Page 2/6
+FR
+© SIA
+Illustration des tests du projet One Color REL sur la voie S3 : 
+ 
+Fonctionnement actuel hors LVP :  
+
+SUP AIP AIRAC 169/26
+Date AIRAC : 03 SEP 2026
+Date de publication : 30 JUL 2026
+Page 3/6
+FR
+© SIA
+ 
+Fonctionnement lors de la période de test hors LVP :
+
+SUP AIP AIRAC 169/26
+Date AIRAC : 03 SEP 2026
+Date de publication : 30 JUL 2026
+Page 4/6
+FR
+© SIA
+ 
+Fonctionnement actuel en LVP : 
+
+SUP AIP AIRAC 169/26
+Date AIRAC : 03 SEP 2026
+Date de publication : 30 JUL 2026
+Page 5/6
+FR
+© SIA
+ 
+Fonctionnement lors de la période de test en LVP :
+
+SUP AIP AIRAC 169/26
+Date AIRAC : 03 SEP 2026
+Date de publication : 30 JUL 2026
+Page 6/6
+FR
+© SIA
+DISPOSITIONS COMPLEMENTAIRES
+En cas de doute sur l'interprétation des feux axiaux de la voie S3, les pilotes sont invités à contacter l'ATC. 
+Les pilotes sont également fortement encouragés à fournir leurs commentaires sur ce projet par mail aux adresses
+suivantes : 
+CDM-CDG@adp.fr
+safetyshare.CDG@adp.fr
+SNA-RP-CDG-se-qse-enca-bf@aviation-civile.gouv.fr 
+ 

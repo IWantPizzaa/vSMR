@@ -1,0 +1,89 @@
+ 
+TCDS No.: EASA.A.064 
+AIRBUS 
+A318, A319, A320, A321 
+ 
+Issue: 62 
+                                     [A320] 
+Date: 26.June.2026  
+SECTION 1: A320 SERIES  
+ 
+37 
+TE.CERT.00051-001 © European Union Aviation Safety Agency, 2024. All rights reserved. ISO9001 Certified. 
+Proprietary document. Copies are not controlled. Confirm revision status through the EASA-Internet/Intranet.  
+ 
+An agency of the European Union 
+Equipment approved for installation is listed in the Certification Standard Equipment List ref. 
+00D000A0101/C1S (not applicable for A320-216, A320-215, A320-251N, A320-252N, A320-
+253N, A320-271N, A320-272N and A320-273N). 
+ 
+4. Dimensions 
+ 
+Principal dimensions of A320 Aircraft: 
+- 
+Length: 
+37.57 m 
+- 
+Width: 
+34.10 m 
+ 
+(if MOD 160500 or 160080 is installed) 
+35.80 m 
+- 
+Height: 
+11.76 m 
+- 
+Width at horizontal stabilizer: 
+12.45 m 
+- 
+Outside fuselage diameter: 
+3.95 m 
+- 
+Distance between engines axis: 
+11.51 m 
+- 
+Distance between main landing gear: 
+7.59 m 
+- 
+Distance between nose and main landing gear: 
+12.64 m 
+ 
+5. Engines 
+ 
+The list below lists the basic engines fitted on the aircraft models. The notes describe usual names 
+and certified names as well as new engines variants. 
+ 
+A320-211 
+Two CFMI 
+CFM 56-5A1 jet engines (MOD 20141), or 
+ 
+CFM 56-5A1/F jet engines (MOD 23755) 
+ 
+A320-212 
+Two CFMI 
+CFM 56-5A3 jet engines (MOD 22093) 
+A320-214 
+Two CFMI 
+CFM 56-5B4 jet engines (MOD 24251), or 
+ 
+CFM 56-5B4/2 jet engines (MOD 24405) 
+ 
+A320-215 
+Two CFMI 
+CFM 56-5B5/P jet engines (MOD 25800) 
+ 
+A320-216 
+Two CFMI 
+CFM 56-5B6/P jet engines (MOD 25800) 
+ 
+A320-231 
+Two IAE 
+V2500-A1 jet engines (MOD 20165) 
+ 
+A320-232 
+Two IAE 
+V2527-A5 jet engines (MOD 23008) 
+ 
+A320-233 
+Two IAE 
+V2527E-A5 jet engines (MOD 25068) 

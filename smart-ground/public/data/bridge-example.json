@@ -1,0 +1,28 @@
+{
+  "format": "smart-ground.bridge.v1",
+  "airport": "LFPG",
+  "capturedAt": "2026-11-12T18:00:00.000Z",
+  "simulated": true,
+  "snapshot": {
+    "callsigns": ["AFR123", "EZY456"],
+    "providers": {
+      "rampagent": {
+        "major": 1,
+        "minor": 0,
+        "fields": {
+          "stand": {"AFR123": "F21", "EZY456": "D21"},
+          "remark": {"AFR123": "Demo only", "EZY456": "Demo only"}
+        }
+      },
+      "vsid": {
+        "major": 1,
+        "minor": 1,
+        "fields": {
+          "rwy": {"AFR123": "26R", "EZY456": "27L"},
+          "sid": {"AFR123": "ELCOB1B"},
+          "cfl": {"AFR123": "100", "EZY456": "100"}
+        }
+      }
+    }
+  }
+}

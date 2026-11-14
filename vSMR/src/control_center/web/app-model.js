@@ -97,7 +97,7 @@
   const RULE_EFFECT_LABELS = { target_color: "Aircraft icon color", tag_color: "Tag background color", text_color: "All tag text color",
     field_color: "Field text color", field_background: "Field background color", field_bold: "Field bold", field_blink: "Field blink" };
   const AVISO_BACKGROUND_STYLE_ID = "__aviso_background__";
-  const ALERT_TYPES = ["NO PUSH", "NO TAXI", "NO TKOF", "STAT RPA", "RWY INC", "RWY TYPE", "RWY CLSD", "HIGH SPD", "EMERG"];
+  const ALERT_TYPES = ["NO PUSH", "NO TAXI", "NO TKOF", "STAT RPA", "RWY INC", "RWY TYPE", "RWY CLSD", "HIGH SPD", "EMERG", "SG COLLISION", "OFF TRACK"];
   const DEFAULT_ALERT_RUNWAYS = [
     { id: "09L / 27R", arrival: true, departure: true, closed: false },
     { id: "09R / 27L", arrival: true, departure: true, closed: false },

@@ -70,6 +70,8 @@ bool VsmrPluginRuntimeAudio::Play(
 			audioPath.u8string() + "; check Windows audio output and EuroScope volume/mute settings");
 		return false;
 	}
+	Logger::info(std::string(description) + " playback started from " +
+		(source == PlaybackSource::File ? "file: " + audioPath.u8string() : "built-in WAV resource"));
 	AudioStarted = true;
 	return true;
 }

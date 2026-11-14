@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Re-encode the timer alarm as canonical mono PCM, matching the working CPDLC notification's simpler playback format, and log successful timer/CPDLC playback to distinguish Windows output issues from a missed alarm.
+
 ## [2.0.1] - 2026-10-12
 
 - Shared the vSMR runtime-menu position across ASRs, so moving it in one view updates the others.
