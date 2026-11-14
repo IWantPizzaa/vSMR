@@ -6,12 +6,32 @@
 #include "radar/RadarScreen.AvisoRuntimeState.hpp"
 #include "radar/RadarScreen.AvisoSupport.hpp"
 #include "insets/InsetWindow.hpp"
+#include "plugin/Plugin.hpp"
+#include "integrations/RampAgentBridgeClient.hpp"
+#include "aircraft/StandArrival.hpp"
 
 #include <cmath>
 #include <unordered_map>
 
 using VsmrAvisoSupport::AvisoMax;
 using VsmrAvisoSupport::AvisoMin;
+
+std::string CSMRRadar::GetSelectedArrivalStandKey()
+{
+	const auto* plugin = static_cast<CSMRPlugin*>(GetPlugIn());
+	if (plugin == nullptr || !plugin->HighlightArrivalStandEnabled()) return {};
+	const auto selected = plugin->FlightPlanSelectASEL();
+	if (!selected.IsValid()) return {};
+	const auto plan = selected.GetFlightPlanData();
+	const auto airport = getActiveAirport();
+	const char* origin = plan.GetOrigin();
+	const char* destination = plan.GetDestination();
+	if (!VsmrStand::IsArrival(airport, origin != nullptr ? origin : "", destination != nullptr ? destination : "")) return {};
+	VsmrRampAgent::AircraftData assignment;
+	const char* callsign = selected.GetCallsign();
+	if (callsign == nullptr || !VsmrRampAgent::TryGetAircraftData(callsign, assignment)) return {};
+	return VsmrStand::Key(airport, assignment.stand);
+}
 
 bool CSMRRadar::IsShutdownRequested() const
 {
@@ -428,6 +448,7 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	request.preciseProjection = preciseProjection;
 	request.groupVisibility = groupVisibility;
 	request.colorPalette = AvisoColorPalette;
+	request.highlightedStand = GetSelectedArrivalStandKey();
 	request.backgroundColor = GetAvisoRasterBackgroundColor();
 	request.rasterWidth = radarArea.Width();
 	request.rasterHeight = radarArea.Height();

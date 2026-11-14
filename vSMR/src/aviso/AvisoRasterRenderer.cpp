@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "aviso/StandHighlight.hpp"
 #include "aviso/AvisoRasterRenderer.hpp"
 #include "aviso/AvisoRasterGeometry.hpp"
 #include "aviso/AvisoRenderScene.hpp"
@@ -588,9 +589,7 @@ std::unique_ptr<AvisoRasterRenderResult> VsmrAviso::AvisoRasterRenderer::Render(
 			const Color labelHaloColor = request.colorPalette == "real"
 				? label.realHaloColor
 				: request.colorPalette == "light" ? label.lightHaloColor : label.haloColor;
-			const Color labelTextColor = request.colorPalette == "real"
-				? label.realTextColor
-				: request.colorPalette == "light" ? label.lightTextColor : label.textColor;
+			const Color labelTextColor = StandLabelTextColor(label, request);
 			if (label.haloWidth > 0.0f && labelHaloColor.GetAlpha() > 0)
 			{
 				rasterGraphics.DrawPath(impl_->Stroke(labelHaloColor,

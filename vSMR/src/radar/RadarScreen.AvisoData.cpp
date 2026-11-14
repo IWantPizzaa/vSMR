@@ -10,6 +10,7 @@
 #include "aviso/AvisoDocumentModel.hpp"
 #include "aviso/AvisoBundledGroups.hpp"
 #include "aviso/AvisoOverrides.hpp"
+#include "aircraft/StandArrival.hpp"
 
 #include <cctype>
 #include <fstream>
@@ -1135,6 +1136,11 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 			const char* labelClass = GetAvisoStringProperty(properties, { "label_class", "category", "section" });
 			if (labelClass != nullptr)
 				parsedLabel.labelClass = labelClass;
+			if (VsmrStand::IsStandLabel(parsedLabel.labelClass))
+			{
+				const char* airport = GetAvisoStringProperty(properties, { "airport" });
+				parsedLabel.standKey = VsmrStand::Key(airport != nullptr ? airport : getActiveAirport(), rawText);
+			}
 			const char* textAnchor = GetAvisoStringPropertyResolved(sharedPaint, properties, { "text-anchor" });
 			if (textAnchor != nullptr)
 				parsedLabel.textAnchor = textAnchor;

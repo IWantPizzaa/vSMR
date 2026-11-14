@@ -379,6 +379,7 @@ void VsmrControlCenterBridgeImpl::BuildSettings(
 	// The RDF worker is plug-in wide, so the Control Center also reflects a state
 	// set through .smr rdf on|off.
 	settings.AddMember("rdfEnabled", VsmrRdf::GetStatus().enabled, allocator);
+	settings.AddMember("highlightArrivalStand", plugin == nullptr || plugin->HighlightArrivalStandEnabled(), allocator);
 	AddString(settings, "uiColorTheme", Owner->GetUiColorTheme(), allocator);
 	AddString(settings, "avisoColorPalette", Owner->GetAvisoColorPalette(), allocator);
 	rapidjson::Value avisoColorPalettes(rapidjson::kArrayType);

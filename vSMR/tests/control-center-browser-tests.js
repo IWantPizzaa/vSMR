@@ -877,6 +877,18 @@
       "UI theme changes shared design colors without changing the AVISO palette");
 
     const rdfToggle = document.querySelector("#settingsRdfEnabled");
+    for (const [id, key] of [["settingsHighlightArrivalStand", "highlightArrivalStand"]]) {
+      const toggle = document.getElementById(id);
+      expect(toggle?.checked, `${key} is available and enabled by default`);
+      for (const enabled of [false, true]) {
+        const saveStart = outbound.length;
+        toggle.checked = enabled;
+        toggle.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(api.getState().settings?.[key] === enabled, `${key} stages immediately`);
+        await waitFor(() => outbound.slice(saveStart).some(message => message.type === "state.save" &&
+          message.payload?.settings?.[key] === enabled), `${key} is included in automatic settings saves`);
+      }
+    }
 	const weatherAirports = document.querySelector("#settingsWeatherAirports");
 	expect(!document.querySelector("#settingsWeatherDisplayMode") && !("weatherDisplayMode" in api.getState().settings),
 	  "METAR detail is automatic with no manual mode setting");

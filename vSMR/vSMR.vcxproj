@@ -232,6 +232,8 @@
     <ClCompile Include="src\plugin\PluginLifecycle.cpp" />
     <ClCompile Include="src\plugin\PluginRuntimeAudio.cpp" />
     <ClCompile Include="src\plugin\PluginTimer.cpp" />
+    <ClCompile Include="src\plugin\PluginStandTracking.cpp" />
+    <ClCompile Include="src\aircraft\StandArrival.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="src\plugin\PluginControllerCallbacks.cpp" />
     <ClCompile Include="src\plugin\PluginCommandHandler.cpp" />
     <ClCompile Include="src\plugin\PluginTagCallbacks.cpp" />
@@ -283,6 +285,8 @@
     <ClInclude Include="..\lib\include\rapidjson\writer.h" />
     <ClInclude Include="src\aircraft\CallsignLookup.hpp" />
     <ClInclude Include="src\aircraft\GroundState.hpp" />
+    <ClInclude Include="src\aircraft\StandArrival.hpp" />
+    <ClInclude Include="src\aviso\StandHighlight.hpp" />
     <ClInclude Include="src\aircraft\HoldingPoint.hpp" />
     <ClInclude Include="src\app\PluginEntry.hpp" />
     <ClInclude Include="src\bootstrap\RuntimeApi.hpp" />

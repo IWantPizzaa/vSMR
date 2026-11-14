@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "aviso/StandHighlight.hpp"
 #include "aviso/AvisoVectorRenderer.hpp"
 #include "aviso/AvisoRenderScene.hpp"
 #include "aviso/AvisoProjection.hpp"
@@ -722,7 +723,7 @@ std::unique_ptr<AvisoRasterRenderResult> VsmrAviso::AvisoVectorRenderer::Render(
 				(label.minimumZoomLevel > 0 && labelZoom < label.minimumZoomLevel) ||
 				(label.maxMetersPerPixel > 0.0 && metersPerPixel > label.maxMetersPerPixel)) continue;
 			const auto halo = request.colorPalette == "real" ? label.realHaloColor : request.colorPalette == "light" ? label.lightHaloColor : label.haloColor;
-			const auto text = request.colorPalette == "real" ? label.realTextColor : request.colorPalette == "light" ? label.lightTextColor : label.textColor;
+			const auto text = StandLabelTextColor(label, request);
 			if (text.GetAlpha() == 0 && (halo.GetAlpha() == 0 || label.haloWidth <= 0.0f)) continue;
 			auto& slot = impl_->glyphs[index];
 			std::shared_ptr<Impl::LabelGeometry> uncached;

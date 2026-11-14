@@ -112,6 +112,8 @@
     <ClCompile Include="src\plugin\PluginLifecycle.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\PluginRuntimeAudio.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\PluginTimer.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\plugin\PluginStandTracking.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\aircraft\StandArrival.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\PluginControllerCallbacks.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\PluginCommandHandler.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\PluginTagCallbacks.cpp"><Filter>Source</Filter></ClCompile>
@@ -156,6 +158,8 @@
     <ClInclude Include="src\tags\TagDataFormatting.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\CallsignLookup.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\GroundState.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aircraft\StandArrival.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\StandHighlight.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\HoldingPoint.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\app\PluginEntry.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\bootstrap\RuntimeApi.hpp"><Filter>Bootstrap</Filter></ClInclude>

@@ -353,6 +353,7 @@ namespace
 			AvisoLabel label;
 			label.position = { 0.85, 0.5 };
 			label.text = L"O";
+			label.standKey = "LFPG:B8";
 			label.groupIds = { "surface" };
 			label.textColor = Gdiplus::Color(255, 240, 40, 40);
 			request.labels = std::make_shared<const std::vector<AvisoLabel>>(std::vector<AvisoLabel>{label});
@@ -388,6 +389,23 @@ namespace
 				const auto settled = renderer.Draw(graphics, dc, viewport, request, paintBackground);
 				Check(settled.drawn && settled.cacheHit && !settled.buildAttempted && backgrounds == 0,
 					"Settled opaque AVISO reuses exact pixels without a background fill", failures);
+				::GdiFlush();
+				const std::vector<std::uint32_t> ordinaryPixels(canvas.Pixels(), canvas.Pixels() + 96 * 72);
+				request.highlightedStand = "LFPG:B8";
+				const auto highlighted = renderer.Draw(graphics, dc, viewport, request, paintBackground);
+				::GdiFlush();
+				Check(highlighted.drawn && highlighted.buildAttempted && !highlighted.cacheHit &&
+					!std::equal(ordinaryPixels.begin(), ordinaryPixels.end(), canvas.Pixels()),
+					"Selecting an arrival stand changes its native label pixels without panning", failures);
+				const auto steadyHighlight = renderer.Draw(graphics, dc, viewport, request, paintBackground);
+				Check(steadyHighlight.drawn && steadyHighlight.cacheHit,
+					"A stable arrival selection retains the warm native map cache", failures);
+				request.highlightedStand.clear();
+				const auto unselected = renderer.Draw(graphics, dc, viewport, request, paintBackground);
+				::GdiFlush();
+				Check(unselected.drawn && unselected.buildAttempted &&
+					std::equal(ordinaryPixels.begin(), ordinaryPixels.end(), canvas.Pixels()),
+					"Clearing arrival selection restores the original map pixels", failures);
 				request.preciseProjection = mapping(8.25);
 				const auto moved = renderer.Draw(graphics, dc, viewport, request, paintBackground);
 				::GdiFlush();
