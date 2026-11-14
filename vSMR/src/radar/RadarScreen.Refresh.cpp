@@ -450,6 +450,7 @@ void CSMRRadar::RenderRefreshTargets(
 	// Drawing the symbols
 	VsmrRefreshLog("Symbols loop");
 	setRefreshStage("target symbol rendering");
+	RenderSmartGroundRoute(graphics, frameScene, radarArea);
 
 	// Cache current view scaling once per frame for configured icon sizing.
 	double framePixPerMeter = 0.0;

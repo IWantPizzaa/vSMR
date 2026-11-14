@@ -1,0 +1,56 @@
+{
+  "passed": true,
+  "datasetSha256": "4597cfcb70d555ca801427a378d7f8fca297e55677d3062faed0c1718ed5b9c5",
+  "nodesChecked": 7650,
+  "edgesChecked": 8487,
+  "sourceSegmentsChecked": 8311,
+  "inventedGeometrySegments": 0,
+  "buildingInteriorViolations": 0,
+  "avisoStandLabelsPreserved": 492,
+  "rampStandIdsPreserved": 448,
+  "primaryStandsReachableWithoutRunwayTravel": 451,
+  "reachableRunwayEnds": 8,
+  "physicalRunwayEndOrientationChecked": true,
+  "sampleShortestRoutes": [
+    {
+      "stand": "A01",
+      "runway": "08L",
+      "distanceMetres": 1399.8
+    },
+    {
+      "stand": "D02",
+      "runway": "08R",
+      "distanceMetres": 3085.2
+    },
+    {
+      "stand": "EN55",
+      "runway": "09L",
+      "distanceMetres": 2092.1
+    },
+    {
+      "stand": "H02",
+      "runway": "09R",
+      "distanceMetres": 6046.3
+    },
+    {
+      "stand": "I43",
+      "runway": "26L",
+      "distanceMetres": 9504.4
+    },
+    {
+      "stand": "J51",
+      "runway": "26R",
+      "distanceMetres": 1850.3
+    },
+    {
+      "stand": "N11",
+      "runway": "27L",
+      "distanceMetres": 5843.8
+    },
+    {
+      "stand": "R6",
+      "runway": "27R",
+      "distanceMetres": 1865.7
+    }
+  ]
+}

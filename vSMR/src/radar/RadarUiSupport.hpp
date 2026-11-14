@@ -15,6 +15,7 @@
 const int TAG_ITEM_DATALINK_STS = 444;
 const int TAG_ITEM_HOLDING_POINT = 445;
 const int TAG_ITEM_RDF = 446;
+const int TAG_ITEM_ROUTE = 447;
 const int TAG_FUNC_DATALINK_MENU = 544;
 
 const int TAG_FUNC_DATALINK_CONFIRM = 545;
@@ -28,6 +29,7 @@ const int TAG_FUNC_HOLDING_POINT_SELECT = 552;
 const int TAG_FUNC_HOLDING_POINT_COMMIT = 553;
 const int TAG_FUNC_HOLDING_POINT_CLEAR = 554;
 const int TAG_FUNC_RDF_RESET = 555;
+const int TAG_FUNC_ROUTE_MENU = 556;
 
 namespace VsmrRadarUiSupport
 {

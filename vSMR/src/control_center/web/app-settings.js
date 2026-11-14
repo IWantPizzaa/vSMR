@@ -73,7 +73,11 @@
     delete data.rimcas.rimcas_label_only;
     delete data.rimcas.use_red_symbol_for_emergencies;
     const alertChecks = $$('[data-alert-type]');
-    if (alertChecks.length) data.rimcas.inactive_alerts = alertChecks.filter(input => !input.checked).map(input => input.dataset.alertType);
+    if (alertChecks.length) {
+      const editedTypes = new Set(alertChecks.map(input => input.dataset.alertType));
+      const unlistedInactive = (data.rimcas.inactive_alerts || []).map(String).filter(type => !editedTypes.has(type));
+      data.rimcas.inactive_alerts = [...new Set([...unlistedInactive, ...alertChecks.filter(input => !input.checked).map(input => input.dataset.alertType)])];
+    }
     if ($("#alertVisibilityMode")) data.visibility = $("#alertVisibilityMode").value === "lvp" ? "lvp" : "normal";
     const runwayRows = $$("[data-alert-runway-index]");
     if (runwayRows.length) data.runways = runwayRows.map(row => {

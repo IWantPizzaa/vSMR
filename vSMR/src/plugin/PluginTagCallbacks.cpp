@@ -5,6 +5,9 @@
 #include "aircraft/HoldingPoint.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "rdf/RdfOverlay.hpp"
+#include "smart_ground/SmartGroundEngine.hpp"
+#include "plugin/SmartGroundListLogic.hpp"
+#include "shared/TextUtils.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -40,6 +43,25 @@ void CSMRPlugin::OnGetTagItem(
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 	{
 		strcpy_s(sItemString, 16, "");
+		return;
+	}
+
+	if (ItemCode == TAG_ITEM_ROUTE)
+	{
+		if (pColorCode != nullptr) *pColorCode = TAG_COLOR_DEFAULT;
+		strcpy_s(sItemString, 16, " ");
+		if (!FlightPlan.IsValid()) return;
+		const char* raw = FlightPlan.GetCallsign();
+		if (raw == nullptr || *raw == '\0') return;
+		const std::string callsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(raw));
+		const auto snapshot = VsmrSmartGround::Service().GetSnapshot(callsign, static_cast<double>(::GetTickCount64()) / 1000.0);
+		const std::string text = VsmrSmartGroundList::DisplayRoute(snapshot.taxiwayRoute);
+		strcpy_s(sItemString, 16, text.c_str());
+		if (snapshot.offTrackDeviation)
+		{
+			if (pColorCode != nullptr) *pColorCode = TAG_COLOR_RGB_DEFINED;
+			if (pRGB != nullptr) *pRGB = RGB(255, 215, 0);
+		}
 		return;
 	}
 
