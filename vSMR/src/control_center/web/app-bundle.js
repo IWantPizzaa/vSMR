@@ -766,6 +766,7 @@
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
         rdfEnabled: true,
         highlightArrivalStand: true,
+        resetStatusAtStand: true,
         uiColorTheme: "night",
         weatherAllAirports: true,
         showNorthIndicator: true,
@@ -4996,6 +4997,7 @@
     $("#settingsWeatherAirports").value = settings.weatherAllAirports !== false ? "all" : "single";
     $("#settingsRdfEnabled").checked = settings.rdfEnabled !== false;
     $("#settingsHighlightArrivalStand").checked = settings.highlightArrivalStand !== false;
+    $("#settingsResetStatusAtStand").checked = settings.resetStatusAtStand !== false;
     const uiColorTheme = settings.uiColorTheme === "day" ? "day" : "night";
     syncToggleButtons('[data-ui-color-theme]', uiColorTheme, "uiColorTheme");
     const avisoColorPalette = normalizeAvisoColorPalette(settings.avisoColorPalette);
@@ -5018,7 +5020,8 @@
       keepAvisoWindowPlacement: $("#settingsKeepAvisoWindowPlacement").checked,
       weatherAllAirports: $("#settingsWeatherAirports").value === "all",
       rdfEnabled: $("#settingsRdfEnabled").checked,
-      highlightArrivalStand: $("#settingsHighlightArrivalStand").checked
+      highlightArrivalStand: $("#settingsHighlightArrivalStand").checked,
+      resetStatusAtStand: $("#settingsResetStatusAtStand").checked
     });
     state.profiles.forEach(record => {
       record.data.targets ||= {};
