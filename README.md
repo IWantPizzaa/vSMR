@@ -23,7 +23,7 @@ Current source version: **2.0.7**. Release artifacts are prepared from clean com
 - CDM bridge integration and Hoppie PDC support; PDC uses the ICAO selected in the runtime menu unless its login was edited manually.
 - Optional vSID bridge data, tag tokens, rules, and Runtime Menu controls
 - Optional Ramp Agent stand and stand remark tag values through the plug-in bridge
-- Settings can highlight the selected arrival's RampAgent stand label on both AVISO views.
+- Settings can highlight the selected arrival's RampAgent stand label on both AVISO views and automatically set an arrival to **No Status** after parking at its stand.
 - Airport-scoped inset presets and independent active-profile selection for each ASR
 - Atomic configuration saves, Revert, bundled-default recovery, diagnostics, and verified-update support
 
@@ -48,7 +48,7 @@ The current converter-supplied AVISO set contains **160 maps** in [`vSMR/data/AV
 
 The optional vSID, Ramp Agent, and CDM interfaces require [EuroScope Plugin Bridge](https://github.com/AlexisBalzano/Euroscope-Plugin-Bridge), plus a bridge-enabled [vSID](https://github.com/AlexisBalzano/vSID), [Ramp Agent](https://github.com/AlexisBalzano/EuroscopeRampAgent), or [CDM](https://github.com/IWantPizzaa/CDM) build. Stand and stand remark tag values come only from Ramp Agent through the bridge. Load them separately through EuroScope's plug-in settings; vSMR deliberately does not bundle or load their DLLs. The consumed fields are listed in [EuroScope Plugin Bridge data](https://github.com/IWantPizzaa/vSMR/wiki/Integrations).
 
-**Highlight selected arrival stand** follows EuroScope's selection, including selection from a list, and recolors only the matching airport's gate/stand text. This option is enabled by default and saved in EuroScope's vSMR settings.
+**Highlight selected arrival stand** follows EuroScope's selection, including selection from a list, and recolors only the matching airport's gate/stand text. **Reset arrival status at stand** uses RampAgent's stand coordinates and radii, fetched in the background and cached under `UserData/StandZones`. It requires three fresh position reports spanning at least ten seconds at 0–1 kt inside the assigned stand; without an assignment, a known stand zone is used. Passing a gate or pausing a replay does not confirm parking. Only arrival flight plans are reset, including a leftover DEPA from the departure airport. Startup/push choices and aircraft tracked by another controller are left alone. Both options are enabled by default and saved in EuroScope's vSMR settings. Scratchpad text and real assigned speeds are preserved.
 
 [Paris configuration](https://github.com/IWantPizzaa/vSMR/wiki/Paris-vSID-Configuration): vSMR reads the generic `rules`, `areas` and `autoconfig` fields published by current bridge-enabled vSID builds. LFPG/LFPO/LFPB Linked/Unlinked sets `OPPOSING` explicitly; LFPN/LFPV/LFPT WL/EL/IPGW/IPOW selects the four regional rules atomically; LFOB uses CDG West/East to set its `PGEAST` rule. Buttons reflect the actual published values and remain unavailable when their required rules are absent. LFPG's taxi-area controls stay independent of Linked/Unlinked.
 
