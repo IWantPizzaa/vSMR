@@ -32,17 +32,10 @@
 #include <set>
 #include <sstream>
 
-using VsmrDatalinkProtocol::BuildHoppieLoginFailureMessage;
-using VsmrDatalinkProtocol::EncodeUrlQueryComponent;
-using VsmrDatalinkProtocol::FormatPdcFrequency;
-using VsmrDatalinkProtocol::IsHoppieOkResponse;
-using VsmrDatalinkProtocol::PdcFrequencySelection;
-using VsmrDatalinkProtocol::ProtectHoppieCredential;
-using VsmrDatalinkProtocol::RedactSensitiveValue;
-using VsmrDatalinkProtocol::ResolvePdcNextFrequency;
-using VsmrDatalinkProtocol::UnprotectHoppieCredential;
 
 #include "plugin/PluginRuntimeAudio.hpp"
+
+using VsmrDatalinkProtocol::RedactSensitiveValue;
 
 HttpHelper& VsmrPluginRuntime::GetHttpHelper()
 {
@@ -97,6 +90,125 @@ bool TryGetCdmPilotData(const std::string& callsign, CdmPilotData& outData)
 	return true;
 }
 
+namespace
+{
+	// A poll is cheap to repeat. An action is not: PINEDE waits for Hoppie (up
+	// to 5 s) before answering, and giving up first would report a clearance
+	// that was in fact sent, inviting the controller to send it twice.
+	constexpr int kPollTimeoutMs = 6000;
+	constexpr int kActionTimeoutMs = 15000;
+
+	HttpResponse PostToPinede(
+		const DatalinkCredentialsSnapshot& credentials,
+		const char* path,
+		const std::string& body,
+		int timeoutMs = kActionTimeoutMs)
+	{
+		try
+		{
+			return VsmrPluginRuntime::GetHttpHelper().sendJsonRequest(
+				VsmrPinede::JoinUrl(credentials.baseUrl, path),
+				body,
+				credentials.key,
+				timeoutMs,
+				&PluginShutdownRequested,
+				DatalinkResponseLimitBytes);
+		}
+		catch (const std::exception& exception)
+		{
+			Logger::info(std::string("PDC request to PINEDE failed: ") +
+				RedactSensitiveValue(exception.what(), credentials.key));
+		}
+		catch (...)
+		{
+			Logger::info("PDC request to PINEDE failed: unknown exception");
+		}
+		return HttpResponse{};
+	}
+
+	bool Succeeded(const HttpResponse& response)
+	{
+		return response.completed && response.status >= 200 && response.status < 300;
+	}
+
+	std::string Describe(const HttpResponse& response)
+	{
+		return VsmrPinede::DescribeFailure(response.completed, response.status, response.body);
+	}
+
+	bool IsCurrentSession(unsigned long long generation)
+	{
+		return !PluginShutdownRequested.load(std::memory_order_relaxed) &&
+			generation == DatalinkConnectionGeneration.load(std::memory_order_acquire);
+	}
+
+	// Replaces the tag lists with what PINEDE says this station should show.
+	// A request that newly asks for a clearance rings, as Hoppie requests did.
+	void ApplyPollResult(const VsmrPinede::PollResult& result, unsigned long long stateRevision)
+	{
+		bool newRequest = false;
+		{
+			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+			// an action of ours finished during this poll: its effect is newer than this answer
+			if (stateRevision != DatalinkStateRevision.load(std::memory_order_acquire))
+				return;
+
+			VsmrPinede::TagLists lists = VsmrPinede::BuildTagLists(result, AircraftWilcoDismissed);
+			for (const std::string& callsign : lists.demandingClearance)
+			{
+				if (!ContainsCallsignUnlocked(AircraftDemandingClearance, callsign))
+					newRequest = true;
+			}
+
+			AircraftDemandingClearance = std::move(lists.demandingClearance);
+			AircraftStandby = std::move(lists.standby);
+			AircraftMessage = std::move(lists.message);
+			AircraftWilco = std::move(lists.wilco);
+			AircraftMessageSent = std::move(lists.messageSent);
+			AircraftDatalinkClearedCallsigns = std::move(lists.cleared);
+			for (auto it = AircraftWilcoDismissed.begin(); it != AircraftWilcoDismissed.end();)
+				it = AircraftDatalinkClearedCallsigns.count(*it) ? std::next(it) : AircraftWilcoDismissed.erase(it);
+
+			PendingMessages.clear();
+			for (const auto& entry : lists.displayedText)
+				PendingMessages[entry.first] = AcarsMessage{ entry.first, "dcl", entry.second };
+		}
+		if (newRequest)
+			VsmrPluginRuntimeAudio::Play(L"Ding.wav", "PDC notification");
+	}
+
+	void MarkStateChanged()
+	{
+		DatalinkStateRevision.fetch_add(1, std::memory_order_acq_rel);
+	}
+}
+
+void ClearDatalinkTagState()
+{
+	{
+		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+		MarkStateChanged();
+		AircraftDemandingClearance.clear();
+		AircraftStandby.clear();
+		AircraftMessage.clear();
+		AircraftWilco.clear();
+		AircraftMessageSent.clear();
+		PendingMessages.clear();
+	}
+	ResetDatalinkClearanceState();
+}
+
+bool IsDatalinkTrackedUnlocked(const std::string& callsign)
+{
+	const std::string normalized = NormalizeCallsignForState(callsign);
+	return ContainsCallsignUnlocked(AircraftDemandingClearance, normalized) ||
+		ContainsCallsignUnlocked(AircraftStandby, normalized) ||
+		ContainsCallsignUnlocked(AircraftMessage, normalized) ||
+		ContainsCallsignUnlocked(AircraftWilco, normalized) ||
+		ContainsCallsignUnlocked(AircraftMessageSent, normalized) ||
+		PendingMessages.count(normalized) != 0;
+}
+
 void datalinkLogin(DatalinkLoginRequest request) {
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
@@ -105,78 +217,62 @@ void datalinkLogin(DatalinkLoginRequest request) {
 		unsigned long long generation = 0;
 		~ResetConnectingFlag()
 		{
-			if (generation == HoppieConnectionGeneration.load(std::memory_order_acquire))
-				HoppieConnecting.store(false, std::memory_order_release);
+			if (generation == DatalinkConnectionGeneration.load(std::memory_order_acquire))
+				DatalinkConnecting.store(false, std::memory_order_release);
 		}
 	} resetConnecting{ request.generation };
 	// A disconnect can invalidate a login while it is still waiting in the
-	// network queue. Do not contact Hoppie for that stale session.
-	if (request.generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
+	// network queue. Do not announce that stale session to PINEDE.
+	if (!IsCurrentSession(request.generation))
 		return;
 
-	bool connected = false;
-	std::string failureMessage;
-	try
-	{
-		std::string url = baseUrlDatalink;
-		url += "?logon=";
-		url += EncodeUrlQueryComponent(request.credentials.password);
-		url += "&from=";
-		url += EncodeUrlQueryComponent(request.credentials.callsign);
-		url += "&to=SERVER&type=PING";
-		const std::string raw = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
-			url,
-			6000,
-			&PluginShutdownRequested,
-			HoppieResponseLimitBytes);
-		connected = IsHoppieOkResponse(raw);
-		if (!connected)
-			failureMessage = BuildHoppieLoginFailureMessage(raw, request.credentials.password);
-	}
-	catch (const std::exception& exception)
-	{
-		connected = false;
-		failureMessage = "Connection failed before Hoppie replied.";
-		std::string exceptionDetail = RedactSensitiveValue(
-			exception.what(),
-			request.credentials.password);
-		exceptionDetail = RedactSensitiveValue(
-			exceptionDetail,
-			EncodeUrlQueryComponent(request.credentials.password));
-		Logger::info("CPDLC login exception: " + exceptionDetail);
-	}
-	catch (...)
-	{
-		connected = false;
-		failureMessage = "Connection failed before Hoppie replied.";
-		Logger::info("CPDLC login exception: unknown");
-	}
+	// The first poll is the login: it proves the key and puts the station online
+	const unsigned long long stateRevision = DatalinkStateRevision.load(std::memory_order_acquire);
+	const HttpResponse response = PostToPinede(
+		request.credentials,
+		"/v1/dcl/poll",
+		VsmrPinede::BuildPollBody(request.credentials.callsign, request.credentials.frequency),
+		kPollTimeoutMs);
+	VsmrPinede::PollResult result;
+	const bool connected = Succeeded(response) && VsmrPinede::ParsePollResponse(response.body, result);
 
-	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
-		request.generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
-	{
+	if (!IsCurrentSession(request.generation))
 		return;
-	}
 
 	if (connected)
 	{
-		SetDatalinkStatusMessage("Connected.");
-		HoppieConnected.store(true, std::memory_order_release);
-		HoppieConnecting.store(false, std::memory_order_release);
+		ApplyPollResult(result, stateRevision);
+		SetDatalinkStatusMessage("Connected as " + request.credentials.callsign + ".");
+		DatalinkConnected.store(true, std::memory_order_release);
+		DatalinkConnecting.store(false, std::memory_order_release);
 		FailedToConnectMessage.store(false, std::memory_order_relaxed);
 		ConnectionMessage.store(true, std::memory_order_release);
 	}
 	else
 	{
-		if (failureMessage.empty())
-			failureMessage = "Connection failed: Hoppie rejected the login.";
+		const std::string failureMessage = Succeeded(response)
+			? "PINEDE sent an answer vSMR cannot read."
+			: Describe(response);
 		ConnectionMessage.store(false, std::memory_order_relaxed);
 		SetDatalinkStatusMessage(failureMessage);
-		HoppieConnected.store(false, std::memory_order_release);
-		HoppieConnecting.store(false, std::memory_order_release);
-		Logger::info(failureMessage);
+		DatalinkConnected.store(false, std::memory_order_release);
+		DatalinkConnecting.store(false, std::memory_order_release);
+		Logger::info("PDC login failed: " + failureMessage);
 		FailedToConnectMessage.store(true, std::memory_order_release);
 	}
+};
+
+// Tells PINEDE the station is gone, so its requests go to the next controller
+// at once instead of after PINEDE's 30 second timeout. Best effort.
+void datalinkLogoff(DatalinkCredentialsSnapshot credentials) {
+	if (credentials.callsign.empty() || credentials.key.empty())
+		return;
+	const HttpResponse response = PostToPinede(
+		credentials,
+		"/v1/dcl/logoff",
+		VsmrPinede::BuildStationBody(credentials.callsign));
+	if (!Succeeded(response))
+		Logger::info("PDC logoff not confirmed: " + Describe(response));
 };
 
 void pollMessages(DatalinkPollRequest request) {
@@ -185,23 +281,19 @@ void pollMessages(DatalinkPollRequest request) {
 		unsigned long long pollGeneration = 0;
 		~ResetPollFlag()
 		{
-			if (pollGeneration == HoppiePollGeneration.load(std::memory_order_acquire))
-				HoppiePollInProgress.store(false, std::memory_order_release);
+			if (pollGeneration == DatalinkPollGeneration.load(std::memory_order_acquire))
+				DatalinkPollInProgress.store(false, std::memory_order_release);
 		}
 	} resetPoll{ request.pollGeneration };
 	const auto completePoll = [&](bool succeeded)
 	{
 		if (request.pollGeneration ==
-			HoppiePollGeneration.load(std::memory_order_acquire))
+			DatalinkPollGeneration.load(std::memory_order_acquire))
 		{
-			HoppiePollInProgress.store(false, std::memory_order_release);
+			DatalinkPollInProgress.store(false, std::memory_order_release);
 		}
-		if (!request.reportStatus ||
-			PluginShutdownRequested.load(std::memory_order_relaxed) ||
-			request.generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
-		{
+		if (!request.reportStatus || !IsCurrentSession(request.generation))
 			return;
-		}
 		SetDatalinkStatusMessage(succeeded ? "Poll complete." : "Poll failed.");
 	};
 
@@ -210,122 +302,50 @@ void pollMessages(DatalinkPollRequest request) {
 		completePoll(false);
 		return;
 	}
-	// Polling renews Hoppie's server-side callsign lock. A queued poll must
-	// never start after the controller has disconnected this session.
-	if (request.generation != HoppieConnectionGeneration.load(std::memory_order_acquire) ||
-		request.pollGeneration != HoppiePollGeneration.load(std::memory_order_acquire))
+	// A poll keeps the station online at PINEDE. A queued poll must never start
+	// after the controller has disconnected this session.
+	if (!IsCurrentSession(request.generation) ||
+		request.pollGeneration != DatalinkPollGeneration.load(std::memory_order_acquire))
 	{
 		completePoll(false);
 		return;
 	}
 
-	std::string raw;
-	try
-	{
-		std::string url = baseUrlDatalink;
-		url += "?logon=";
-		url += EncodeUrlQueryComponent(request.credentials.password);
-		url += "&from=";
-		url += EncodeUrlQueryComponent(request.credentials.callsign);
-		url += "&to=SERVER&type=POLL";
-		raw.assign(VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
-			url,
-			6000,
-			&PluginShutdownRequested,
-			HoppieResponseLimitBytes));
-	}
-	catch (...)
+	const HttpResponse response = PostToPinede(
+		request.credentials,
+		"/v1/dcl/poll",
+		VsmrPinede::BuildPollBody(request.credentials.callsign, request.credentials.frequency),
+		kPollTimeoutMs);
+
+	if (!IsCurrentSession(request.generation))
 	{
 		completePoll(false);
 		return;
 	}
 
-	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
-		request.generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
+	if (response.completed && (response.status == 401 || response.status == 403))
+	{
+		// the key was withdrawn (401), or PINEDE refuses this station (403: its
+		// holder lost approval, or the callsign is not theirs on VATSIM): polling
+		// again would only be refused again, so stop and say why
+		DatalinkConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
+		DatalinkConnected.store(false, std::memory_order_release);
+		ClearDatalinkTagState();
+		const std::string message = Describe(response);
+		SetDatalinkStatusMessage(message);
+		QueueDatalinkNotice(message);
+		completePoll(false);
+		return;
+	}
+
+	VsmrPinede::PollResult result;
+	if (!Succeeded(response) || !VsmrPinede::ParsePollResponse(response.body, result))
 	{
 		completePoll(false);
 		return;
 	}
 
-	if (!VsmrRadarUiSupport::startsWith("ok", raw.c_str()))
-	{
-		completePoll(false);
-		return;
-	}
-	if (raw.size() <= 3)
-	{
-		completePoll(true);
-		return;
-	}
-
-	raw = raw + " ";
-	raw = raw.substr(3, raw.size() - 3);
-
-	std::string delimiter = "}} ";
-	size_t pos = 0;
-	std::string token;
-	while ((pos = raw.find(delimiter)) != std::string::npos) {
-		if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
-			request.generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
-		{
-			completePoll(false);
-			return;
-		}
-
-		token = raw.substr(1, pos);
-
-		std::string parsed;
-		std::stringstream input_stringstream(token);
-		struct AcarsMessage message;
-		int i = 1;
-		while (getline(input_stringstream, parsed, ' '))
-		{
-			if (i == 1)
-				message.from = parsed;
-			if (i == 2)
-				message.type = parsed;
-			if (i > 2)
-			{
-				message.message.append(" ");
-				message.message.append(parsed);
-			}
-
-			i++;
-		}
-		if (message.type.find("telex") != std::string::npos || message.type.find("cpdlc") != std::string::npos) {
-			if (message.message.find("REQ") != std::string::npos || message.message.find("CLR") != std::string::npos || message.message.find("PDC") != std::string::npos || message.message.find("PREDEP") != std::string::npos || message.message.find("REQUEST") != std::string::npos) {
-				if (message.message.find("LOGON") != std::string::npos) {
-					QueueDatalinkMessage(
-						request.plugin,
-						message.from,
-						"CPDLC",
-						"UNABLE",
-						"");
-				} else {
-					VsmrPluginRuntimeAudio::Play(L"Ding.wav", "CPDLC notification");
-					std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-					AddCallsignUniqueUnlocked(AircraftDemandingClearance, message.from);
-				}
-			}
-			else if (message.message.find("WILCO") != std::string::npos || message.message.find("ROGER") != std::string::npos || message.message.find("RGR") != std::string::npos) {
-				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-				if (ContainsCallsignUnlocked(AircraftMessageSent, message.from)) {
-					AddCallsignUniqueUnlocked(AircraftWilco, message.from);
-				}
-			}
-			else if (message.message.length() != 0 ){
-				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-				AddCallsignUniqueUnlocked(AircraftMessage, message.from);
-			}
-			{
-				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-				PendingMessages[message.from] = message;
-			}
-		}
-
-		raw.erase(0, pos + delimiter.length());
-	}
-
+	ApplyPollResult(result, request.stateRevision);
 	completePoll(true);
 };
 
@@ -337,14 +357,14 @@ bool StartDatalinkPoll(bool reportStatus, std::string& error)
 		error = "The PDC service is shutting down.";
 			return false;
 		}
-		if (!HoppieConnected.load(std::memory_order_acquire))
+		if (!DatalinkConnected.load(std::memory_order_acquire))
 		{
 		error = "PDC is not connected.";
 			return false;
 		}
 
 		bool expected = false;
-		if (!HoppiePollInProgress.compare_exchange_strong(
+		if (!DatalinkPollInProgress.compare_exchange_strong(
 			expected,
 			true,
 			std::memory_order_acq_rel))
@@ -356,22 +376,23 @@ bool StartDatalinkPoll(bool reportStatus, std::string& error)
 		CSMRPlugin* plugin = ActivePluginInstance.load(std::memory_order_acquire);
 		if (plugin == nullptr)
 		{
-			HoppiePollInProgress.store(false, std::memory_order_release);
+			DatalinkPollInProgress.store(false, std::memory_order_release);
 		error = "The PDC service is unavailable.";
 			return false;
 		}
 		DatalinkPollRequest request;
 		request.plugin = plugin;
 		request.credentials = SnapshotDatalinkCredentials();
-		request.generation = HoppieConnectionGeneration.load(std::memory_order_acquire);
+		request.generation = DatalinkConnectionGeneration.load(std::memory_order_acquire);
 		request.pollGeneration =
-			HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
+			DatalinkPollGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
+		request.stateRevision = DatalinkStateRevision.load(std::memory_order_acquire);
 		request.reportStatus = reportStatus;
-		if (!HoppieConnected.load(std::memory_order_acquire) ||
-			request.generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
+		if (!DatalinkConnected.load(std::memory_order_acquire) ||
+			request.generation != DatalinkConnectionGeneration.load(std::memory_order_acquire))
 		{
-			if (request.pollGeneration == HoppiePollGeneration.load(std::memory_order_acquire))
-				HoppiePollInProgress.store(false, std::memory_order_release);
+			if (request.pollGeneration == DatalinkPollGeneration.load(std::memory_order_acquire))
+				DatalinkPollInProgress.store(false, std::memory_order_release);
 		error = "PDC disconnected before the poll could start.";
 			return false;
 		}
@@ -381,8 +402,8 @@ bool StartDatalinkPoll(bool reportStatus, std::string& error)
 
 		if (!plugin->QueueNetworkJob([request]() { pollMessages(request); }))
 		{
-			if (request.pollGeneration == HoppiePollGeneration.load(std::memory_order_acquire))
-				HoppiePollInProgress.store(false, std::memory_order_release);
+			if (request.pollGeneration == DatalinkPollGeneration.load(std::memory_order_acquire))
+				DatalinkPollInProgress.store(false, std::memory_order_release);
 		error = "Unable to queue the PDC poll request.";
 			if (reportStatus)
 				SetDatalinkStatusMessage(error);
@@ -390,6 +411,80 @@ bool StartDatalinkPoll(bool reportStatus, std::string& error)
 		}
 		return true;
 	}
+
+namespace
+{
+	void sendDatalinkAction(DatalinkActionRequest request)
+	{
+		if (!IsCurrentSession(request.generation))
+			return;
+
+		const char* path = "/v1/dcl/standby";
+		std::string body = VsmrPinede::BuildAircraftBody(request.credentials.callsign, request.callsign);
+		switch (request.action)
+		{
+		case DatalinkAction::Standby: path = "/v1/dcl/standby"; break;
+		case DatalinkAction::Voice: path = "/v1/dcl/voice"; break;
+		case DatalinkAction::Reset: path = "/v1/dcl/reset"; break;
+		case DatalinkAction::Message:
+			path = "/v1/dcl/message";
+			body = VsmrPinede::BuildMessageBody(request.credentials.callsign, request.callsign, request.text);
+			break;
+		}
+
+		const HttpResponse response = PostToPinede(request.credentials, path, body);
+		if (!IsCurrentSession(request.generation))
+			return;
+		if (!Succeeded(response))
+		{
+			QueueDatalinkNotice(request.callsign + ": " + Describe(response));
+			return;
+		}
+
+		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+		MarkStateChanged();
+		switch (request.action)
+		{
+		case DatalinkAction::Standby:
+			AddCallsignUniqueUnlocked(AircraftStandby, request.callsign);
+			break;
+		case DatalinkAction::Voice:
+		case DatalinkAction::Reset:
+			RemoveCallsignUnlocked(AircraftDemandingClearance, request.callsign);
+			RemoveCallsignUnlocked(AircraftStandby, request.callsign);
+			RemoveCallsignUnlocked(AircraftMessage, request.callsign);
+			RemoveCallsignUnlocked(AircraftWilco, request.callsign);
+			RemoveCallsignUnlocked(AircraftMessageSent, request.callsign);
+			ClearDatalinkClearanceSentUnlocked(request.callsign);
+			PendingMessages.erase(request.callsign);
+			break;
+		case DatalinkAction::Message:
+			RemoveCallsignUnlocked(AircraftMessage, request.callsign);
+			break;
+		}
+	}
+}
+
+bool QueueDatalinkAction(
+	CSMRPlugin* plugin,
+	DatalinkAction action,
+	const std::string& callsign,
+	const std::string& text)
+{
+	if (plugin == nullptr ||
+		PluginShutdownRequested.load(std::memory_order_acquire) ||
+		!DatalinkConnected.load(std::memory_order_acquire))
+	{
+		return false;
+	}
+	DatalinkActionRequest request;
+	request.credentials = SnapshotDatalinkCredentials();
+	request.generation = DatalinkConnectionGeneration.load(std::memory_order_acquire);
+	request.action = action;
+	request.callsign = NormalizeCallsignForState(callsign);
+	request.text = text;
+	return plugin->QueueNetworkJob([request]() { sendDatalinkAction(request); });
+}
 
 void sendDatalinkClearance(DatalinkClearanceRequest request) {
 	struct InFlightGuard
@@ -400,79 +495,31 @@ void sendDatalinkClearance(DatalinkClearanceRequest request) {
 			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
 			ClearDatalinkClearanceInFlightUnlocked(callsign);
 		}
-	} inFlightGuard{ request.packet.callsign };
-	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
-		request.generation != HoppieConnectionGeneration.load(
-			std::memory_order_acquire))
-		return;
-	const DatalinkPacket& packet = request.packet;
-
-	std::string payload = "/data2/";
-	payload += std::to_string(request.messageSequence);
-	payload += "//R/";
-	payload += "CLR TO @";
-	payload += packet.destination;
-	payload += "@ RWY @";
-	payload += packet.rwy;
-	payload += "@ DEP @";
-	payload += packet.sid;
-	payload += "@ INIT CLB @";
-	payload += packet.climb;
-	payload += "@ SQUAWK @";
-	payload += packet.squawk;
-	payload += "@ ";
-	if (packet.tsat != "no" && packet.tsat.size() > 3) {
-		payload += "TSAT @";
-		payload += packet.tsat;
-		payload += "@ ";
-	}
-	if (packet.ctot != "no" && packet.ctot.size() > 3) {
-		payload += "CTOT @";
-		payload += packet.ctot;
-		payload += "@ ";
-	}
-	if (packet.freq != "no" && packet.freq.size() > 5) {
-		payload += "WHEN RDY CALL FREQ @";
-		payload += packet.freq;
-		payload += "@";
-	}
-	else {
-		payload += "WHEN RDY CALL @";
-		payload += request.fallbackFrequency;
-		payload += "@";
-	}
-	payload += " IF UNABLE CALL VOICE ";
-	if (packet.message != "no" && packet.message.size() > 1)
-		payload += packet.message;
-
-	std::string url = baseUrlDatalink;
-	url += "?logon=";
-	url += EncodeUrlQueryComponent(request.credentials.password);
-	url += "&from=";
-	url += EncodeUrlQueryComponent(request.credentials.callsign);
-	url += "&to=";
-	url += EncodeUrlQueryComponent(packet.callsign);
-	url += "&type=CPDLC&packet=";
-	url += EncodeUrlQueryComponent(payload);
-
-	const std::string raw = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
-		url,
-		6000,
-		&PluginShutdownRequested,
-		HoppieResponseLimitBytes);
-	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
-		request.generation != HoppieConnectionGeneration.load(
-			std::memory_order_acquire))
+	} inFlightGuard{ request.fields.callsign };
+	if (!IsCurrentSession(request.generation))
 		return;
 
-	if (VsmrRadarUiSupport::startsWith("ok", raw.c_str())) {
-		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		RemoveCallsignUnlocked(AircraftDemandingClearance, packet.callsign);
-		RemoveCallsignUnlocked(AircraftStandby, packet.callsign);
-		PendingMessages.erase(packet.callsign);
-		AddCallsignUniqueUnlocked(AircraftMessageSent, packet.callsign);
-		MarkDatalinkClearanceSentUnlocked(packet.callsign);
+	// PINEDE builds the clearance text from these fields
+	const HttpResponse response = PostToPinede(
+		request.credentials,
+		"/v1/dcl/clearance",
+		VsmrPinede::BuildClearanceBody(request.credentials.callsign, request.fields));
+	if (!IsCurrentSession(request.generation))
+		return;
+	if (!Succeeded(response))
+	{
+		QueueDatalinkNotice(request.fields.callsign + ": " + Describe(response));
+		return;
 	}
+
+	std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+	MarkStateChanged();
+	RemoveCallsignUnlocked(AircraftDemandingClearance, request.fields.callsign);
+	RemoveCallsignUnlocked(AircraftStandby, request.fields.callsign);
+	RemoveCallsignUnlocked(AircraftMessage, request.fields.callsign);
+	PendingMessages.erase(request.fields.callsign);
+	AddCallsignUniqueUnlocked(AircraftMessageSent, request.fields.callsign);
+	MarkDatalinkClearanceSentUnlocked(request.fields.callsign);
 };
 
 std::string CSMRPlugin::GetActiveProfilesConfigPath(

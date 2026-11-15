@@ -1,5 +1,4 @@
 #include "platform/windows/PrecompiledHeader.hpp"
-#include "shared/Random.hpp"
 #include "plugin/Plugin.hpp"
 #include "plugin/PluginHttpSupport.hpp"
 #include "plugin/Plugin.RuntimeState.hpp"
@@ -10,6 +9,7 @@
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashReporter.hpp"
 #include "datalink/DatalinkProtocolSupport.hpp"
+#include "datalink/PinedeProtocol.hpp"
 #include "integrations/CdmBridgeClient.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "shared/TextUtils.hpp"
@@ -34,15 +34,20 @@
 #include <set>
 #include <sstream>
 
-using VsmrDatalinkProtocol::BuildHoppieLoginFailureMessage;
-using VsmrDatalinkProtocol::EncodeUrlQueryComponent;
 using VsmrDatalinkProtocol::FormatPdcFrequency;
-using VsmrDatalinkProtocol::IsHoppieOkResponse;
-using VsmrDatalinkProtocol::PdcFrequencySelection;
-using VsmrDatalinkProtocol::ProtectHoppieCredential;
-using VsmrDatalinkProtocol::RedactSensitiveValue;
-using VsmrDatalinkProtocol::ResolvePdcNextFrequency;
-using VsmrDatalinkProtocol::UnprotectHoppieCredential;
+using VsmrDatalinkProtocol::ProtectDatalinkSecret;
+using VsmrDatalinkProtocol::UnprotectDatalinkSecret;
+
+namespace
+{
+	// EuroScope settings. The PINEDE key is stored protected by Windows DPAPI.
+	constexpr const char* kKeySetting = "pdc_key";
+	constexpr const char* kKeySettingDescription = "The protected PINEDE PDC key";
+	// Optional override of PINEDE's address, for a test server
+	constexpr const char* kServerSetting = "pdc_server_url";
+	// Hoppie settings of earlier versions, erased on first load
+	constexpr const char* kLegacyHoppieSettings[] = { "cpdlc_logon", "cpdlc_password" };
+}
 
 void CSMRPlugin::SynchronizeProxyDatalink()
 {
@@ -58,7 +63,7 @@ void CSMRPlugin::SynchronizeProxyDatalink()
 		}
 		std::string login;
 		{ std::lock_guard<std::mutex> guard(DatalinkControlMutex); login = logonCallsign; }
-		ProxyDatalink.Publish(HoppieConnected.load(), HoppieConnecting.load(), HoppiePollInProgress.load(), login, flags);
+		ProxyDatalink.Publish(DatalinkConnected.load(), DatalinkConnecting.load(), DatalinkPollInProgress.load(), login, flags);
 	} else ProxyDatalink.Poll();
 	if (previous != ProxyDatalink.flags || previousOnline != ProxyDatalink.connected ||
 		previousConnecting != ProxyDatalink.connecting || previousRemote != ProxyDatalink.remote)
@@ -68,20 +73,21 @@ void CSMRPlugin::SynchronizeProxyDatalink()
 DatalinkControlState CSMRPlugin::GetDatalinkControlState() const
 {
 	DatalinkControlState state;
-	state.connected = HoppieConnected.load(std::memory_order_acquire);
-	state.connecting = HoppieConnecting.load(std::memory_order_acquire);
-	state.pollInProgress = HoppiePollInProgress.load(std::memory_order_acquire);
+	state.connected = DatalinkConnected.load(std::memory_order_acquire);
+	state.connecting = DatalinkConnecting.load(std::memory_order_acquire);
+	state.pollInProgress = DatalinkPollInProgress.load(std::memory_order_acquire);
 	state.controllerConnected = ControllerMyself().IsController();
 	{
 		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
 		state.logonCallsign = logonCallsign;
-		state.hasPassword = !TrimAsciiWhitespaceCopy(logonCode).empty();
+		state.hasKey = !TrimAsciiWhitespaceCopy(logonCode).empty();
+		state.serverUrl = DatalinkBaseUrl;
 		state.statusMessage = DatalinkStatusMessage;
 	}
 	state.remoteSession = GetConnectionType() == CONNECTION_TYPE_VIA_PROXY;
 	if (state.remoteSession) {
 		state.connected = ProxyDatalink.connected; state.connecting = ProxyDatalink.connecting;
-		state.pollInProgress = ProxyDatalink.polling; state.hasPassword = false;
+		state.pollInProgress = ProxyDatalink.polling; state.hasKey = false;
 		if (ProxyDatalink.remote) state.logonCallsign = ProxyDatalink.logon;
 		state.statusMessage = "PDC is managed in the primary EuroScope instance.";
 	}
@@ -94,128 +100,73 @@ DatalinkControlState CSMRPlugin::GetDatalinkControlState() const
 	return state;
 }
 
-void CSMRPlugin::SetPdcSelectedAirport(const std::string& airport)
+// PINEDE knows a station by its EuroScope callsign. Read on the main thread,
+// for the workers to send with the next request.
+void CSMRPlugin::RefreshDatalinkStation()
 {
-	const std::string normalized = PdcLogonSync::NormalizeAirport(airport);
-	if (normalized.empty())
+	const CController myself = ControllerMyself();
+	// kept while EuroScope is offline, so the logoff still names the station
+	if (!myself.IsValid() || !myself.IsController())
 		return;
-	PdcSelectedAirport = normalized;
-	SyncPdcLogonWithSelectedAirport();
+	const char* raw = myself.GetCallsign();
+	const std::string callsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(raw != nullptr ? raw : ""));
+	if (callsign.empty())
+		return;
+	const std::string frequency = FormatPdcFrequency(myself.GetPrimaryFrequency());
+	std::lock_guard<std::mutex> guard(DatalinkControlMutex);
+	logonCallsign = callsign;
+	DatalinkStationFrequency = frequency;
 }
 
-void CSMRPlugin::SyncPdcLogonWithSelectedAirport()
-{
-	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
-		HoppieConnected.load(std::memory_order_acquire) ||
-		HoppieConnecting.load(std::memory_order_acquire))
-		return;
-	if (GetConnectionType() == CONNECTION_TYPE_VIA_PROXY)
-		return;
-	const std::string airport = PdcLogonSynchronization.Resolve(PdcSelectedAirport);
-	if (airport.empty())
-		return;
-	{
-		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
-		if (logonCallsign == airport)
-			return;
-	}
-	std::string error;
-	if (UpdateDatalinkControlSettings(airport, "", false, error, true, true))
-		RefreshControllerDependentOverlays();
-}
-
-bool CSMRPlugin::UpdateDatalinkControlSettings(
-	const std::string& callsign,
-	const std::string& password,
-	bool replacePassword,
-	std::string& error,
-	bool updateConnectionSettings,
-	bool automaticLogonUpdate)
+bool CSMRPlugin::UpdateDatalinkKey(const std::string& key, std::string& error)
 {
 	error.clear();
-	if (updateConnectionSettings && GetConnectionType() == CONNECTION_TYPE_VIA_PROXY) {
-		error = "Edit PDC connection settings in the primary EuroScope instance."; return false;
+	if (GetConnectionType() == CONNECTION_TYPE_VIA_PROXY) {
+		error = "Edit the PDC key in the primary EuroScope instance."; return false;
 	}
-	const std::string normalizedCallsign =
-		ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
-	const std::string normalizedPassword =
-		replacePassword ? TrimAsciiWhitespaceCopy(password) : std::string();
-	if (updateConnectionSettings && normalizedCallsign.empty())
+	const std::string normalizedKey = TrimAsciiWhitespaceCopy(key);
+	if (normalizedKey.empty())
 	{
-		error = "The PDC logon callsign is required.";
+		error = "Enter a PDC key before replacing the saved key.";
 		return false;
 	}
-	if (updateConnectionSettings && replacePassword && normalizedPassword.empty())
+	std::string protectedKey;
+	if (!ProtectDatalinkSecret(normalizedKey, protectedKey))
 	{
-		error = "Enter a Hoppie code before replacing the saved code.";
+		error = "Windows could not protect the PDC key. Settings were not changed.";
+		Logger::info("PDC key update rejected because DPAPI protection failed");
 		return false;
 	}
-	std::string protectedPasswordToPersist;
-	if (updateConnectionSettings)
-	{
-		std::string effectivePassword;
-		{
-			std::lock_guard<std::mutex> guard(DatalinkControlMutex);
-			effectivePassword = replacePassword ? normalizedPassword : logonCode;
-		}
-		if (!effectivePassword.empty() &&
-			!ProtectHoppieCredential(
-				effectivePassword,
-				protectedPasswordToPersist))
-		{
-			error = "Windows could not protect the Hoppie code. Settings were not changed.";
-			Logger::info("CPDLC settings update rejected because DPAPI protection failed");
-			return false;
-		}
-	}
-	bool credentialsChanged = false;
-	if (updateConnectionSettings)
+
+	bool keyChanged = false;
 	{
 		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
-		if (!automaticLogonUpdate && (!replacePassword ||
-			ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(logonCallsign)) != normalizedCallsign))
-			PdcLogonSynchronization.MarkManualEdit();
-		credentialsChanged =
-			ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(logonCallsign)) != normalizedCallsign ||
-			(replacePassword && logonCode != normalizedPassword);
-		logonCallsign = normalizedCallsign;
-		if (replacePassword)
-			logonCode = normalizedPassword;
+		keyChanged = logonCode != normalizedKey;
+		logonCode = normalizedKey;
 	}
-	if (credentialsChanged &&
-		(HoppieConnected.load(std::memory_order_acquire) ||
-			HoppieConnecting.load(std::memory_order_acquire)))
+	if (keyChanged &&
+		(DatalinkConnected.load(std::memory_order_acquire) ||
+			DatalinkConnecting.load(std::memory_order_acquire)))
 	{
-		HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
-		HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
-		HoppieConnected.store(false, std::memory_order_release);
-		HoppieConnecting.store(false, std::memory_order_release);
-		HoppiePollInProgress.store(false, std::memory_order_release);
+		DatalinkConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
+		DatalinkPollGeneration.fetch_add(1, std::memory_order_acq_rel);
+		DatalinkConnected.store(false, std::memory_order_release);
+		DatalinkConnecting.store(false, std::memory_order_release);
+		DatalinkPollInProgress.store(false, std::memory_order_release);
 		ConnectionMessage.store(false, std::memory_order_relaxed);
 		FailedToConnectMessage.store(false, std::memory_order_relaxed);
-		SetDatalinkStatusMessage("Credentials changed. Reconnect PDC to apply them.");
+		SetDatalinkStatusMessage("Key changed. Reconnect PDC to apply it.");
 	}
-	else if (credentialsChanged)
+	else if (keyChanged)
 	{
-		SetDatalinkStatusMessage("Credentials updated. Ready to connect.");
+		SetDatalinkStatusMessage("Key updated. Ready to connect.");
 	}
-	if (updateConnectionSettings)
-	{
-		SaveDataToSettings(
-			"cpdlc_logon",
-			"The PDC logon callsign",
-			normalizedCallsign.c_str());
-		SaveDataToSettings(
-			"cpdlc_password",
-			"The protected PDC Hoppie code",
-			protectedPasswordToPersist.c_str());
-	}
+	SaveDataToSettings(kKeySetting, kKeySettingDescription, protectedKey.c_str());
 	return true;
 }
 
 bool CSMRPlugin::ConnectDatalink(std::string& error)
 {
-	SyncPdcLogonWithSelectedAirport();
 	error.clear();
 	if (GetConnectionType() == CONNECTION_TYPE_VIA_PROXY) {
 		error = "Connect PDC in the primary EuroScope instance."; return false;
@@ -230,36 +181,32 @@ bool CSMRPlugin::ConnectDatalink(std::string& error)
 		error = "You are not logged in as a controller.";
 		return false;
 	}
-	if (HoppieConnected.load(std::memory_order_acquire))
+	if (DatalinkConnected.load(std::memory_order_acquire))
 	{
 		error = "PDC is already connected.";
 		return false;
 	}
 
+	RefreshDatalinkStation();
 	const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
-	if (TrimAsciiWhitespaceCopy(credentials.callsign).empty() ||
-		TrimAsciiWhitespaceCopy(credentials.password).empty())
+	if (credentials.callsign.empty())
 	{
-		error = "A PDC logon callsign and Hoppie code are required.";
+		error = "EuroScope has not given vSMR a controller callsign yet.";
 		return false;
 	}
-	// Hoppie polling consumes messages. Two EuroScope processes must never poll
-	// the same logon independently, even when they use different plugin folders.
-	if (DatalinkSessionLease.Owned())
+	if (TrimAsciiWhitespaceCopy(credentials.key).empty())
 	{
-		error = "Previous PDC requests are still finishing. Try again shortly.";
+		error = "A PDC key is required. Set it in the runtime menu.";
 		return false;
 	}
-	const std::string leaseIdentity = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(credentials.callsign));
-	if (!DatalinkSessionLease.Open(L"Hoppie", std::filesystem::u8path(leaseIdentity).wstring()) ||
-		!DatalinkSessionLease.Lock(0))
+	if (!HttpHelper::IsAllowedApiUrl(VsmrPinede::JoinUrl(credentials.baseUrl, "/v1/dcl/poll")))
 	{
-		error = "This PDC logon is already in use by another EuroScope instance. Use that instance for PDC.";
+		error = "The PDC server address is not a valid https address.";
 		return false;
 	}
 
 	bool expected = false;
-	if (!HoppieConnecting.compare_exchange_strong(
+	if (!DatalinkConnecting.compare_exchange_strong(
 		expected,
 		true,
 		std::memory_order_acq_rel))
@@ -267,15 +214,15 @@ bool CSMRPlugin::ConnectDatalink(std::string& error)
 		error = "A PDC connection attempt is already in progress.";
 		return false;
 	}
-	if (HoppieConnected.load(std::memory_order_acquire))
+	if (DatalinkConnected.load(std::memory_order_acquire))
 	{
-		HoppieConnecting.store(false, std::memory_order_release);
+		DatalinkConnecting.store(false, std::memory_order_release);
 		error = "PDC is already connected.";
 		return false;
 	}
 
 	const unsigned long long generation =
-		HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
+		DatalinkConnectionGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
 	ConnectionMessage.store(false, std::memory_order_relaxed);
 	FailedToConnectMessage.store(false, std::memory_order_relaxed);
 	SetDatalinkStatusMessage("Connecting...");
@@ -285,8 +232,8 @@ bool CSMRPlugin::ConnectDatalink(std::string& error)
 	request.generation = generation;
 	if (!QueueNetworkJob([request]() { datalinkLogin(request); }))
 	{
-		HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
-		HoppieConnecting.store(false, std::memory_order_release);
+		DatalinkConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
+		DatalinkConnecting.store(false, std::memory_order_release);
 		error = "Unable to queue the PDC connection request.";
 		SetDatalinkStatusMessage(error);
 		return false;
@@ -298,20 +245,28 @@ bool CSMRPlugin::DisconnectDatalink(std::string& error)
 {
 	error.clear();
 	if (GetConnectionType() == CONNECTION_TYPE_VIA_PROXY) { error = "Disconnect PDC in the primary EuroScope instance."; return false; }
-	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
-	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
-	HoppieConnected.store(false, std::memory_order_release);
-	HoppieConnecting.store(false, std::memory_order_release);
-	HoppiePollInProgress.store(false, std::memory_order_release);
+	const bool wasOnline = DatalinkConnected.load(std::memory_order_acquire) ||
+		DatalinkConnecting.load(std::memory_order_acquire);
+	const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
+	DatalinkConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
+	DatalinkPollGeneration.fetch_add(1, std::memory_order_acq_rel);
+	DatalinkConnected.store(false, std::memory_order_release);
+	DatalinkConnecting.store(false, std::memory_order_release);
+	DatalinkPollInProgress.store(false, std::memory_order_release);
 	ConnectionMessage.store(false, std::memory_order_relaxed);
 	FailedToConnectMessage.store(false, std::memory_order_relaxed);
 	SetDatalinkStatusMessage("Disconnected.");
+	if (wasOnline && !QueueNetworkJob([credentials]() { datalinkLogoff(credentials); }))
+		Logger::info("PDC logoff could not be queued; PINEDE will time the station out");
+	// what this station showed is no longer its to act on
+	ClearDatalinkTagState();
 	return true;
 }
 
 bool CSMRPlugin::PollDatalink(std::string& error)
 {
 	if (GetConnectionType() == CONNECTION_TYPE_VIA_PROXY) { error = "Poll PDC in the primary EuroScope instance."; return false; }
+	RefreshDatalinkStation();
 	return StartDatalinkPoll(true, error);
 }
 
@@ -319,20 +274,15 @@ bool CSMRPlugin::EditDatalinkCredentials(std::string& error)
 {
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	error.clear();
-	if (GetConnectionType() == CONNECTION_TYPE_VIA_PROXY) { error = "Edit Hoppie credentials in the primary EuroScope instance."; return false; }
+	if (GetConnectionType() == CONNECTION_TYPE_VIA_PROXY) { error = "Edit the PDC key in the primary EuroScope instance."; return false; }
 	const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
 	auto applyValues = [&](const CCPDLCSettingsDialog& dialog) -> bool
 	{
-		const DatalinkControlState state = GetDatalinkControlState();
-		return UpdateDatalinkControlSettings(
-			state.logonCallsign,
-			static_cast<const char*>(CStringA(dialog.m_Password)),
-			true,
-			error);
+		return UpdateDatalinkKey(static_cast<const char*>(CStringA(dialog.m_Password)), error);
 	};
 
 	CCPDLCSettingsDialog dialog(AfxGetMainWnd());
-	dialog.m_Password = credentials.password.c_str();
+	dialog.m_Password = credentials.key.c_str();
 	INT_PTR dialogResult = dialog.DoModal();
 	if (dialogResult == IDOK)
 		return applyValues(dialog);
@@ -340,7 +290,7 @@ bool CSMRPlugin::EditDatalinkCredentials(std::string& error)
 	if (dialogResult == -1)
 	{
 		CCPDLCSettingsDialog fallbackDialog(nullptr);
-		fallbackDialog.m_Password = credentials.password.c_str();
+		fallbackDialog.m_Password = credentials.key.c_str();
 		dialogResult = fallbackDialog.DoModal();
 		if (dialogResult == IDOK)
 			return applyValues(fallbackDialog);
@@ -353,7 +303,7 @@ bool CSMRPlugin::EditDatalinkCredentials(std::string& error)
 			AfxGetResourceHandle(),
 			MAKEINTRESOURCE(CCPDLCSettingsDialog::IDD),
 			RT_DIALOG);
-		error = "Failed to open PDC credentials window (GetLastError=" +
+		error = "Failed to open the PDC key window (GetLastError=" +
 			std::to_string(static_cast<unsigned long>(lastError)) +
 			", resource=" + std::string(dialogResource != nullptr ? "ok" : "missing") + ").";
 		return false;
@@ -365,18 +315,19 @@ bool CSMRPlugin::EditDatalinkCredentials(std::string& error)
 
 void CSMRPlugin::ResetDatalinkRuntime()
 {
-	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
-	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
-	HoppieConnected.store(false, std::memory_order_relaxed);
-	HoppieConnecting.store(false, std::memory_order_relaxed);
-	HoppiePollInProgress.store(false, std::memory_order_relaxed);
+	DatalinkConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
+	DatalinkPollGeneration.fetch_add(1, std::memory_order_acq_rel);
+	DatalinkConnected.store(false, std::memory_order_relaxed);
+	DatalinkConnecting.store(false, std::memory_order_relaxed);
+	DatalinkPollInProgress.store(false, std::memory_order_relaxed);
 	ConnectionMessage.store(false, std::memory_order_relaxed);
 	FailedToConnectMessage.store(false, std::memory_order_relaxed);
 	{
 		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
 		logonCallsign.clear();
-		PdcSelectedAirport.clear();
 		logonCode.clear();
+		DatalinkBaseUrl = VsmrPinede::kDefaultBaseUrl;
+		DatalinkStationFrequency.clear();
 		DatalinkStatusMessage = "Disconnected.";
 	}
 	ResetDatalinkClearanceState();
@@ -384,62 +335,62 @@ void CSMRPlugin::ResetDatalinkRuntime()
 
 void CSMRPlugin::LoadDatalinkSettings()
 {
-	messageId.store(VsmrRandom::UniformInt(1789, 11788));
-
 	DatalinkLastPollAt = PluginSteadyClock::now();
-	// Loading and migrating persisted CPDLC settings
 	const char * p_value;
-	bool migratePlaintextCredential = false;
-	std::string migratedProtectedCredential;
+	bool migratePlaintextKey = false;
 
 	{
 		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
-		if ((p_value = GetDataFromSettings("cpdlc_logon")) != NULL)
-			logonCallsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(p_value));
-		if ((p_value = GetDataFromSettings("cpdlc_password")) != NULL)
+		if ((p_value = GetDataFromSettings(kKeySetting)) != NULL)
 		{
 			bool wasPlaintext = false;
-			std::string unprotectedCredential;
-			if (UnprotectHoppieCredential(
-				p_value,
-				unprotectedCredential,
-				wasPlaintext))
+			std::string unprotectedKey;
+			if (UnprotectDatalinkSecret(p_value, unprotectedKey, wasPlaintext))
 			{
-				logonCode = std::move(unprotectedCredential);
-				migratePlaintextCredential = wasPlaintext;
+				logonCode = std::move(unprotectedKey);
+				migratePlaintextKey = wasPlaintext && !logonCode.empty();
 			}
 			else
 			{
 				logonCode.clear();
-				DatalinkStatusMessage =
-					"The saved Hoppie code could not be unlocked. Enter it again.";
-				Logger::info("CPDLC saved credential could not be decrypted");
+				DatalinkStatusMessage = "The saved PDC key could not be unlocked. Enter it again.";
+				Logger::info("PDC saved key could not be decrypted");
 			}
 		}
-	}
-	if (migratePlaintextCredential)
-	{
-		const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
-		if (ProtectHoppieCredential(
-			credentials.password,
-			migratedProtectedCredential))
+
+		DatalinkBaseUrl = VsmrPinede::kDefaultBaseUrl;
+		if ((p_value = GetDataFromSettings(kServerSetting)) != NULL)
 		{
-			SaveDataToSettings(
-				"cpdlc_password",
-				"The protected PDC Hoppie code",
-				migratedProtectedCredential.c_str());
-			Logger::info("CPDLC saved credential migrated to Windows DPAPI protection");
-		}
-		else
-		{
-			SaveDataToSettings(
-				"cpdlc_password",
-				"The protected PDC Hoppie code",
-				"");
-			Logger::info("CPDLC plaintext credential migration failed; persistent copy removed");
+			const std::string configured = TrimAsciiWhitespaceCopy(p_value);
+			if (!configured.empty() &&
+				HttpHelper::IsAllowedApiUrl(VsmrPinede::JoinUrl(configured, "/v1/dcl/poll")))
+				DatalinkBaseUrl = configured;
+			else if (!configured.empty())
+				Logger::info("PDC server address setting ignored: not https, nor http to this machine");
 		}
 	}
 
+	// A key typed straight into the settings file is protected on first load
+	if (migratePlaintextKey)
+	{
+		const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
+		std::string protectedKey;
+		if (ProtectDatalinkSecret(credentials.key, protectedKey))
+			SaveDataToSettings(kKeySetting, kKeySettingDescription, protectedKey.c_str());
+		else
+			SaveDataToSettings(kKeySetting, kKeySettingDescription, "");
+	}
+
+	// PDC no longer uses Hoppie: do not leave its code behind in the settings
+	for (const char* legacy : kLegacyHoppieSettings)
+	{
+		p_value = GetDataFromSettings(legacy);
+		if (p_value != NULL && p_value[0] != '\0')
+		{
+			SaveDataToSettings(legacy, "No longer used by vSMR", "");
+			Logger::info(std::string("Erased the Hoppie setting ") + legacy);
+		}
+	}
 }
 
 void CSMRPlugin::ResetDatalinkProfileSource()
@@ -456,30 +407,20 @@ void CSMRPlugin::ResetDatalinkProfileSource()
 
 void CSMRPlugin::PrepareDatalinkRuntimeForExit()
 {
-	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
-	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
-	HoppieConnected.store(false, std::memory_order_relaxed);
-	HoppieConnecting.store(false, std::memory_order_relaxed);
-	HoppiePollInProgress.store(false, std::memory_order_relaxed);
+	DatalinkConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
+	DatalinkPollGeneration.fetch_add(1, std::memory_order_acq_rel);
+	DatalinkConnected.store(false, std::memory_order_relaxed);
+	DatalinkConnecting.store(false, std::memory_order_relaxed);
+	DatalinkPollInProgress.store(false, std::memory_order_relaxed);
 }
 
 void CSMRPlugin::PersistDatalinkSettings()
 {
 	if (DatalinkProxyClient) return; // a closing secondary must not persist stale primary credentials
-	// Persisting CPDLC settings through EuroScope
 	const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
-	SaveDataToSettings("cpdlc_logon", "The PDC logon callsign", credentials.callsign.c_str());
-	std::string protectedCredential;
-	if (ProtectHoppieCredential(credentials.password, protectedCredential))
-	{
-		SaveDataToSettings(
-			"cpdlc_password",
-			"The protected PDC Hoppie code",
-			protectedCredential.c_str());
-	}
+	std::string protectedKey;
+	if (ProtectDatalinkSecret(credentials.key, protectedKey))
+		SaveDataToSettings(kKeySetting, kKeySettingDescription, protectedKey.c_str());
 	else
-	{
-		Logger::info("CPDLC credential was not persisted because DPAPI protection failed");
-	}
-
+		Logger::info("PDC key was not persisted because DPAPI protection failed");
 }

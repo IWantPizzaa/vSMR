@@ -694,7 +694,8 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			const std::string& label,
 			const char* id,
 			const std::string& value,
-			const std::string& tooltip)
+			const std::string& tooltip,
+			bool editable)
 		{
 			CRect labelArea;
 			CRect valueArea;
@@ -706,22 +707,25 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 				id,
 				valueArea,
 				value,
-				plugin != nullptr && !state.remoteSession && !state.connected && !state.connecting,
+				editable && plugin != nullptr && !state.remoteSession && !state.connected && !state.connecting,
 				false,
 				false,
 				tooltip);
 			contentTop += kPopupActionHeight + 3;
 		};
+		// PINEDE knows the station by its EuroScope callsign, so it is shown, not edited
 		drawCredentialRow(
-			"Login",
-			"runtime.datalink.callsign",
-			state.logonCallsign.empty() ? "Set..." : state.logonCallsign,
-			"Edit the PDC login callsign");
+			"Station",
+			"runtime.datalink.station",
+			state.logonCallsign.empty() ? "Not connected" : state.logonCallsign,
+			"PDC requests are routed to this EuroScope callsign",
+			false);
 		drawCredentialRow(
-			"Password",
+			"Key",
 			"runtime.datalink.credentials",
-			state.hasPassword ? "Change..." : "Set...",
-			"Edit the Hoppie logon password");
+			state.hasKey ? "Change..." : "Set...",
+			"Edit the PINEDE PDC key",
+			true);
 
 		CRect pollArea;
 		CRect connectionArea;
@@ -733,8 +737,8 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			plugin != nullptr && !state.remoteSession && state.connected && !state.pollInProgress,
 			false,
 			false,
-			"Poll Hoppie messages now");
-		const bool canConnect = state.controllerConnected && !state.logonCallsign.empty() && state.hasPassword;
+			"Ask PINEDE for PDC requests now");
+		const bool canConnect = state.controllerConnected && state.hasKey;
 		drawRuntimeButton(
 			"runtime.datalink.connection",
 			connectionArea,
@@ -1534,9 +1538,6 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 void CSMRRadar::DrawRuntimeInlineEdit(HDC dc)
 {
 	if (dc == nullptr || RuntimeInlineEditType == RuntimeInlineEditKind::None)
-		return;
-	if (RuntimeInlineEditType == RuntimeInlineEditKind::PdcLogon &&
-		ActiveRuntimeMenuPopup != RuntimeMenuPopup::Datalink)
 		return;
 	if (RuntimeInlineEditType == RuntimeInlineEditKind::Preset &&
 		ActiveRuntimeMenuPopup != RuntimeMenuPopup::Insets)
