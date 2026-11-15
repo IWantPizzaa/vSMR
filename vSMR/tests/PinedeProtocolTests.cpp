@@ -153,6 +153,8 @@ std::vector<std::string> RunPinedeProtocolTests()
 		"PINEDE: a refused key points at the key", failures);
 	Check(DescribeFailure(true, 409, R"({"message":"Handled by LFPG_N_GND","statusCode":409})") == "Handled by LFPG_N_GND.",
 		"PINEDE: a conflict shows PINEDE's reason", failures);
+	Check(DescribeFailure(true, 400, R"({"message":"Clearance not sent: SID, SQUAWK missing","statusCode":400})") == "Clearance not sent: SID, SQUAWK missing.",
+		"PINEDE: an incomplete clearance says what is missing", failures);
 	Check(DescribeFailure(true, 500, "<html>").find("500") != std::string::npos,
 		"PINEDE: an unexpected status is reported with its code", failures);
 

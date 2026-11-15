@@ -256,6 +256,7 @@ namespace VsmrPinede
 
 		switch (status)
 		{
+		case 400: return reason.empty() ? "PINEDE refused the request." : reason + ".";
 		case 401: return "PINEDE refused the PDC key. Check it in the runtime menu.";
 		case 403: return reason.empty() ? "PINEDE refused this station." : "PINEDE refused this station: " + reason;
 		case 404: return reason.empty() ? "No open PDC request for this aircraft." : reason + ".";
