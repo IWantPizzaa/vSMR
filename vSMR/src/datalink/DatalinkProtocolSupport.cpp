@@ -151,32 +151,13 @@ namespace
 			PdcIdentityHasToken(positionId, expectedSector) ? 50 : 0;
 	}
 
-	DATA_BLOB HoppieCredentialEntropy()
+	DATA_BLOB DatalinkSecretEntropy()
 	{
 		static char entropy[] = "vSMR CPDLC credential v1";
 		DATA_BLOB blob = {};
 		blob.pbData = reinterpret_cast<BYTE*>(entropy);
 		blob.cbData = static_cast<DWORD>(strlen(entropy));
 		return blob;
-	}
-
-	std::string NormalizeHoppieResponse(const std::string& raw)
-	{
-		std::string normalized = raw;
-		if (normalized.size() >= 3 &&
-			static_cast<unsigned char>(normalized[0]) == 0xEF &&
-			static_cast<unsigned char>(normalized[1]) == 0xBB &&
-			static_cast<unsigned char>(normalized[2]) == 0xBF)
-		{
-			normalized.erase(0, 3);
-		}
-		normalized = TrimAsciiWhitespaceCopy(normalized);
-		for (char& c : normalized)
-		{
-			if (c == '\r' || c == '\n' || c == '\t')
-				c = ' ';
-		}
-		return normalized;
 	}
 }
 
@@ -286,7 +267,7 @@ PdcFrequencySelection ResolvePdcNextFrequency(
 	return selection;
 }
 
-bool ProtectHoppieCredential(
+bool ProtectDatalinkSecret(
 	const std::string& plaintext,
 	std::string& protectedValue)
 {
@@ -299,11 +280,11 @@ bool ProtectHoppieCredential(
 	DATA_BLOB input = {};
 	input.pbData = reinterpret_cast<BYTE*>(const_cast<char*>(plaintext.data()));
 	input.cbData = static_cast<DWORD>(plaintext.size());
-	DATA_BLOB entropy = HoppieCredentialEntropy();
+	DATA_BLOB entropy = DatalinkSecretEntropy();
 	DATA_BLOB encrypted = {};
 	if (!::CryptProtectData(
 		&input,
-		L"vSMR Hoppie code",
+		L"vSMR PDC key",
 		&entropy,
 		nullptr,
 		nullptr,
@@ -348,7 +329,7 @@ bool ProtectHoppieCredential(
 	return true;
 }
 
-bool UnprotectHoppieCredential(
+bool UnprotectDatalinkSecret(
 	const std::string& storedValue,
 	std::string& plaintext,
 	bool& wasPlaintext)
@@ -399,7 +380,7 @@ bool UnprotectHoppieCredential(
 	DATA_BLOB encrypted = {};
 	encrypted.pbData = decoded.data();
 	encrypted.cbData = decodedBytes;
-	DATA_BLOB entropy = HoppieCredentialEntropy();
+	DATA_BLOB entropy = DatalinkSecretEntropy();
 	DATA_BLOB output = {};
 	LPWSTR description = nullptr;
 	const bool succeeded = ::CryptUnprotectData(
@@ -448,20 +429,6 @@ std::string EncodeUrlQueryComponent(const std::string& text)
 	return encoded;
 }
 
-bool IsHoppieOkResponse(const std::string& raw)
-{
-	const std::string normalized = NormalizeHoppieResponse(raw);
-	if (normalized.size() < 2 ||
-		std::tolower(static_cast<unsigned char>(normalized[0])) != 'o' ||
-		std::tolower(static_cast<unsigned char>(normalized[1])) != 'k')
-	{
-		return false;
-	}
-	return normalized.size() == 2 ||
-		std::isspace(static_cast<unsigned char>(normalized[2])) != 0 ||
-		normalized[2] == '{';
-}
-
 std::string RedactSensitiveValue(std::string text, const std::string& secret)
 {
 	if (secret.empty())
@@ -473,22 +440,5 @@ std::string RedactSensitiveValue(std::string text, const std::string& secret)
 		position += strlen("<redacted>");
 	}
 	return text;
-}
-
-std::string BuildHoppieLoginFailureMessage(
-	const std::string& raw,
-	const std::string& password)
-{
-	std::string response = NormalizeHoppieResponse(raw);
-	response = RedactSensitiveValue(response, password);
-	response = RedactSensitiveValue(response, EncodeUrlQueryComponent(password));
-	if (response.empty())
-	{
-		return "Connection failed: Hoppie returned no response. Check the network or proxy and try again.";
-	}
-	const size_t maximumResponseLength = 160;
-	if (response.size() > maximumResponseLength)
-		response = response.substr(0, maximumResponseLength) + "...";
-	return "Hoppie rejected the connection: " + response;
 }
 }
