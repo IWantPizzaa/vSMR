@@ -148,6 +148,7 @@
     <ClInclude Include="..\src\aircraft\HoldingPoint.hpp" />
     <ClInclude Include="..\src\insets\AvisoViewportCenter.hpp" />
     <ClInclude Include="..\src\datalink\PinedeProtocol.hpp" />
+    <ClInclude Include="..\src\datalink\PdcFrequencyPolicy.hpp" />
     <ClInclude Include="PinedeProtocolTests.hpp" />
     <ClInclude Include="..\src\aviso\AvisoDocumentModel.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterBlitter.hpp" />
