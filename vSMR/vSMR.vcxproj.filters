@@ -195,6 +195,7 @@
     <ClInclude Include="src\datalink\CpdlcSettingsDialog.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\PinedeProtocol.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\datalink\PdcFrequencyPolicy.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\DatalinkDialog.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\CdmBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>

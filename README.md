@@ -26,6 +26,8 @@ Current source version: **2.0.7**. Release artifacts are prepared from clean com
 - Airport-scoped inset presets and independent active-profile selection for each ASR
 - Atomic configuration saves, Revert, bundled-default recovery, diagnostics, and verified-update support
 
+PDC **NEXT FREQ** is selected from connected positions at the flight plan's departure airport, independently of the issuing station or selected AVISO airport. For example, a clearance issued by LFPG approach for a flight departing LFPO selects the lowest staffed LFPO position. The field remains editable; if no departure frequency can be identified, enter it before sending. An unrelated issuing/coordinated station is never substituted automatically.
+
 ## 2.0.0 behavior and compatibility
 
 - **Resolution:** Settings offers 1080p (100%), 2K (133%), and 4K (200%). These scale AVISO labels/lines and aircraft icons, trails, tag spacing, and hit-area padding in the main view and radar insets. The configured tag font size is always its literal screen-pixel size, including at 4K. These presets do not resize the Control Center, Runtime Menu, inset controls, or weather/timer panels, and do not change geographic positions or radar zoom.

@@ -554,7 +554,7 @@ CDataLinkDialog::CDataLinkDialog(CWnd* pParent /*=NULL*/)
 	, m_Rwy(_T(""))
 	, m_Departure(_T(""))
 	, m_SSR(_T(""))
-	, m_Freq(_T("121.800"))
+	, m_Freq(_T(""))
 	, m_Message(_T(""))
 	, m_Req(_T(""))
 	, m_Climb(_T(""))
@@ -605,6 +605,7 @@ BEGIN_MESSAGE_MAP(CDataLinkDialog, CDialogEx)
 	ON_BN_CLICKED(IDOK, &CDataLinkDialog::OnBnClickedOk)
 	ON_BN_CLICKED(IDC_DATALINK_CLOSE, &CDataLinkDialog::OnBnClickedClose)
 	ON_BN_CLICKED(IDC_DATALINK_TOBT_REMINDER, &CDataLinkDialog::OnBnClickedTobtReminder)
+	ON_EN_CHANGE(IDC_FREQ, &CDataLinkDialog::OnFrequencyChanged)
 	ON_WM_CTLCOLOR()
 	ON_WM_ERASEBKGND()
 	ON_WM_DRAWITEM()
@@ -801,8 +802,8 @@ BOOL CDataLinkDialog::OnInitDialog()
 	m_FullWindowHeight = windowRect.Height();
 
 	ConfigureModeLayout();
-	// A PDC is cleared from the flight plan: these fields are read-only here,
-	// so an empty one is flagged at once and Send stays off until it is set
+	// Flight-plan fields are read-only; an unresolved NEXT FREQ is editable.
+	// Flag either omission immediately and keep Send off until it is supplied.
 	if (m_ResolvedMode == DialogMode::Pdc)
 		MarkMissingClearanceFields();
 	CRect dialogClient;
@@ -1068,6 +1069,7 @@ bool CDataLinkDialog::MarkMissingClearanceFields()
 		{ IDC_SID, &m_Departure, _T("SID"), false },
 		{ IDC_CLB, &m_Climb, _T("CFL"), false },
 		{ IDC_SSR, &m_SSR, _T("SQUAWK"), false },
+		{ IDC_FREQ, &m_Freq, _T("NEXT FREQ"), false },
 	};
 
 	CString flightMissing;
@@ -1077,7 +1079,9 @@ bool CDataLinkDialog::MarkMissingClearanceFields()
 		CString value(*field.value);
 		value.Trim();
 		// 0000 is no assigned code
-		const bool missing = value.IsEmpty() || (field.controlId == IDC_SSR && value == _T("0000"));
+		const bool missing = value.IsEmpty() ||
+			(field.controlId == IDC_SSR && value == _T("0000")) ||
+			(field.controlId == IDC_FREQ && value.CompareNoCase(_T("no")) == 0);
 		if (CWnd* edit = GetDlgItem(field.controlId))
 		{
 			if (missing)
@@ -1095,7 +1099,7 @@ bool CDataLinkDialog::MarkMissingClearanceFields()
 	}
 
 	m_FlightAlert = flightMissing.IsEmpty() ? CString() : flightMissing + _T(" missing in flight plan");
-	m_ClearanceAlert = clearanceMissing.IsEmpty() ? CString() : clearanceMissing + _T(" missing: set in flight plan");
+	m_ClearanceAlert = clearanceMissing.IsEmpty() ? CString() : clearanceMissing + _T(" missing");
 	if (CWnd* panel = GetDlgItem(IDC_DATALINK_FLIGHT_PANEL))
 		panel->Invalidate();
 	if (CWnd* panel = GetDlgItem(IDC_DATALINK_CLEARANCE_PANEL))
@@ -1404,6 +1408,14 @@ void CDataLinkDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	CDialogEx::OnDrawItem(nIDCtl, lpDrawItemStruct);
 }
 
+void CDataLinkDialog::OnFrequencyChanged()
+{
+	if (m_ResolvedMode != DialogMode::Pdc)
+		return;
+	GetDlgItemText(IDC_FREQ, m_Freq);
+	MarkMissingClearanceFields();
+}
+
 void CDataLinkDialog::OnBnClickedOk()
 {
 	if (!UpdateData(TRUE))
@@ -1416,6 +1428,7 @@ void CDataLinkDialog::OnBnClickedOk()
 	}
 	m_TSAT.Trim();
 	m_CTOT.Trim();
+	m_Freq.Trim();
 	if (!IsValidOptionalHhmm(m_TSAT))
 	{
 		MessageBox(

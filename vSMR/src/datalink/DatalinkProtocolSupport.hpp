@@ -1,5 +1,7 @@
 #pragma once
 
+#include "datalink/PdcFrequencyPolicy.hpp"
+
 #include <string>
 
 namespace EuroScopePlugIn
@@ -12,12 +14,7 @@ namespace EuroScopePlugIn
 // and worker lifetime remain owned by the plug-in coordinator.
 namespace VsmrDatalinkProtocol
 {
-	struct PdcFrequencySelection
-	{
-		double frequency = 0.0;
-		std::string controller;
-		std::string source;
-	};
+	using PdcFrequencySelection = VsmrPdcFrequencyPolicy::Selection;
 
 	std::string FormatPdcFrequency(double frequency);
 	PdcFrequencySelection ResolvePdcNextFrequency(
