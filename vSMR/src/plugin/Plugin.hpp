@@ -7,7 +7,6 @@
 #include "datalink/ProxyDatalinkView.hpp"
 #include "platform/windows/network/HttpHelper.hpp"
 #include "datalink/CpdlcSettingsDialog.hpp"
-#include "datalink/PdcLogonSync.hpp"
 #include "datalink/DatalinkDialog.hpp"
 #include <string>
 #include <algorithm>
@@ -38,8 +37,10 @@ struct DatalinkControlState
 	bool connecting = false;
 	bool pollInProgress = false;
 	bool controllerConnected = false;
+	// The EuroScope callsign PINEDE knows this station by
 	std::string logonCallsign;
-	bool hasPassword = false;
+	bool hasKey = false;
+	std::string serverUrl;
 	bool cdmBridgeLoaded = false;
 	bool cdmBridgeReady = false;
 	std::string activeAirport;
@@ -70,14 +71,7 @@ public:
 	void SetStandOptions(bool highlight, bool reset);
 
 	DatalinkControlState GetDatalinkControlState() const;
-	void SetPdcSelectedAirport(const std::string& airport);
-	bool UpdateDatalinkControlSettings(
-		const std::string& callsign,
-		const std::string& password,
-		bool replacePassword,
-		std::string& error,
-		bool updateConnectionSettings = true,
-		bool automaticLogonUpdate = false);
+	bool UpdateDatalinkKey(const std::string& key, std::string& error);
 	bool ConnectDatalink(std::string& error);
 	bool DisconnectDatalink(std::string& error);
 	bool PollDatalink(std::string& error);
@@ -155,9 +149,7 @@ private:
 	std::map<std::string, StandCatalogEntry> StandCatalogs;
 	void QueueStandCatalog(const std::string& airport, const std::string& dataPath);
 	void UpdateArrivalsAtStands();
-	PdcLogonSync PdcLogonSynchronization;
-	std::string PdcSelectedAirport;
-	void SyncPdcLogonWithSelectedAirport();
+	void RefreshDatalinkStation();
 	TimerCountdownState TimerCountdowns;
 	std::uint64_t TimerAlarmRetryUntil = 0;
 	ProxyTimerState ProxyTimers;
@@ -167,7 +159,6 @@ private:
 	bool SharedRuntimeMenuPositionKnown = false;
 	POINT SharedRuntimeMenuPosition = {};
 	void SynchronizeProxyDatalink();
-	VsmrProcessSync::Mutex DatalinkSessionLease;
 	void SynchronizeProxyRuntime();
 	std::map<std::string, std::string> ProxyRootRevisions;
 	std::map<std::string, std::string> ProxyFailedConfigRevisions;

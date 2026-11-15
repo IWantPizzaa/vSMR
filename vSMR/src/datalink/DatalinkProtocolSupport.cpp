@@ -23,160 +23,13 @@ namespace
 {
 	constexpr const char* ProtectedCredentialPrefix = "dpapi:";
 
-	enum class PdcControllerFacility
-	{
-		Unknown = 0,
-		Delivery,
-		Ramp,
-		Ground,
-		Tower,
-		Approach,
-		Departure,
-		Center
-	};
-
-	PdcControllerFacility DetectPdcControllerFacility(const std::string& rawIdentity)
-	{
-		const std::string identity = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rawIdentity));
-		std::string token;
-		auto classifyToken = [](const std::string& value) -> PdcControllerFacility
-		{
-			if (value == "DEL" || value == "DELIVERY") return PdcControllerFacility::Delivery;
-			if (value == "RMP" || value == "RAMP") return PdcControllerFacility::Ramp;
-			if (value == "GND" || value == "GROUND") return PdcControllerFacility::Ground;
-			if (value == "TWR" || value == "TOWER") return PdcControllerFacility::Tower;
-			if (value == "APP" || value == "APPROACH") return PdcControllerFacility::Approach;
-			if (value == "DEP" || value == "DEPARTURE") return PdcControllerFacility::Departure;
-			if (value == "CTR" || value == "CENTER" || value == "CENTRE") return PdcControllerFacility::Center;
-			return PdcControllerFacility::Unknown;
-		};
-
-		for (size_t index = 0; index <= identity.size(); ++index)
-		{
-			const char c = index < identity.size() ? identity[index] : '_';
-			if (std::isalnum(static_cast<unsigned char>(c)) != 0)
-			{
-				token.push_back(c);
-				continue;
-			}
-			const PdcControllerFacility facility = classifyToken(token);
-			if (facility != PdcControllerFacility::Unknown)
-				return facility;
-			token.clear();
-		}
-		return PdcControllerFacility::Unknown;
-	}
-
-	int PdcFacilityClearancePriority(PdcControllerFacility facility)
-	{
-		// The lowest staffed position in the departure chain issues the PDC and
-		// must therefore be the frequency printed in it.
-		switch (facility)
-		{
-		case PdcControllerFacility::Delivery: return 600;
-		case PdcControllerFacility::Ramp: return 500;
-		case PdcControllerFacility::Ground: return 400;
-		case PdcControllerFacility::Tower: return 300;
-		case PdcControllerFacility::Departure:
-		case PdcControllerFacility::Approach: return 200;
-		case PdcControllerFacility::Center: return 100;
-		default: return -1;
-		}
-	}
-
-	const char* PdcFacilityName(PdcControllerFacility facility)
-	{
-		switch (facility)
-		{
-		case PdcControllerFacility::Delivery: return "delivery";
-		case PdcControllerFacility::Ramp: return "ramp";
-		case PdcControllerFacility::Ground: return "ground";
-		case PdcControllerFacility::Tower: return "tower";
-		case PdcControllerFacility::Approach: return "approach";
-		case PdcControllerFacility::Departure: return "departure";
-		case PdcControllerFacility::Center: return "center";
-		default: return "unknown";
-		}
-	}
-
-	bool PdcControllerMatchesAirport(const std::string& rawIdentity, const std::string& airport)
-	{
-		const std::string identity = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rawIdentity));
-		if (airport.size() != 4 || identity.size() < airport.size() || identity.compare(0, airport.size(), airport) != 0)
-			return false;
-		return identity.size() == airport.size() ||
-			std::isalnum(static_cast<unsigned char>(identity[airport.size()])) == 0;
-	}
-
-	bool PdcIdentityHasToken(const std::string& rawIdentity, const std::string& expectedToken)
-	{
-		const std::string identity = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rawIdentity));
-		std::string token;
-		for (size_t index = 0; index <= identity.size(); ++index)
-		{
-			const char c = index < identity.size() ? identity[index] : '_';
-			if (std::isalnum(static_cast<unsigned char>(c)) != 0)
-			{
-				token.push_back(c);
-				continue;
-			}
-			if (token == expectedToken)
-				return true;
-			token.clear();
-		}
-		return false;
-	}
-
-	int PdcRunwaySectorAffinity(
-		const std::string& airport,
-		const std::string& runway,
-		const std::string& callsign,
-		const std::string& positionId)
-	{
-		// CDG has separate north/south local positions. Its 08/26 runway complex
-		// is north and its 09/27 complex is south; use that only as a tie-breaker
-		// when more than one valid local controller is connected.
-		if (airport != "LFPG" || runway.size() < 2)
-			return 0;
-		const int runwayNumber = std::isdigit(static_cast<unsigned char>(runway[0])) != 0 &&
-			std::isdigit(static_cast<unsigned char>(runway[1])) != 0
-			? (runway[0] - '0') * 10 + (runway[1] - '0')
-			: -1;
-		const char* expectedSector =
-			(runwayNumber == 8 || runwayNumber == 26) ? "N" :
-			(runwayNumber == 9 || runwayNumber == 27) ? "S" : nullptr;
-		if (expectedSector == nullptr)
-			return 0;
-		return PdcIdentityHasToken(callsign, expectedSector) ||
-			PdcIdentityHasToken(positionId, expectedSector) ? 50 : 0;
-	}
-
-	DATA_BLOB HoppieCredentialEntropy()
+	DATA_BLOB DatalinkSecretEntropy()
 	{
 		static char entropy[] = "vSMR CPDLC credential v1";
 		DATA_BLOB blob = {};
 		blob.pbData = reinterpret_cast<BYTE*>(entropy);
 		blob.cbData = static_cast<DWORD>(strlen(entropy));
 		return blob;
-	}
-
-	std::string NormalizeHoppieResponse(const std::string& raw)
-	{
-		std::string normalized = raw;
-		if (normalized.size() >= 3 &&
-			static_cast<unsigned char>(normalized[0]) == 0xEF &&
-			static_cast<unsigned char>(normalized[1]) == 0xBB &&
-			static_cast<unsigned char>(normalized[2]) == 0xBF)
-		{
-			normalized.erase(0, 3);
-		}
-		normalized = TrimAsciiWhitespaceCopy(normalized);
-		for (char& c : normalized)
-		{
-			if (c == '\r' || c == '\n' || c == '\t')
-				c = ' ';
-		}
-		return normalized;
 	}
 }
 
@@ -195,98 +48,55 @@ PdcFrequencySelection ResolvePdcNextFrequency(
 	EuroScopePlugIn::CPlugIn* plugIn,
 	const CFlightPlan& flightPlan)
 {
-	PdcFrequencySelection selection;
 	if (plugIn == nullptr || !flightPlan.IsValid())
-		return selection;
+		return {};
 
 	const char* originRaw = flightPlan.GetFlightPlanData().GetOrigin();
-	std::string origin = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(originRaw != nullptr ? originRaw : ""));
-	if (origin.size() > 4)
-		origin.resize(4);
+	const std::string origin = originRaw != nullptr ? originRaw : "";
 	const char* runwayRaw = flightPlan.GetFlightPlanData().GetDepartureRwy();
-	const std::string runway = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(runwayRaw != nullptr ? runwayRaw : ""));
-
+	const std::string runway = runwayRaw != nullptr ? runwayRaw : "";
 	const CController myself = plugIn->ControllerMyself();
-	const std::string myCallsign = myself.IsValid() && myself.GetCallsign() != nullptr ? myself.GetCallsign() : "";
-	const std::string myPosition = myself.IsValid() && myself.GetPositionId() != nullptr ? myself.GetPositionId() : "";
+	const std::string myCallsign = myself.IsValid() && myself.GetCallsign() != nullptr
+		? ToUpperAsciiCopy(myself.GetCallsign()) : "";
+	const std::string myPosition = myself.IsValid() && myself.GetPositionId() != nullptr
+		? ToUpperAsciiCopy(myself.GetPositionId()) : "";
 	const char* coordinatedRaw = flightPlan.GetCoordinatedNextController();
-	const std::string coordinatedId = TrimAsciiWhitespaceCopy(coordinatedRaw != nullptr ? coordinatedRaw : "");
-	CController coordinated;
+	const std::string coordinatedId = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(
+		coordinatedRaw != nullptr ? coordinatedRaw : ""));
+
+	std::vector<VsmrPdcFrequencyPolicy::Controller> controllers;
+	auto snapshot = [&](const CController& controller)
+	{
+		if (!controller.IsValid() || !controller.IsController())
+			return;
+		VsmrPdcFrequencyPolicy::Controller candidate;
+		candidate.callsign = controller.GetCallsign() != nullptr ? controller.GetCallsign() : "";
+		candidate.positionId = controller.GetPositionId() != nullptr ? controller.GetPositionId() : "";
+		candidate.frequency = controller.GetPrimaryFrequency();
+		const std::string callsign = ToUpperAsciiCopy(candidate.callsign);
+		const std::string position = ToUpperAsciiCopy(candidate.positionId);
+		candidate.isOwn = (!myCallsign.empty() && callsign == myCallsign) ||
+			(!myPosition.empty() && position == myPosition);
+		candidate.isCoordinated = !coordinatedId.empty() &&
+			(callsign == coordinatedId || position == coordinatedId);
+		controllers.push_back(std::move(candidate));
+	};
+	// Some SDK enumerations omit the user's station or the coordinated one.
+	// Include actual snapshots explicitly; the pure policy still requires origin.
+	snapshot(myself);
 	if (!coordinatedId.empty())
-		coordinated = plugIn->ControllerSelect(coordinatedId.c_str());
-
-	// PDC is issued by the lowest staffed departure position. EuroScope's
-	// coordinated controller describes the next handoff and can consequently
-	// skip the Tower that is currently issuing clearances.
-	if (origin.size() == 4)
+		snapshot(plugIn->ControllerSelect(coordinatedId.c_str()));
+	std::size_t controllerGuard = 0;
+	for (CController controller = plugIn->ControllerSelectFirst();
+		controller.IsValid() && controllerGuard < 4096;
+		controller = plugIn->ControllerSelectNext(controller), ++controllerGuard)
 	{
-		int bestScore = -1;
-		auto considerController = [&](const CController& controller)
-		{
-			if (!controller.IsValid() || !controller.IsController() || controller.GetPrimaryFrequency() <= 0.0)
-				return;
-			const std::string callsign = controller.GetCallsign() != nullptr ? controller.GetCallsign() : "";
-			const std::string position = controller.GetPositionId() != nullptr ? controller.GetPositionId() : "";
-			if (!PdcControllerMatchesAirport(callsign, origin) && !PdcControllerMatchesAirport(position, origin))
-				return;
-
-			PdcControllerFacility facility = DetectPdcControllerFacility(callsign);
-			if (facility == PdcControllerFacility::Unknown)
-				facility = DetectPdcControllerFacility(position);
-			int score = PdcFacilityClearancePriority(facility);
-			if (score < 0)
-				return;
-			score += PdcRunwaySectorAffinity(origin, runway, callsign, position);
-			if ((!myCallsign.empty() && ToUpperAsciiCopy(callsign) == ToUpperAsciiCopy(myCallsign)) ||
-				(!myPosition.empty() && ToUpperAsciiCopy(position) == ToUpperAsciiCopy(myPosition)))
-				score += 10;
-			if (!coordinatedId.empty() &&
-				(ToUpperAsciiCopy(callsign) == ToUpperAsciiCopy(coordinatedId) ||
-				 ToUpperAsciiCopy(position) == ToUpperAsciiCopy(coordinatedId)))
-				score += 5;
-
-			if (score > bestScore ||
-				(score == bestScore && ToUpperAsciiCopy(callsign) < ToUpperAsciiCopy(selection.controller)))
-			{
-				bestScore = score;
-				selection.frequency = controller.GetPrimaryFrequency();
-				selection.controller = callsign;
-				selection.source = std::string("lowest connected origin ") + PdcFacilityName(facility);
-			}
-		};
-
-		// ControllerSelectFirst normally includes the user's own position, but
-		// considering it explicitly keeps the clearance frequency correct if it does not.
-		considerController(myself);
-		std::size_t controllerGuard = 0;
-		for (CController controller = plugIn->ControllerSelectFirst();
-			controller.IsValid() && controllerGuard < 4096;
-			controller = plugIn->ControllerSelectNext(controller), ++controllerGuard)
-		{
-			considerController(controller);
-		}
-		if (bestScore >= 0)
-			return selection;
+		snapshot(controller);
 	}
-
-	if (coordinated.IsValid() && coordinated.GetPrimaryFrequency() > 0.0)
-	{
-		selection.frequency = coordinated.GetPrimaryFrequency();
-		selection.controller = coordinated.GetCallsign() != nullptr ? coordinated.GetCallsign() : coordinatedId;
-		selection.source = "coordinated controller fallback";
-		return selection;
-	}
-
-	if (myself.IsValid() && myself.GetPrimaryFrequency() > 0.0)
-	{
-		selection.frequency = myself.GetPrimaryFrequency();
-		selection.controller = myCallsign;
-		selection.source = "own frequency fallback";
-	}
-	return selection;
+	return VsmrPdcFrequencyPolicy::Resolve(origin, runway, controllers);
 }
 
-bool ProtectHoppieCredential(
+bool ProtectDatalinkSecret(
 	const std::string& plaintext,
 	std::string& protectedValue)
 {
@@ -299,11 +109,11 @@ bool ProtectHoppieCredential(
 	DATA_BLOB input = {};
 	input.pbData = reinterpret_cast<BYTE*>(const_cast<char*>(plaintext.data()));
 	input.cbData = static_cast<DWORD>(plaintext.size());
-	DATA_BLOB entropy = HoppieCredentialEntropy();
+	DATA_BLOB entropy = DatalinkSecretEntropy();
 	DATA_BLOB encrypted = {};
 	if (!::CryptProtectData(
 		&input,
-		L"vSMR Hoppie code",
+		L"vSMR PDC key",
 		&entropy,
 		nullptr,
 		nullptr,
@@ -348,7 +158,7 @@ bool ProtectHoppieCredential(
 	return true;
 }
 
-bool UnprotectHoppieCredential(
+bool UnprotectDatalinkSecret(
 	const std::string& storedValue,
 	std::string& plaintext,
 	bool& wasPlaintext)
@@ -399,7 +209,7 @@ bool UnprotectHoppieCredential(
 	DATA_BLOB encrypted = {};
 	encrypted.pbData = decoded.data();
 	encrypted.cbData = decodedBytes;
-	DATA_BLOB entropy = HoppieCredentialEntropy();
+	DATA_BLOB entropy = DatalinkSecretEntropy();
 	DATA_BLOB output = {};
 	LPWSTR description = nullptr;
 	const bool succeeded = ::CryptUnprotectData(
@@ -448,20 +258,6 @@ std::string EncodeUrlQueryComponent(const std::string& text)
 	return encoded;
 }
 
-bool IsHoppieOkResponse(const std::string& raw)
-{
-	const std::string normalized = NormalizeHoppieResponse(raw);
-	if (normalized.size() < 2 ||
-		std::tolower(static_cast<unsigned char>(normalized[0])) != 'o' ||
-		std::tolower(static_cast<unsigned char>(normalized[1])) != 'k')
-	{
-		return false;
-	}
-	return normalized.size() == 2 ||
-		std::isspace(static_cast<unsigned char>(normalized[2])) != 0 ||
-		normalized[2] == '{';
-}
-
 std::string RedactSensitiveValue(std::string text, const std::string& secret)
 {
 	if (secret.empty())
@@ -473,22 +269,5 @@ std::string RedactSensitiveValue(std::string text, const std::string& secret)
 		position += strlen("<redacted>");
 	}
 	return text;
-}
-
-std::string BuildHoppieLoginFailureMessage(
-	const std::string& raw,
-	const std::string& password)
-{
-	std::string response = NormalizeHoppieResponse(raw);
-	response = RedactSensitiveValue(response, password);
-	response = RedactSensitiveValue(response, EncodeUrlQueryComponent(password));
-	if (response.empty())
-	{
-		return "Connection failed: Hoppie returned no response. Check the network or proxy and try again.";
-	}
-	const size_t maximumResponseLength = 160;
-	if (response.size() > maximumResponseLength)
-		response = response.substr(0, maximumResponseLength) + "...";
-	return "Hoppie rejected the connection: " + response;
 }
 }

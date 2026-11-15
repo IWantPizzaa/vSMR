@@ -228,7 +228,7 @@ void CSMRRadar::SyncRuntimeMenuControlCenter(const std::string& reason)
 	if (VsmrControlCenterDialog != nullptr) VsmrControlCenterDialog->SyncFromRadar(reason);
 }
 
-bool CSMRRadar::HandleRuntimeDatalinkClick(const char* id, RECT area)
+bool CSMRRadar::HandleRuntimeDatalinkClick(const char* id, RECT /*area: no PDC field is edited in place any more*/)
 {
 	// ----- Handling the fixed vSID interface actions -----
 	VsmrVsid::CommandAction vsidAction{};
@@ -280,15 +280,6 @@ bool CSMRRadar::HandleRuntimeDatalinkClick(const char* id, RECT area)
 		if (datalinkPlugin == nullptr || !datalinkPlugin->EditDatalinkCredentials(error))
 			showDatalinkMessage(error.empty() ? "The PDC service is unavailable." : error, true);
 		RequestRefresh();
-		return true;
-	}
-	if (std::strcmp(id, "runtime.datalink.callsign") == 0)
-	{
-		if (datalinkPlugin != nullptr)
-		{
-			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
-			StartRuntimeInlineEdit(RuntimeInlineEditKind::PdcLogon, area, state.logonCallsign);
-		}
 		return true;
 	}
 	if (std::strcmp(id, "runtime.datalink.connection") == 0)
@@ -585,12 +576,7 @@ bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, 
 			}
 			else if (message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN)
 			{
-				const bool saveLogin = RuntimeInlineEditType == RuntimeInlineEditKind::PdcLogon;
-				FinishRuntimeInlineEdit(saveLogin);
-				// Keep an invalid login in the editor rather than passing the click
-				// through to another menu action and hiding the unfinished value.
-				if (RuntimeInlineEditType != RuntimeInlineEditKind::None)
-					return true;
+				FinishRuntimeInlineEdit(false);
 			}
 		}
 	}
@@ -745,13 +731,7 @@ bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, 
 
 void CSMRRadar::CloseRuntimeMenuPopup()
 {
-	if (RuntimeInlineEditType == RuntimeInlineEditKind::PdcLogon)
-	{
-		FinishRuntimeInlineEdit(true);
-		if (RuntimeInlineEditType != RuntimeInlineEditKind::None)
-			return;
-	}
-	else if (RuntimeInlineEditType == RuntimeInlineEditKind::Preset)
+	if (RuntimeInlineEditType == RuntimeInlineEditKind::Preset)
 		FinishRuntimeInlineEdit(false);
 	if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::None)
 		return;

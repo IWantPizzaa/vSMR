@@ -85,6 +85,7 @@
     <ClCompile Include="src\crash\CrashReporter.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\datalink\CpdlcSettingsDialog.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\datalink\DatalinkProtocolSupport.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\datalink\PinedeProtocol.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\datalink\DatalinkDialog.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\integrations\CdmBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
@@ -197,6 +198,8 @@
     <ClInclude Include="src\crash\CrashRuntime.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\CpdlcSettingsDialog.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\datalink\PinedeProtocol.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\datalink\PdcFrequencyPolicy.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\DatalinkDialog.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\CdmBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
@@ -212,7 +215,6 @@
     <ClInclude Include="src\insets\TimerCountdownState.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\insets\WeatherInsetLayout.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\insets\AvisoViewportCenter.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\datalink\PdcLogonSync.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\VsidConfigurationData.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\insets\InsetWindow.Internal.hpp"><Filter>Headers</Filter></ClInclude>
 	<ClInclude Include="src\platform\windows\EuroScopeCommandLine.hpp"><Filter>Headers</Filter></ClInclude>

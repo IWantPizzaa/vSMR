@@ -21,7 +21,6 @@
 #include "insets/InsetSnapGeometry.hpp"
 #include "insets/ProxyTimerState.hpp"
 #include "insets/AvisoViewportCenter.hpp"
-#include "datalink/PdcLogonSync.hpp"
 #include "datalink/ProxyDatalinkView.hpp"
 #include "insets/WeatherInsetLayout.hpp"
 #include "radar/RecentAirports.hpp"
@@ -49,6 +48,7 @@
 #include "PluginBridgeTests.hpp"
 #include "TagColorRuleTests.hpp"
 #include "StandArrivalTests.hpp"
+#include "PinedeProtocolTests.hpp"
 #include "UpdaterUrlPolicyTests.hpp"
 #include "updater/GroundLayoutAviso.hpp"
 #include "tags/TagDefinitionUtils.hpp"
@@ -97,7 +97,7 @@ namespace
 			!VsmrRuntimeMenuInput::IsRepeatedWindowOpen(1600, 1000, 500) &&
 			!VsmrRuntimeMenuInput::IsRepeatedWindowOpen(1200, 0, 500),
 			"runtime editors open once per double-click interval");
-		for (const auto id : { "runtime.airport", "runtime.datalink.callsign",
+		for (const auto id : { "runtime.airport",
 			"runtime.datalink.credentials", "runtime.preset.rename", "runtime.button.control-center" })
 		{
 			Expect(VsmrRuntimeMenuInput::NeedsHostClickContext(id) &&
@@ -812,21 +812,6 @@ namespace
 		Expect(
 			VsmrTargetRoleLogic::IsAirborneForTagRole(false, 51),
 			"departure above 50 kt remains airborne");
-	}
-
-	void TestPdcLogonSynchronization()
-	{
-		PdcLogonSync sync;
-		Expect(sync.Resolve("LFPG") == "LFPG", "PDC login follows the selected airport");
-		Expect(sync.Resolve("lfbo") == "LFBO", "selected airport ICAO is normalized");
-		for (const char* airport : { "", "LFP", "LFPG_TWR", "12PG", "LFPG " })
-			Expect(sync.Resolve(airport).empty(), "invalid selected airports cannot become PDC logins");
-		Expect(sync.Resolve("LFSB") == "LFSB", "airport changes synchronize before manual edit");
-		sync.MarkManualEdit();
-		Expect(sync.Resolve("LFBO").empty(), "manual PDC login edit locks airport synchronization");
-		Expect(sync.Resolve("LFPG").empty(), "manual override survives airport changes");
-		PdcLogonSync newSession;
-		Expect(newSession.Resolve("LFBO") == "LFBO", "a new plugin session permits synchronization again");
 	}
 
 	void TestAvisoViewportCenters()
@@ -1966,10 +1951,6 @@ int RunProxyChild(const std::wstring& identity, const std::wstring& mode)
 		view.Poll();
 		return view.remote && view.connected && !view.connecting && view.logon == "LFPG" && view.Flags("TEST123") == 3 ? 0 : 61;
 	}
-	if (mode == L"hoppie-busy") {
-		VsmrProcessSync::Mutex lease;
-		return lease.Open(L"Hoppie", identity) && !lease.Lock(0) ? 0 : 62;
-	}
 	if (mode == L"bridge-read") {
 		ProxyBridgeSnapshot bridge;
 		if (!bridge.Open(identity)) return 50;
@@ -2078,7 +2059,7 @@ void TestProxyProcesses(const std::filesystem::path& repositoryRoot)
 	Expect(timers.Poll(::GetTickCount64(), snapshot, alarm) && snapshot.Expired(2) && !alarm, "Other instance sees expired timer without replaying the alarm");
 	VsmrProcessSync::Mutex mutex;
 	Expect(mutex.Open(L"Test", identity) && mutex.Lock(), "Cross-process test mutex locks");
-	Expect(spawn(identity, L"mutex-busy", child) && finish(child), "A second process cannot enter a held writer/Hoppie mutex");
+	Expect(spawn(identity, L"mutex-busy", child) && finish(child), "A second process cannot enter a held writer mutex");
 	mutex.Unlock();
 	ProxyRdfState rdf;
 	Expect(rdf.Open(identity) && rdf.BecomePublisher(), "Shared RDF state elects the test publisher");
@@ -2145,8 +2126,6 @@ void TestProxyProcesses(const std::filesystem::path& repositoryRoot)
 		Expect(primary.Open(identity), "Primary CPDLC display channel opens");
 		primary.Publish(true, false, false, "LFPG", {{"TEST123", 3}});
 		Expect(spawn(identity, L"datalink-read", child) && finish(child), "Secondary sees CPDLC demand/standby flags and primary connection state without credentials");
-		VsmrProcessSync::Mutex hoppie;
-		Expect(hoppie.Open(L"Hoppie", identity) && hoppie.Lock(0) && spawn(identity, L"hoppie-busy", child) && finish(child), "Second process cannot consume Hoppie messages for a logon already leased by the primary");
 	}
 	const auto root = std::filesystem::temp_directory_path() / (L"vSMR-proxy-tests-" + identity);
 	try {
@@ -2209,7 +2188,8 @@ int wmain(int argc, wchar_t** argv)
 	TestTargetRoleThresholds();
 	TestDisplayModeStatusVisibility();
 	TestAvisoViewportCenters();
-	TestPdcLogonSynchronization();
+	for (const std::string& failure : RunPinedeProtocolTests())
+		Expect(false, failure);
 	TestWeatherParsing();
 	TestAtisFeed();
 	TestRuntimeReleaseLifecycle();

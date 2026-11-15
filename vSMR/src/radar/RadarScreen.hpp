@@ -294,7 +294,7 @@ private:
 	bool RuntimeMenuPaintOnly = false;
 	POINT RuntimeMenuDcOrigin{};
 public:
-	enum class RuntimeInlineEditKind { None, Airport, Preset, PdcLogon };
+	enum class RuntimeInlineEditKind { None, Airport, Preset };
 	RuntimeInlineEditKind RuntimeInlineEditType = RuntimeInlineEditKind::None;
 	std::wstring RuntimeInlineEditText;
 	size_t RuntimeInlineEditCursor = 0;
