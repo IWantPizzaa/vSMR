@@ -1,6 +1,6 @@
 # vSMR 2.0 for EuroScope
 
-vSMR is a configurable surface-movement radar plug-in for 32-bit EuroScope. It provides airport surface displays, aircraft tags and symbols, AVISO maps, RIMCAS alerts, native inset windows, CDM data, and Hoppie PDC and message workflows over CPDLC.
+vSMR is a configurable surface-movement radar plug-in for 32-bit EuroScope. It provides airport surface displays, aircraft tags and symbols, AVISO maps, RIMCAS alerts, native inset windows, CDM data, and PDC (departure clearance) and message workflows through the French vACC's PINEDE datalink server.
 
 Current source version: **2.0.7**. Release artifacts are prepared from clean committed source. Bundled third-party assets retain the licenses and attributions in `vSMR/data/Licenses/`.
 
@@ -20,12 +20,14 @@ Current source version: **2.0.7**. Release artifacts are prepared from clean com
 - Weather detail adapts automatically to the window size and number of airports, with the live ATIS letter and frequency when available. Settings let you choose all open AVISO airports, including CoFrance insets, or one airport at a time. Title-bar arrows switch airport/page without resizing the window; the airport grouping choice is saved with the ASR.
 - Opening the HP tag editor immediately sets a ground aircraft to Taxi, even if the point selection is cancelled. Existing scratchpad text and real assigned speeds are preserved; EuroScope ownership restrictions still apply.
 - Timer and PDC notification sounds use the files in `vSMR_Data/Audio`, with built-in fallbacks if those files are missing or cannot be played. If alerts remain silent, check the Windows output device and EuroScope's volume/mute setting in the Volume Mixer; vSMR does not override them.
-- CDM bridge integration and Hoppie PDC support; PDC uses the ICAO selected in the runtime menu unless its login was edited manually.
+- CDM bridge integration and PDC through PINEDE. Pilots request their clearance from LFXX; PINEDE sends each request to the controller responsible for the departure airport (delivery, then ramp, ground, tower, approach and centre, top-down) and sends every uplink itself. Connect from the runtime menu's PDC section with your PINEDE key; the station is your EuroScope callsign. The server address defaults to `https://api.cpdlc.vatsim.fr` and can be changed with the `pdc_server_url` EuroScope setting (https, or http to this machine for a test server).
 - Optional vSID bridge data, tag tokens, rules, and Runtime Menu controls
 - Optional Ramp Agent stand and stand remark tag values through the plug-in bridge
 - Settings can highlight the selected arrival's RampAgent stand label on both AVISO views and automatically set an arrival to **No Status** after parking at its stand.
 - Airport-scoped inset presets and independent active-profile selection for each ASR
 - Atomic configuration saves, Revert, bundled-default recovery, diagnostics, and verified-update support
+
+PDC **NEXT FREQ** is selected from connected positions at the flight plan's departure airport, independently of the issuing station or selected AVISO airport. For example, a clearance issued by LFPG approach for a flight departing LFPO selects the lowest staffed LFPO position. The field remains editable; if no departure frequency can be identified, enter it before sending. An unrelated issuing/coordinated station is never substituted automatically.
 
 ## 2.0.0 behavior and compatibility
 
@@ -33,7 +35,7 @@ Current source version: **2.0.7**. Release artifacts are prepared from clean com
 - **Interface theme:** Night/Day UI colors are independent of the AVISO palette and also affect Timer and METAR insets. Dark/Light palettes are available in the current bundled maps; Real is available for LFBO, LFLL, LFML, LFMN, LFPG, LFPO, and LFSB. Other maps may offer different palettes.
 - **Target presentation:** Tag label font size is edited in pixels (6-72) instead of preset numbers 1-5. Diamond trails use more closely spaced samples while preserving the selected point count. METAR shows a prominent QNH strip and an inward-fading wind-from indicator. PDC and message composers distinguish editable light-grey fields from dark read-only fields; X uses the Cancel action.
 - **ASR profiles:** Each radar screen keeps its own active profile. Profile definitions and the profiles-file source remain shared; save the ASR to retain its selection.
-- **CDM:** The bridge-enabled CDM plug-in replaces the retired vACDM HTTP integration. The old CDM Auto/reminder workflow, timer, and message queue are no longer present. Manual Hoppie PDC and message workflows remain available.
+- **CDM:** The bridge-enabled CDM plug-in replaces the retired vACDM HTTP integration. The old CDM Auto/reminder workflow, timer, and message queue are no longer present. Manual PDC and message workflows remain available.
 - **Stand data:** `uk_stand` and `remark` come from Ramp Agent through EuroScope Plugin Bridge, not flight strip annotations 3 and 4. Missing providers leave their related values unavailable without disabling the rest of vSMR.
 - **Configuration recovery:** The Control Center has Revert and Bundled defaults. The old Undo/Redo controls and legacy profile `.bak` restoration are no longer available. Keep your own configuration backups.
 
@@ -227,7 +229,7 @@ Use the same vSMR build in both instances, on the same computer and Windows sess
 | Timers | Shared start/reset/deadlines; one expiration alarm; survive closing one participant while the other remains connected. |
 | RDF | One TrackAudio receiver with takeover on exit; each instance filters TX/rings by its own open RX frequencies. Reset state is synchronized, while overlay visibility remains local. |
 | Companion fields and Rules | vSID/CDM/Ramp snapshots relayed from the primary; updates reach the secondary on its next timer tick. vSID buttons send validated actions to the primary, never the secondary command line. |
-| PDC | Primary connection/status flags displayed in both instances. Hoppie connection, credentials, polling and sending stay in the primary; the secondary shows **Primary** with write controls disabled. No automatic takeover/reconnection. |
+| PDC | Primary connection/status flags displayed in both instances. The PINEDE connection, key, polling and sending stay in the primary; the secondary shows **Primary** with write controls disabled. No automatic takeover/reconnection. |
 | User configuration | Shared when using the same configuration/data paths. Saves are serialized and stale edits rejected; other instances reload persisted changes. Independent installation folders do not merge configurations automatically. |
 | ASR, airport selection, layouts, zoom, manual display choices | Remain per view. Explicit Apply to all terrains is persisted and propagated through shared configuration. |
 | Ground status, HP, scratchpad, SID, runway, flight plans | Use EuroScope's normal Proxy transport and permissions; vSMR adds no new synchronization markers to flight plans. Active runways continue to come from EuroScope's committed operational sector. |

@@ -50,7 +50,9 @@ protected:
 	void ConfigureModeLayout();
 	void ConstrainToEuroScopeClient();
 	void SetControlLimit(int controlId, UINT limit);
-	void DrawPanel(LPDRAWITEMSTRUCT drawItem, const CString& caption);
+	void DrawPanel(LPDRAWITEMSTRUCT drawItem, const CString& caption, const CString& alert = CString());
+	// Flags the empty clearance fields; true when the PDC cannot be sent
+	bool MarkMissingClearanceFields();
 	void DrawButton(LPDRAWITEMSTRUCT drawItem, const CString& caption, bool primary);
 	void DrawCloseButton(LPDRAWITEMSTRUCT drawItem);
 	void DrawDialogBorder(CDC& dc);
@@ -58,6 +60,9 @@ protected:
 	DialogMode m_DialogMode;
 	DialogMode m_ResolvedMode;
 	bool m_TobtMissing;
+	// What the Flight and Clearance panels say is missing, in red
+	CString m_FlightAlert;
+	CString m_ClearanceAlert;
 	CBrush m_BackgroundBrush;
 	CBrush m_PanelBrush;
 	CBrush m_EditBrush;
@@ -72,6 +77,7 @@ public:
 	afx_msg void OnBnClickedOk();
 	afx_msg void OnBnClickedClose();
 	afx_msg void OnBnClickedTobtReminder();
+	afx_msg void OnFrequencyChanged();
 	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
 	afx_msg BOOL OnEraseBkgnd(CDC* pDC);
 	afx_msg void OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct);
