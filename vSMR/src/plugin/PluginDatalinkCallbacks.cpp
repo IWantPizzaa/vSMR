@@ -225,12 +225,12 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 			dia.m_Departure = FlightPlan.GetFlightPlanData().GetSidName();
 			dia.m_Rwy = FlightPlan.GetFlightPlanData().GetDepartureRwy();
 			dia.m_SSR = FlightPlan.GetControllerAssignedData().GetSquawk();
+			const char* origin = FlightPlan.GetFlightPlanData().GetOrigin();
 			const PdcFrequencySelection frequencySelection = ResolvePdcNextFrequency(this, FlightPlan);
 			std::string freq = FormatPdcFrequency(frequencySelection.frequency);
-			if (freq.empty())
-				freq = FormatPdcFrequency(ControllerMyself().GetPrimaryFrequency());
 			Logger::info(
 				std::string("CPDLC PDC next frequency selected: callsign=") + fpCallsign +
+				" origin=" + std::string(origin != nullptr ? origin : "") +
 				" controller=" + (frequencySelection.controller.empty() ? "none" : frequencySelection.controller) +
 				" frequency=" + (freq.empty() ? "none" : freq) +
 				" source=" + (frequencySelection.source.empty() ? "none" : frequencySelection.source));
@@ -243,7 +243,6 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 					msg = msgIt->second;
 			}
 			dia.m_Req = msg.message.c_str();
-			const char* origin = FlightPlan.GetFlightPlanData().GetOrigin();
 			const bool prefillTsat = VsmrPdcTsatPrefill::Allowed(
 				ActivePdcPolicy(), origin != nullptr ? std::string_view(origin) : std::string_view{});
 			CdmPilotData cdmPilot;
@@ -302,9 +301,9 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 			request.fields.message = static_cast<const char*>(dia.m_Message);
 			request.fields.squawk = FlightPlan.GetControllerAssignedData().GetSquawk();
 			request.fields.initialClimb = toReturn;
-			request.fields.fallbackFrequency = FormatPdcFrequency(ControllerMyself().GetPrimaryFrequency());
-			if (request.fields.fallbackFrequency.empty())
-				request.fields.fallbackFrequency = freq;
+			// The dialog has resolved or explicitly supplied the departure frequency.
+			// Never substitute the issuing station when it serves a different airport.
+			request.fields.fallbackFrequency = request.fields.frequency;
 			if (!DatalinkConnected.load(std::memory_order_acquire))
 			{
 				DisplayUserMessage("PDC", "Server", "PDC is not connected.", true, true, false, true, false);

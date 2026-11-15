@@ -1,12 +1,14 @@
 #include "PinedeProtocolTests.hpp"
 
 #include "datalink/PinedeProtocol.hpp"
+#include "datalink/PdcFrequencyPolicy.hpp"
 #include "platform/windows/network/HttpHelper.hpp"
 
 #include "rapidjson/document.h"
 
 #include <algorithm>
 #include <set>
+#include <limits>
 #include <string>
 
 namespace
@@ -52,6 +54,94 @@ std::vector<std::string> RunPinedeProtocolTests()
 {
 	using namespace VsmrPinede;
 	std::vector<std::string> failures;
+
+	// ----- Departure-airport frequency selection, independent of SDK enumeration -----
+	using FrequencyController = VsmrPdcFrequencyPolicy::Controller;
+	const auto resolveFrequency = [](const std::string& origin, const std::string& runway,
+		const std::vector<FrequencyController>& controllers)
+	{
+		return VsmrPdcFrequencyPolicy::Resolve(origin, runway, controllers);
+	};
+	std::vector<FrequencyController> controllers = {
+		{ "LFPG_APP", "PAR", 126.650, true, true, true },
+		{ "LFPO_GND", "POG", 121.705 },
+		{ "LFPG_GND", "PGG", 121.605 },
+	};
+	auto frequency = resolveFrequency("LFPO", "24", controllers);
+	Check(frequency.controller == "LFPO_GND" && frequency.frequency == 121.705,
+		"PDC frequency: LFPG issuer/coordinated PAR does not replace the LFPO departure ground", failures);
+	frequency = resolveFrequency("LFPG", "26R", controllers);
+	Check(frequency.controller == "LFPG_GND" && frequency.frequency == 121.605,
+		"PDC frequency: changing the flight's origin selects its own airport", failures);
+	std::reverse(controllers.begin(), controllers.end());
+	Check(resolveFrequency("LFPO", "24", controllers).controller == "LFPO_GND",
+		"PDC frequency: connected-controller enumeration order does not change the airport", failures);
+	Check(resolveFrequency("LFPO", "24", { controllers.back() }).controller.empty(),
+		"PDC frequency: no LFPO candidate leaves frequency empty instead of using LFPG/PAR", failures);
+	Check(resolveFrequency("", "", controllers).frequency == 0.0 &&
+		resolveFrequency("LFPO_EXTRA", "24", controllers).frequency == 0.0,
+		"PDC frequency: missing or malformed origin never enables a station fallback", failures);
+	Check(resolveFrequency(" lfpo ", "24", controllers).controller == "LFPO_GND",
+		"PDC frequency: origin is normalized without consulting the issuer's airport", failures);
+	Check(resolveFrequency("LFPO", "24", { { "LFPOX_GND", "PAR", 121.705 } }).frequency == 0.0,
+		"PDC frequency: a longer airport prefix is not the departure airport", failures);
+	Check(resolveFrequency("LFPO", "24", { { "LOCAL", "LFPO_GND", 121.705 } }).controller == "LOCAL",
+		"PDC frequency: an explicit departure-airport position identity is accepted", failures);
+
+	std::vector<FrequencyController> facilities = {
+		{ "LFPO_DEL", "POD", 121.505 }, { "LFPO_RMP", "POR", 121.510 },
+		{ "LFPO_GND", "POG", 121.705 }, { "LFPO_TWR", "POT", 118.705 },
+		{ "LFPO_APP", "POA", 123.875 }, { "LFPO_CTR", "POC", 125.000 },
+	};
+	const char* expectedFacilities[] = { "LFPO_DEL", "LFPO_RMP", "LFPO_GND", "LFPO_TWR", "LFPO_APP", "LFPO_CTR" };
+	for (const char* expected : expectedFacilities)
+	{
+		Check(resolveFrequency("LFPO", "24", facilities).controller == expected,
+			"PDC frequency: DEL/RMP/GND/TWR/APP/CTR priority is preserved", failures);
+		facilities.erase(facilities.begin());
+	}
+	Check(resolveFrequency("LFPO", "24", { { "LFPO_DEP", "POD", 123.875 } }).controller == "LFPO_DEP",
+		"PDC frequency: a connected departure position is eligible for the departure airport", failures);
+	const double nan = (std::numeric_limits<double>::quiet_NaN)();
+	const double infinity = (std::numeric_limits<double>::infinity)();
+	for (double invalid : { 0.0, -1.0, nan, infinity, 117.995, 137.000, 199.998 })
+	{
+		Check(resolveFrequency("LFPO", "24", {
+			{ "LFPO_DEL", "POD", invalid }, { "LFPO_GND", "POG", 121.705 }
+		}).controller == "LFPO_GND",
+			"PDC frequency: invalid/unknown primary frequency cannot mask a valid local controller", failures);
+	}
+	Check(resolveFrequency("LFPO", "24", {
+		{ "LFPO_DEL", "POD", 121.505, false }, { "LFPO_OBS", "POO", 121.510 },
+		{ "LFPO_GND", "POG", 121.705 }
+	}).controller == "LFPO_GND",
+		"PDC frequency: observers and unidentified facilities are not clearance positions", failures);
+	std::vector<FrequencyController> towers = {
+		{ "LFPG_S_TWR", "PGS", 120.900, true, true, true },
+		{ "LFPG_N_TWR", "PGN", 119.250 },
+	};
+	Check(resolveFrequency("LFPG", "26R", towers).controller == "LFPG_N_TWR" &&
+		resolveFrequency("LFPG", "08L", towers).controller == "LFPG_N_TWR" &&
+		resolveFrequency("LFPG", "27L", towers).controller == "LFPG_S_TWR" &&
+		resolveFrequency("LFPG", "09R", towers).controller == "LFPG_S_TWR",
+		"PDC frequency: LFPG runway N/S affinity wins over own/coordinated tie-breakers", failures);
+	towers.push_back({ "LFPG_GND", "PGG", 121.605 });
+	Check(resolveFrequency("LFPG", "26R", towers).controller == "LFPG_GND",
+		"PDC frequency: runway affinity never outranks the lower staffed facility", failures);
+	std::vector<FrequencyController> equal = {
+		{ "LFPO_B_GND", "POB", 121.705 }, { "LFPO_A_GND", "POA", 121.710 }
+	};
+	Check(resolveFrequency("LFPO", "24", equal).controller == "LFPO_A_GND",
+		"PDC frequency: equal local facilities use a stable identity tie-breaker", failures);
+	std::reverse(equal.begin(), equal.end());
+	Check(resolveFrequency("LFPO", "24", equal).controller == "LFPO_A_GND",
+		"PDC frequency: equal-score resolution is independent of enumeration order", failures);
+	equal.back().isCoordinated = true;
+	Check(resolveFrequency("LFPO", "24", equal).controller == "LFPO_B_GND",
+		"PDC frequency: coordinated controller is a tie-breaker only inside the departure airport", failures);
+	equal.front().isOwn = true;
+	Check(resolveFrequency("LFPO", "24", equal).controller == "LFPO_A_GND",
+		"PDC frequency: own station is a tie-breaker only inside the departure airport", failures);
 
 	// ----- Addresses -----
 	Check(JoinUrl("https://api.cpdlc.vatsim.fr", "/v1/dcl/poll") == "https://api.cpdlc.vatsim.fr/v1/dcl/poll",

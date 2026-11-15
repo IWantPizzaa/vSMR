@@ -328,6 +328,7 @@
     <ClInclude Include="src\datalink\CpdlcSettingsDialog.hpp" />
     <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp" />
     <ClInclude Include="src\datalink\PinedeProtocol.hpp" />
+    <ClInclude Include="src\datalink\PdcFrequencyPolicy.hpp" />
     <ClInclude Include="src\datalink\DatalinkDialog.hpp" />
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp" />
     <ClInclude Include="src\diagnostics\ZoomDiagnostics.hpp" />
