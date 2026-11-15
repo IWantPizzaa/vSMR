@@ -340,11 +340,12 @@ bool CSMRPlugin::WriteDiagnosticsReport(
 		report << "crash_report_directory="
 			<< singleLine(VsmrCrashReporter::GetReportDirectory()) << "\n";
 		report << "active_airport=" << singleLine(datalink.activeAirport) << "\n";
-		report << "cpdlc_connected=" << yesNo(datalink.connected) << "\n";
-		report << "cpdlc_connecting=" << yesNo(datalink.connecting) << "\n";
-		report << "cpdlc_polling=" << yesNo(datalink.pollInProgress) << "\n";
-		report << "cpdlc_has_protected_code=" << yesNo(datalink.hasPassword) << "\n";
-		report << "cpdlc_status=" << singleLine(datalink.statusMessage) << "\n";
+		report << "pdc_connected=" << yesNo(datalink.connected) << "\n";
+		report << "pdc_connecting=" << yesNo(datalink.connecting) << "\n";
+		report << "pdc_polling=" << yesNo(datalink.pollInProgress) << "\n";
+		report << "pdc_has_protected_key=" << yesNo(datalink.hasKey) << "\n";
+		report << "pdc_status=" << singleLine(datalink.statusMessage) << "\n";
+		report << "pdc_server=" << singleLine(datalink.serverUrl) << "\n";
 		report << "cdm_bridge_loaded=" << yesNo(datalink.cdmBridgeLoaded) << "\n";
 		report << "cdm_bridge_ready=" << yesNo(datalink.cdmBridgeReady) << "\n";
 		report << "network_workers=" << workerQueues.networkWorkers << "\n";

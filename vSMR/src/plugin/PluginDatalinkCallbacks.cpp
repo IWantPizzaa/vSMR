@@ -93,14 +93,22 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 			if (fpCallsign == nullptr || fpCallsign[0] == '\0')
 				return;
 
-			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-			RemoveCallsignUnlocked(AircraftDemandingClearance, fpCallsign);
-			RemoveCallsignUnlocked(AircraftStandby, fpCallsign);
-			RemoveCallsignUnlocked(AircraftMessageSent, fpCallsign);
-			RemoveCallsignUnlocked(AircraftWilco, fpCallsign);
-			RemoveCallsignUnlocked(AircraftMessage, fpCallsign);
-			ClearDatalinkClearanceSentUnlocked(fpCallsign);
-			PendingMessages.erase(fpCallsign);
+			bool tracked = false;
+			{
+				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				tracked = IsDatalinkTrackedUnlocked(fpCallsign);
+				RemoveCallsignUnlocked(AircraftDemandingClearance, fpCallsign);
+				RemoveCallsignUnlocked(AircraftStandby, fpCallsign);
+				RemoveCallsignUnlocked(AircraftMessageSent, fpCallsign);
+				RemoveCallsignUnlocked(AircraftWilco, fpCallsign);
+				RemoveCallsignUnlocked(AircraftMessage, fpCallsign);
+				ClearDatalinkClearanceSentUnlocked(fpCallsign);
+				PendingMessages.erase(fpCallsign);
+			}
+			// closes the request at PINEDE too, without telling the pilot; an
+			// aircraft PINEDE never gave this station has nothing to close there
+			if (tracked && !QueueDatalinkAction(this, DatalinkAction::Reset, fpCallsign))
+				Logger::info("PDC reset was not sent to PINEDE (offline or queue full)");
 		}
 	}
 
@@ -112,19 +120,9 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 			if (fpCallsign == nullptr || fpCallsign[0] == '\0')
 				return;
 
-			{
-				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-				AddCallsignUniqueUnlocked(AircraftStandby, fpCallsign);
-			}
-			if (!QueueDatalinkMessage(
-				this,
-				fpCallsign,
-				"CPDLC",
-				"STANDBY",
-				fpCallsign))
-			{
-				Logger::info("CPDLC STANDBY request could not be queued");
-			}
+			// the tag shows STANDBY once PINEDE has sent it
+			if (!QueueDatalinkAction(this, DatalinkAction::Standby, fpCallsign))
+				DisplayUserMessage("PDC", "Server", "PDC is not connected.", true, true, false, true, false);
 		}
 	}
 
@@ -158,14 +156,14 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 			if (dia.DoModal() != IDOK)
 				return;
 
-			if (!QueueDatalinkMessage(
-				this,
-				fpCallsign,
-				"TELEX",
-				static_cast<const char*>(dia.m_Message),
-				fpCallsign))
+			const std::string text = static_cast<const char*>(dia.m_Message);
+			if (!VsmrPinede::HasFreeText(text))
 			{
-				Logger::info("CPDLC free-text message could not be queued");
+				DisplayUserMessage("PDC", "Server", "Type a message before sending it.", true, true, false, true, false);
+			}
+			else if (!QueueDatalinkAction(this, DatalinkAction::Message, fpCallsign, text))
+			{
+				DisplayUserMessage("PDC", "Server", "PDC is not connected.", true, true, false, true, false);
 			}
 		}
 	}
@@ -178,22 +176,9 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 			if (fpCallsign == nullptr || fpCallsign[0] == '\0')
 				return;
 
-			{
-				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-				RemoveCallsignUnlocked(AircraftDemandingClearance, fpCallsign);
-				RemoveCallsignUnlocked(AircraftStandby, fpCallsign);
-				PendingMessages.erase(fpCallsign);
-			}
-
-			if (!QueueDatalinkMessage(
-				this,
-				fpCallsign,
-				"CPDLC",
-				"UNABLE CALL ON FREQ",
-				fpCallsign))
-			{
-				Logger::info("CPDLC voice fallback message could not be queued");
-			}
+			// PINEDE sends UNABLE CALL ON FREQ and closes the request
+			if (!QueueDatalinkAction(this, DatalinkAction::Voice, fpCallsign))
+				DisplayUserMessage("PDC", "Server", "PDC is not connected.", true, true, false, true, false);
 		}
 
 	}
@@ -240,12 +225,12 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 			dia.m_Departure = FlightPlan.GetFlightPlanData().GetSidName();
 			dia.m_Rwy = FlightPlan.GetFlightPlanData().GetDepartureRwy();
 			dia.m_SSR = FlightPlan.GetControllerAssignedData().GetSquawk();
+			const char* origin = FlightPlan.GetFlightPlanData().GetOrigin();
 			const PdcFrequencySelection frequencySelection = ResolvePdcNextFrequency(this, FlightPlan);
 			std::string freq = FormatPdcFrequency(frequencySelection.frequency);
-			if (freq.empty())
-				freq = FormatPdcFrequency(ControllerMyself().GetPrimaryFrequency());
 			Logger::info(
 				std::string("CPDLC PDC next frequency selected: callsign=") + fpCallsign +
+				" origin=" + std::string(origin != nullptr ? origin : "") +
 				" controller=" + (frequencySelection.controller.empty() ? "none" : frequencySelection.controller) +
 				" frequency=" + (freq.empty() ? "none" : freq) +
 				" source=" + (frequencySelection.source.empty() ? "none" : frequencySelection.source));
@@ -258,7 +243,6 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 					msg = msgIt->second;
 			}
 			dia.m_Req = msg.message.c_str();
-			const char* origin = FlightPlan.GetFlightPlanData().GetOrigin();
 			const bool prefillTsat = VsmrPdcTsatPrefill::Allowed(
 				ActivePdcPolicy(), origin != nullptr ? std::string_view(origin) : std::string_view{});
 			CdmPilotData cdmPilot;
@@ -304,28 +288,29 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 			// Queuing an immutable clearance snapshot
 			DatalinkClearanceRequest request;
 			request.credentials = SnapshotDatalinkCredentials();
-			request.generation = HoppieConnectionGeneration.load(
+			request.generation = DatalinkConnectionGeneration.load(
 				std::memory_order_acquire);
-			request.packet.callsign = fpCallsign;
-			request.packet.destination = FlightPlan.GetFlightPlanData().GetDestination();
-			request.packet.rwy = FlightPlan.GetFlightPlanData().GetDepartureRwy();
-			request.packet.sid = FlightPlan.GetFlightPlanData().GetSidName();
-			request.packet.tsat = static_cast<const char*>(dia.m_TSAT);
-			request.packet.ctot = static_cast<const char*>(dia.m_CTOT);
-			request.packet.freq = static_cast<const char*>(dia.m_Freq);
-			request.packet.message = static_cast<const char*>(dia.m_Message);
-			request.packet.squawk = FlightPlan.GetControllerAssignedData().GetSquawk();
-			request.packet.climb = toReturn;
-			request.fallbackFrequency = FormatPdcFrequency(ControllerMyself().GetPrimaryFrequency());
-			if (request.fallbackFrequency.empty())
-				request.fallbackFrequency = freq;
-			request.messageSequence = messageId.fetch_add(1) + 1;
+			// PINEDE turns these fields into the clearance text
+			request.fields.callsign = NormalizeCallsignForState(fpCallsign);
+			request.fields.destination = FlightPlan.GetFlightPlanData().GetDestination();
+			request.fields.runway = FlightPlan.GetFlightPlanData().GetDepartureRwy();
+			request.fields.sid = FlightPlan.GetFlightPlanData().GetSidName();
+			request.fields.tsat = static_cast<const char*>(dia.m_TSAT);
+			request.fields.ctot = static_cast<const char*>(dia.m_CTOT);
+			request.fields.frequency = static_cast<const char*>(dia.m_Freq);
+			request.fields.message = static_cast<const char*>(dia.m_Message);
+			request.fields.squawk = FlightPlan.GetControllerAssignedData().GetSquawk();
+			request.fields.initialClimb = toReturn;
+			// The dialog has resolved or explicitly supplied the departure frequency.
+			// Never substitute the issuing station when it serves a different airport.
+			request.fields.fallbackFrequency = request.fields.frequency;
+			if (!DatalinkConnected.load(std::memory_order_acquire))
 			{
-				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				DisplayUserMessage("PDC", "Server", "PDC is not connected.", true, true, false, true, false);
 			}
-			if (!QueueNetworkJob([request]() { sendDatalinkClearance(request); }))
+			else if (!QueueNetworkJob([request]() { sendDatalinkClearance(request); }))
 			{
-				Logger::info("CPDLC clearance could not be queued");
+				Logger::info("PDC clearance could not be queued");
 			}
 			else
 			{
@@ -355,13 +340,13 @@ void CSMRPlugin::RunDatalinkTimerCycle()
 			connectionState,
 			sizeof(connectionState),
 			_TRUNCATE,
-			"type=%d controller=%d callsign=%.31s position=%.31s cpdlc=%d connecting=%d",
+			"type=%d controller=%d callsign=%.31s position=%.31s pdc=%d connecting=%d",
 			currentConnectionType,
 			myself.IsValid() && myself.IsController() ? 1 : 0,
 			callsign,
 			position,
-			HoppieConnected.load(std::memory_order_acquire) ? 1 : 0,
-			HoppieConnecting.load(std::memory_order_acquire) ? 1 : 0);
+			DatalinkConnected.load(std::memory_order_acquire) ? 1 : 0,
+			DatalinkConnecting.load(std::memory_order_acquire) ? 1 : 0);
 		static char lastConnectionState[192]{};
 		if (strcmp(lastConnectionState, connectionState) != 0)
 		{
@@ -376,21 +361,29 @@ void CSMRPlugin::RunDatalinkTimerCycle()
 		lastConnectionType = currentConnectionType;
 	}
 
-	if (HoppieConnected.load() && ConnectionMessage.load()) {
-		DisplayUserMessage("PDC", "Server", "Logged in!", true, true, false, true, false);
+	// PINEDE routes by callsign: follow EuroScope's, for the next request
+	if (GetConnectionType() == CONNECTION_TYPE_DIRECT)
+		RefreshDatalinkStation();
+
+	if (DatalinkConnected.load() && ConnectionMessage.load()) {
+		const std::string message = GetDatalinkStatusMessageCopy();
+		DisplayUserMessage("PDC", "Server", message.empty() ? "Logged in!" : message.c_str(), true, true, false, true, false);
 		ConnectionMessage.store(false);
 	}
+
+	for (const std::string& notice : TakeDatalinkNotices())
+		DisplayUserMessage("PDC", "Server", notice.c_str(), true, true, false, true, false);
 
 	if (FailedToConnectMessage.load()) {
 		std::string failureMessage = GetDatalinkStatusMessageCopy();
 		if (failureMessage.empty())
-			failureMessage = "Could not connect to Hoppie.";
+			failureMessage = "Could not connect to PINEDE.";
 		DisplayUserMessage("PDC", "Server", failureMessage.c_str(), true, true, false, true, false);
 		FailedToConnectMessage.store(false);
 	}
 
-	if ((HoppieConnected.load(std::memory_order_acquire) ||
-		HoppieConnecting.load(std::memory_order_acquire)) &&
+	if ((DatalinkConnected.load(std::memory_order_acquire) ||
+		DatalinkConnecting.load(std::memory_order_acquire)) &&
 		GetConnectionType() == CONNECTION_TYPE_NO) {
 		std::string disconnectError;
 		DisconnectDatalink(disconnectError);
@@ -398,11 +391,11 @@ void CSMRPlugin::RunDatalinkTimerCycle()
 		DisplayUserMessage("PDC", "Server", "Automatically logged off!", true, true, false, true, false);
 	}
 
-	// ----- Polling CPDLC -----
+	// ----- Polling PINEDE -----
 	const PluginSteadyClock::time_point timerNow = PluginSteadyClock::now();
 	if (!PluginShutdownRequested.load(std::memory_order_relaxed) &&
 		timerNow - DatalinkLastPollAt > std::chrono::seconds(10) &&
-		HoppieConnected.load()) {
+		DatalinkConnected.load()) {
 		std::string pollError;
 		StartDatalinkPoll(false, pollError);
 		DatalinkLastPollAt = timerNow;
@@ -418,7 +411,11 @@ void CSMRPlugin::RunDatalinkTimerCycle()
 				[&](const std::string& callsign)
 				{
 					CRadarTarget radarTarget = RadarTargetSelect(callsign.c_str());
-					return radarTarget.IsValid() && radarTarget.GetGS() > 160;
+					const bool airborne = radarTarget.IsValid() && radarTarget.GetGS() > 160;
+					// PINEDE keeps reporting the WILCO; remember it is no longer needed
+					if (airborne)
+						AircraftWilcoDismissed.insert(callsign);
+					return airborne;
 				}),
 			AircraftWilco.end());
 	}

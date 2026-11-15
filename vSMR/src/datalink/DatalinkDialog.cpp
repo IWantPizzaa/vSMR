@@ -38,6 +38,10 @@ namespace
 	const COLORREF kDisabledBackgroundColor = RGB(49, 55, 59);
 	const COLORREF kDisabledTextColor = RGB(133, 144, 148);
 	const COLORREF kTitleBackgroundColor = RGB(21, 25, 29);
+	// Empty required PDC fields and what the panels say about them
+	const COLORREF kErrorColor = RGB(232, 93, 93);
+	// Set on an edit field that must not be empty to send the PDC
+	const wchar_t* const kMissingFieldProperty = L"vSMR.DatalinkMissing";
 	const COLORREF kTitleStripeColor = RGB(35, 41, 45);
 	const COLORREF kTitleTextColor = RGB(220, 225, 225);
 	const COLORREF kCloseBackgroundColor = RGB(67, 76, 80);
@@ -271,10 +275,13 @@ namespace
 		const int savedDc = ::SaveDC(deviceContext);
 		const int radius = ScaleForDpi(deviceContext, kButtonCornerRadiusAt96Dpi);
 		const bool readOnly = (::GetWindowLongPtr(editWindow, GWL_STYLE) & ES_READONLY) != 0;
-		const COLORREF borderColor = !readOnly && ::GetFocus() == editWindow
+		const bool missing = ::GetPropW(editWindow, kMissingFieldProperty) != NULL;
+		const COLORREF borderColor = missing
+			? kErrorColor
+			: !readOnly && ::GetFocus() == editWindow
 			? kAccentFocusColor
 			: kEditBorderColor;
-		HPEN borderPen = ::CreatePen(PS_SOLID, 1, borderColor);
+		HPEN borderPen = ::CreatePen(PS_SOLID, missing ? 2 : 1, borderColor);
 		HGDIOBJ previousPen = ::SelectObject(deviceContext, borderPen);
 		HGDIOBJ previousBrush = ::SelectObject(deviceContext, ::GetStockObject(NULL_BRUSH));
 		::RoundRect(
@@ -347,6 +354,7 @@ namespace
 		}
 		if (message == WM_NCDESTROY)
 		{
+			::RemovePropW(editWindow, kMissingFieldProperty);
 			if (::GetCapture() == editWindow)
 				::ReleaseCapture();
 			::RemoveWindowSubclass(
@@ -546,7 +554,7 @@ CDataLinkDialog::CDataLinkDialog(CWnd* pParent /*=NULL*/)
 	, m_Rwy(_T(""))
 	, m_Departure(_T(""))
 	, m_SSR(_T(""))
-	, m_Freq(_T("121.800"))
+	, m_Freq(_T(""))
 	, m_Message(_T(""))
 	, m_Req(_T(""))
 	, m_Climb(_T(""))
@@ -597,6 +605,7 @@ BEGIN_MESSAGE_MAP(CDataLinkDialog, CDialogEx)
 	ON_BN_CLICKED(IDOK, &CDataLinkDialog::OnBnClickedOk)
 	ON_BN_CLICKED(IDC_DATALINK_CLOSE, &CDataLinkDialog::OnBnClickedClose)
 	ON_BN_CLICKED(IDC_DATALINK_TOBT_REMINDER, &CDataLinkDialog::OnBnClickedTobtReminder)
+	ON_EN_CHANGE(IDC_FREQ, &CDataLinkDialog::OnFrequencyChanged)
 	ON_WM_CTLCOLOR()
 	ON_WM_ERASEBKGND()
 	ON_WM_DRAWITEM()
@@ -793,6 +802,10 @@ BOOL CDataLinkDialog::OnInitDialog()
 	m_FullWindowHeight = windowRect.Height();
 
 	ConfigureModeLayout();
+	// Flight-plan fields are read-only; an unresolved NEXT FREQ is editable.
+	// Flag either omission immediately and keep Send off until it is supplied.
+	if (m_ResolvedMode == DialogMode::Pdc)
+		MarkMissingClearanceFields();
 	CRect dialogClient;
 	GetClientRect(&dialogClient);
 	const int dialogRadius = ScaleForDpi(
@@ -1041,7 +1054,64 @@ void CDataLinkDialog::SetControlLimit(int controlId, UINT limit)
 		edit->SendMessage(EM_SETLIMITTEXT, static_cast<WPARAM>(limit), 0);
 }
 
-void CDataLinkDialog::DrawPanel(LPDRAWITEMSTRUCT drawItem, const CString& caption)
+bool CDataLinkDialog::MarkMissingClearanceFields()
+{
+	struct RequiredField
+	{
+		int controlId;
+		const CString* value;
+		const TCHAR* name;
+		bool flightPanel;
+	};
+	const RequiredField fields[] = {
+		{ IDC_DEST, &m_Dest, _T("DEST"), true },
+		{ IDC_RWY, &m_Rwy, _T("RWY"), false },
+		{ IDC_SID, &m_Departure, _T("SID"), false },
+		{ IDC_CLB, &m_Climb, _T("CFL"), false },
+		{ IDC_SSR, &m_SSR, _T("SQUAWK"), false },
+		{ IDC_FREQ, &m_Freq, _T("NEXT FREQ"), false },
+	};
+
+	CString flightMissing;
+	CString clearanceMissing;
+	for (const RequiredField& field : fields)
+	{
+		CString value(*field.value);
+		value.Trim();
+		// 0000 is no assigned code
+		const bool missing = value.IsEmpty() ||
+			(field.controlId == IDC_SSR && value == _T("0000")) ||
+			(field.controlId == IDC_FREQ && value.CompareNoCase(_T("no")) == 0);
+		if (CWnd* edit = GetDlgItem(field.controlId))
+		{
+			if (missing)
+				::SetPropW(edit->GetSafeHwnd(), kMissingFieldProperty, reinterpret_cast<HANDLE>(1));
+			else
+				::RemovePropW(edit->GetSafeHwnd(), kMissingFieldProperty);
+			edit->Invalidate();
+		}
+		if (!missing)
+			continue;
+		CString& list = field.flightPanel ? flightMissing : clearanceMissing;
+		if (!list.IsEmpty())
+			list += _T(", ");
+		list += field.name;
+	}
+
+	m_FlightAlert = flightMissing.IsEmpty() ? CString() : flightMissing + _T(" missing in flight plan");
+	m_ClearanceAlert = clearanceMissing.IsEmpty() ? CString() : clearanceMissing + _T(" missing");
+	if (CWnd* panel = GetDlgItem(IDC_DATALINK_FLIGHT_PANEL))
+		panel->Invalidate();
+	if (CWnd* panel = GetDlgItem(IDC_DATALINK_CLEARANCE_PANEL))
+		panel->Invalidate();
+
+	const bool blocked = !flightMissing.IsEmpty() || !clearanceMissing.IsEmpty();
+	if (CWnd* send = GetDlgItem(IDOK))
+		send->EnableWindow(!blocked);
+	return blocked;
+}
+
+void CDataLinkDialog::DrawPanel(LPDRAWITEMSTRUCT drawItem, const CString& caption, const CString& alert)
 {
 	if (drawItem == NULL)
 		return;
@@ -1090,6 +1160,16 @@ void CDataLinkDialog::DrawPanel(LPDRAWITEMSTRUCT drawItem, const CString& captio
 	dc.SetTextColor(kTextColor);
 	CFont* oldFont = dc.SelectObject(&m_BoldFont);
 	dc.DrawText(caption, captionRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+	if (!alert.IsEmpty())
+	{
+		// what is missing, in red, at the right of the header
+		const CSize captionSize = dc.GetTextExtent(caption);
+		CRect alertRect(captionRect);
+		alertRect.left += captionSize.cx + ScaleForDpi(drawItem->hDC, 12);
+		dc.SelectObject(&m_InterfaceFont);
+		dc.SetTextColor(kErrorColor);
+		dc.DrawText(alert, alertRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+	}
 	dc.SelectObject(oldFont);
 	dc.Detach();
 }
@@ -1291,12 +1371,12 @@ void CDataLinkDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 
 	if (nIDCtl == IDC_DATALINK_FLIGHT_PANEL)
 	{
-		DrawPanel(lpDrawItemStruct, _T("Flight"));
+		DrawPanel(lpDrawItemStruct, _T("Flight"), m_ResolvedMode == DialogMode::Pdc ? m_FlightAlert : CString());
 		return;
 	}
 	if (nIDCtl == IDC_DATALINK_CLEARANCE_PANEL)
 	{
-		DrawPanel(lpDrawItemStruct, _T("Clearance"));
+		DrawPanel(lpDrawItemStruct, _T("Clearance"), m_ResolvedMode == DialogMode::Pdc ? m_ClearanceAlert : CString());
 		return;
 	}
 	if (nIDCtl == IDC_DATALINK_MESSAGE_PANEL)
@@ -1328,12 +1408,27 @@ void CDataLinkDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	CDialogEx::OnDrawItem(nIDCtl, lpDrawItemStruct);
 }
 
+void CDataLinkDialog::OnFrequencyChanged()
+{
+	if (m_ResolvedMode != DialogMode::Pdc)
+		return;
+	GetDlgItemText(IDC_FREQ, m_Freq);
+	MarkMissingClearanceFields();
+}
+
 void CDataLinkDialog::OnBnClickedOk()
 {
 	if (!UpdateData(TRUE))
 		return;
+	// the Send button is off while a required field is empty; Enter must not get past it either
+	if (m_ResolvedMode == DialogMode::Pdc && MarkMissingClearanceFields())
+	{
+		::MessageBeep(MB_ICONWARNING);
+		return;
+	}
 	m_TSAT.Trim();
 	m_CTOT.Trim();
+	m_Freq.Trim();
 	if (!IsValidOptionalHhmm(m_TSAT))
 	{
 		MessageBox(
