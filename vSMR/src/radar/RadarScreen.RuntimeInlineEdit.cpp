@@ -82,12 +82,8 @@ void CSMRRadar::FinishRuntimeInlineEdit(bool accept)
 					character = static_cast<wchar_t>(character - L'a' + L'A');
 		const bool airportValid = value.size() == 4 &&
 			std::all_of(value.begin(), value.end(), IsAsciiAlphanumeric);
-		const bool pdcValid = !value.empty() && value.size() <= 16 &&
-			std::all_of(value.begin(), value.end(), [](wchar_t character)
-				{ return IsAsciiAlphanumeric(character) || character == L'_' || character == L'-'; });
 		if ((kind == RuntimeInlineEditKind::Airport && !airportValid) ||
-			(kind == RuntimeInlineEditKind::Preset && value.empty()) ||
-			(kind == RuntimeInlineEditKind::PdcLogon && !pdcValid))
+			(kind == RuntimeInlineEditKind::Preset && value.empty()))
 		{
 			::MessageBeep(MB_ICONWARNING);
 			RuntimeInlineEditCaretTick = ::GetTickCount64();
@@ -103,8 +99,7 @@ void CSMRRadar::FinishRuntimeInlineEdit(bool accept)
 	{
 		const std::string utf8 = ToUtf8(value);
 		const int function = kind == RuntimeInlineEditKind::Airport ? RIMCAS_ACTIVE_AIRPORT_FUNC :
-			kind == RuntimeInlineEditKind::Preset ? RIMCAS_AVISO_PRESET_RENAME :
-			RUNTIME_DATALINK_CALLSIGN_EDIT;
+			RIMCAS_AVISO_PRESET_RENAME;
 		OnFunctionCall(function, utf8.c_str(), POINT{}, RECT{});
 	}
 	RequestRefresh();
@@ -119,8 +114,7 @@ bool CSMRRadar::HandleRuntimeInlineEditKey(WPARAM key)
 		return false;
 	const bool shift = ((::GetKeyState(VK_SHIFT) | ::GetAsyncKeyState(VK_SHIFT)) & 0x8000) != 0;
 	const bool control = ((::GetKeyState(VK_CONTROL) | ::GetAsyncKeyState(VK_CONTROL)) & 0x8000) != 0;
-	const size_t maximum = RuntimeInlineEditType == RuntimeInlineEditKind::Airport ? 4 :
-		RuntimeInlineEditType == RuntimeInlineEditKind::PdcLogon ? 16 : 128;
+	const size_t maximum = RuntimeInlineEditType == RuntimeInlineEditKind::Airport ? 4 : 128;
 	auto selection = [&]()
 	{
 		return std::pair<size_t, size_t>{
@@ -132,19 +126,13 @@ bool CSMRRadar::HandleRuntimeInlineEditKey(WPARAM key)
 		insertion.erase(std::remove_if(insertion.begin(), insertion.end(),
 			[](wchar_t character) { return character == L'\r' || character == L'\n' || character == L'\0'; }),
 			insertion.end());
-		if (RuntimeInlineEditType == RuntimeInlineEditKind::Airport ||
-			RuntimeInlineEditType == RuntimeInlineEditKind::PdcLogon)
+		if (RuntimeInlineEditType == RuntimeInlineEditKind::Airport)
 		{
 			for (wchar_t& character : insertion)
 				if (character >= L'a' && character <= L'z')
 					character = static_cast<wchar_t>(character - L'a' + L'A');
 			insertion.erase(std::remove_if(insertion.begin(), insertion.end(),
-				[&](wchar_t character)
-				{
-					return !IsAsciiAlphanumeric(character) &&
-						(RuntimeInlineEditType == RuntimeInlineEditKind::Airport ||
-							(character != L'_' && character != L'-'));
-				}), insertion.end());
+				[](wchar_t character) { return !IsAsciiAlphanumeric(character); }), insertion.end());
 		}
 		const auto [begin, end] = selection();
 		const size_t retained = RuntimeInlineEditText.size() - (end - begin);

@@ -202,6 +202,9 @@
     <ClCompile Include="src\crash\CrashReporter.cpp" />
     <ClCompile Include="src\datalink\CpdlcSettingsDialog.cpp" />
     <ClCompile Include="src\datalink\DatalinkProtocolSupport.cpp" />
+    <ClCompile Include="src\datalink\PinedeProtocol.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="src\datalink\DatalinkDialog.cpp" />
     <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp" />
     <ClCompile Include="src\integrations\CdmBridgeClient.cpp" />
@@ -324,6 +327,7 @@
     <ClInclude Include="src\crash\CrashRuntime.hpp" />
     <ClInclude Include="src\datalink\CpdlcSettingsDialog.hpp" />
     <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp" />
+    <ClInclude Include="src\datalink\PinedeProtocol.hpp" />
     <ClInclude Include="src\datalink\DatalinkDialog.hpp" />
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp" />
     <ClInclude Include="src\diagnostics\ZoomDiagnostics.hpp" />
@@ -342,7 +346,6 @@
     <ClInclude Include="src\insets\ProxyTimerState.hpp" />
     <ClInclude Include="src\insets\WeatherInsetLayout.hpp" />
     <ClInclude Include="src\insets\AvisoViewportCenter.hpp" />
-    <ClInclude Include="src\datalink\PdcLogonSync.hpp" />
     <ClInclude Include="src\insets\InsetWindow.Internal.hpp" />
 	<ClInclude Include="src\platform\windows\EuroScopeCommandLine.hpp" />
     <ClInclude Include="src\platform\windows\GdiColorUtils.hpp" />

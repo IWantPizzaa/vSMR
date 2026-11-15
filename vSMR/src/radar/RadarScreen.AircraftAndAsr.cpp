@@ -1174,8 +1174,6 @@ std::string CSMRRadar::setActiveAirport(
 	ActiveAirportChosen = true;
 	if (switchInsetContext)
 		SaveDataToAsr("AirportSelected", "Airport explicitly selected in vSMR", "1");
-	if (auto* plugin = static_cast<CSMRPlugin*>(GetPlugIn()))
-		plugin->SetPdcSelectedAirport(airport);
 	if (_stricmp(ActiveAirport.c_str(), airport.c_str()) == 0)
 		return ActiveAirport;
 
@@ -1267,9 +1265,6 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	{
 		Logger::info("OnAsrContentLoaded: no ASR Airport value; active airport=" + getActiveAirport());
 	}
-	if (ActiveAirportChosen)
-		if (auto* plugin = static_cast<CSMRPlugin*>(GetPlugIn()))
-			plugin->SetPdcSelectedAirport(ActiveAirport);
 
 	const char* savedProfilesPath = GetDataFromAsr("ProfilesFile");
 	if (savedProfilesPath != NULL && savedProfilesPath[0] != '\0')

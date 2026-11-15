@@ -9,7 +9,6 @@ namespace VsmrRuntimeMenuInput
 	{
 		constexpr std::string_view vsidPrefix = "runtime.vsid.";
 		return id == "runtime.airport" ||
-			id == "runtime.datalink.callsign" ||
 			id == "runtime.datalink.credentials" ||
 			id == "runtime.preset.rename" ||
 			id == "runtime.button.control-center" ||
