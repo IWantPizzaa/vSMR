@@ -87,6 +87,9 @@ extern std::atomic<bool> DatalinkConnecting;
 extern std::atomic<bool> DatalinkPollInProgress;
 extern std::atomic<unsigned long long> DatalinkConnectionGeneration;
 extern std::atomic<unsigned long long> DatalinkPollGeneration;
+// DMAN handles this station's PDC through PINEDE. At most one client polls a
+// station, and a logoff would disconnect DMAN: vSMR stays silent meanwhile.
+extern std::atomic<bool> DatalinkYieldedToDman;
 // Bumped by every action this station takes, so a poll that started before
 // it cannot overwrite its effect with older server state
 extern std::atomic<unsigned long long> DatalinkStateRevision;

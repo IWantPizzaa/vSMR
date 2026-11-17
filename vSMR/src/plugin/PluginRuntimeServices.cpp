@@ -343,6 +343,7 @@ bool CSMRPlugin::WriteDiagnosticsReport(
 		report << "pdc_connected=" << yesNo(datalink.connected) << "\n";
 		report << "pdc_connecting=" << yesNo(datalink.connecting) << "\n";
 		report << "pdc_polling=" << yesNo(datalink.pollInProgress) << "\n";
+		report << "pdc_handled_by_dman=" << yesNo(datalink.yieldedToDman) << "\n";
 		report << "pdc_has_protected_key=" << yesNo(datalink.hasKey) << "\n";
 		report << "pdc_status=" << singleLine(datalink.statusMessage) << "\n";
 		report << "pdc_server=" << singleLine(datalink.serverUrl) << "\n";

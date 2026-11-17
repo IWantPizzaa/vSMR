@@ -10,6 +10,7 @@
 #include "crash/CrashRuntime.hpp"
 #include "insets/InsetWindow.hpp"
 #include "integrations/CdmBridgeClient.hpp"
+#include "integrations/DmanBridgeClient.hpp"
 #include "integrations/PluginBridgeClient.hpp"
 #include "integrations/RampAgentBridgeClient.hpp"
 #include "integrations/VsidBridgeClient.hpp"
@@ -241,6 +242,8 @@ void CSMRPlugin::OnTimerImpl(int Counter)
 	const bool vsidChanged = VsmrVsid::Poll(bridgeTick);
 	const bool cdmChanged = VsmrCdm::Poll(bridgeTick);
 	const bool rampAgentChanged = VsmrRampAgent::Poll(bridgeTick);
+	// read by the PDC cycle below
+	VsmrDman::Poll(bridgeTick);
 	VsmrPluginBridge::EndTick(*this);
 	UpdateArrivalsAtStands();
 	if (vsidChanged || cdmChanged || rampAgentChanged)
