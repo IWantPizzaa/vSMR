@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Leave PINEDE to DMAN while it handles this station's PDC. DMAN publishes the station it serves on the plug-in bridge (`dman/pdc_station`); while that is vSMR's own EuroScope callsign, vSMR stops polling PINEDE, never sends a logoff that would disconnect DMAN, clears its PDC tag states and refuses PDC actions, Connect and Poll. The runtime menu's PDC section reads **DMAN**. When DMAN stops handling the station, a connected vSMR polls PINEDE again on its next cycle.
 - Select PDC NEXT FREQ from the flight plan's departure airport, including LFPO when the clearance is issued from LFPG approach. Remove unrelated coordinated/issuing-station fallbacks, keep the transmitted fallback consistent with the selected or edited frequency, and require NEXT FREQ when no connected departure position is identifiable.
 
 - Refuse to send a PDC whose destination, runway, SID, initial climb or squawk is empty: the PDC dialog frames each empty field in red, names what is missing in its panel header and keeps Send off until the flight plan is completed.

@@ -248,5 +248,15 @@ std::vector<std::string> RunPinedeProtocolTests()
 	Check(DescribeFailure(true, 500, "<html>").find("500") != std::string::npos,
 		"PINEDE: an unexpected status is reported with its code", failures);
 
+	// ----- One poller per station -----
+	Check(YieldsToDman("LFPG_DEL", "LFPG_DEL") && YieldsToDman(" lfpg_del\t", "LFPG_DEL ") &&
+		YieldsToDman("LFPG_DEL", "lfpg_del"),
+		"PINEDE: vSMR yields when DMAN handles its own station, whatever the case and spacing", failures);
+	Check(!YieldsToDman("LFPG_DEL", "LFPG_N_GND") && !YieldsToDman("LFPG_DEL", "LFPG_DEL2"),
+		"PINEDE: DMAN handling another station leaves vSMR polling", failures);
+	Check(!YieldsToDman("", "LFPG_DEL") && !YieldsToDman("  ", "LFPG_DEL") &&
+		!YieldsToDman("", "") && !YieldsToDman("LFPG_DEL", ""),
+		"PINEDE: an unset station or an unknown own callsign never yields", failures);
+
 	return failures;
 }

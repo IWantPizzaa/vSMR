@@ -142,6 +142,13 @@ namespace
 			generation == DatalinkConnectionGeneration.load(std::memory_order_acquire);
 	}
 
+	// One client polls PINEDE per station: a request queued before DMAN took
+	// this station over is not sent
+	bool YieldedToDman()
+	{
+		return DatalinkYieldedToDman.load(std::memory_order_acquire);
+	}
+
 	// Replaces the tag lists with what PINEDE says this station should show.
 	// A request that newly asks for a clearance rings, as Hoppie requests did.
 	void ApplyPollResult(const VsmrPinede::PollResult& result, unsigned long long stateRevision)
@@ -225,6 +232,11 @@ void datalinkLogin(DatalinkLoginRequest request) {
 	// network queue. Do not announce that stale session to PINEDE.
 	if (!IsCurrentSession(request.generation))
 		return;
+	if (YieldedToDman())
+	{
+		SetDatalinkStatusMessage("Not connected: DMAN handles the PDC of this station.");
+		return;
+	}
 
 	// The first poll is the login: it proves the key and puts the station online
 	const unsigned long long stateRevision = DatalinkStateRevision.load(std::memory_order_acquire);
@@ -304,7 +316,7 @@ void pollMessages(DatalinkPollRequest request) {
 	}
 	// A poll keeps the station online at PINEDE. A queued poll must never start
 	// after the controller has disconnected this session.
-	if (!IsCurrentSession(request.generation) ||
+	if (!IsCurrentSession(request.generation) || YieldedToDman() ||
 		request.pollGeneration != DatalinkPollGeneration.load(std::memory_order_acquire))
 	{
 		completePoll(false);
@@ -362,6 +374,11 @@ bool StartDatalinkPoll(bool reportStatus, std::string& error)
 		error = "PDC is not connected.";
 			return false;
 		}
+		if (YieldedToDman())
+		{
+		error = "DMAN handles the PDC of this station.";
+			return false;
+		}
 
 		bool expected = false;
 		if (!DatalinkPollInProgress.compare_exchange_strong(
@@ -416,7 +433,7 @@ namespace
 {
 	void sendDatalinkAction(DatalinkActionRequest request)
 	{
-		if (!IsCurrentSession(request.generation))
+		if (!IsCurrentSession(request.generation) || YieldedToDman())
 			return;
 
 		const char* path = "/v1/dcl/standby";
@@ -473,7 +490,8 @@ bool QueueDatalinkAction(
 {
 	if (plugin == nullptr ||
 		PluginShutdownRequested.load(std::memory_order_acquire) ||
-		!DatalinkConnected.load(std::memory_order_acquire))
+		!DatalinkConnected.load(std::memory_order_acquire) ||
+		YieldedToDman())
 	{
 		return false;
 	}
@@ -498,6 +516,11 @@ void sendDatalinkClearance(DatalinkClearanceRequest request) {
 	} inFlightGuard{ request.fields.callsign };
 	if (!IsCurrentSession(request.generation))
 		return;
+	if (YieldedToDman())
+	{
+		QueueDatalinkNotice(request.fields.callsign + ": clearance not sent, DMAN handles the PDC of this station.");
+		return;
+	}
 
 	// PINEDE builds the clearance text from these fields
 	const HttpResponse response = PostToPinede(

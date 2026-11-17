@@ -36,6 +36,8 @@ struct DatalinkControlState
 	bool connecting = false;
 	bool pollInProgress = false;
 	bool controllerConnected = false;
+	// DMAN polls PINEDE for this station: vSMR neither polls nor sends
+	bool yieldedToDman = false;
 	// The EuroScope callsign PINEDE knows this station by
 	std::string logonCallsign;
 	bool hasKey = false;
@@ -129,6 +131,7 @@ public:
 
 private:
 	void RefreshDatalinkStation();
+	void RefreshDatalinkDmanYield();
 	TimerCountdownState TimerCountdowns;
 	std::uint64_t TimerAlarmRetryUntil = 0;
 	ProxyTimerState ProxyTimers;

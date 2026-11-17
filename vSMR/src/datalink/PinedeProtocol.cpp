@@ -47,6 +47,15 @@ namespace VsmrPinede
 			return text;
 		}
 
+		std::string TrimmedUpper(const std::string& text)
+		{
+			const auto first = text.find_first_not_of(" \t\r\n");
+			if (first == std::string::npos)
+				return "";
+			const auto last = text.find_last_not_of(" \t\r\n");
+			return Upper(text.substr(first, last - first + 1));
+		}
+
 		void AddUnique(std::vector<std::string>& list, const std::string& callsign)
 		{
 			if (std::find(list.begin(), list.end(), callsign) == list.end())
@@ -266,5 +275,11 @@ namespace VsmrPinede
 		default:
 			return "PINEDE answered " + std::to_string(status) + (reason.empty() ? "." : ": " + reason);
 		}
+	}
+
+	bool YieldsToDman(const std::string& dmanStation, const std::string& ownCallsign)
+	{
+		const std::string station = TrimmedUpper(dmanStation);
+		return !station.empty() && station == TrimmedUpper(ownCallsign);
 	}
 }
