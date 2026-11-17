@@ -1276,7 +1276,7 @@ void CSMRRadar::OnClickScreenObjectImpl(int ObjectType, const char * sObjectId, 
 	// target is correlated and ready for EuroScope's Assume/Handoff menu.
 	if ((Button == BUTTON_LEFT || Button == BUTTON_RIGHT) && hasObjectId &&
 		(ObjectType == DRAWING_TAG ||
-			(ObjectType >= TAG_CITEM_NO && ObjectType <= TAG_CITEM_LANGUAGE)))
+			(ObjectType >= TAG_CITEM_NO && ObjectType <= TAG_CITEM_RELEASED)))
 	{
 		const VsmrScene::RadarScene* scene = GetCurrentRadarScene();
 		const VsmrScene::Target* sceneTarget = scene != nullptr ? scene->FindTarget(objectId) : nullptr;
@@ -1409,6 +1409,18 @@ void CSMRRadar::OnClickScreenObjectImpl(int ObjectType, const char * sObjectId, 
 			// items and does not reliably open an edit from this screen object.
 			GetPlugIn()->OnFunctionCall(ObjectType == TAG_CITEM_LANGUAGE ? TAG_FUNC_LANGUAGE_EDIT : TAG_FUNC_HOLDING_POINT_EDIT, "", Pt, Area);
 		}
+		RequestRefresh();
+		return;
+	}
+	if (Button == BUTTON_LEFT && ObjectType == TAG_CITEM_RELEASED)
+	{
+		CRadarTarget target = selectAseAndGetTarget();
+		CFlightPlan flightPlan = target.IsValid()
+			? target.GetCorrelatedFlightPlan()
+			: CFlightPlan();
+		// Same toggle as the EuroScope list function, which calls CDM for the ASRT when needed.
+		if (flightPlan.IsValid())
+			GetPlugIn()->OnFunctionCall(TAG_FUNC_RELEASED_TOGGLE, "", Pt, Area);
 		RequestRefresh();
 		return;
 	}

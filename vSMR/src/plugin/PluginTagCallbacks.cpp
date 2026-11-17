@@ -4,6 +4,7 @@
 
 #include "aircraft/HoldingPoint.hpp"
 #include "aircraft/Language.hpp"
+#include "aircraft/Released.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "rdf/RdfOverlay.hpp"
 
@@ -82,6 +83,26 @@ void CSMRPlugin::OnGetTagItem(
 			language = VsmrLanguage::Read(remarks ? remarks : "");
 		}
 		strcpy_s(sItemString, 16, language.empty() ? "LANG" : language.c_str());
+		return;
+	}
+
+	if (ItemCode == TAG_ITEM_RELEASED)
+	{
+		// Same green and red as the RDY cell; REL stays visible in both states.
+		bool released = false;
+		if (FlightPlan.IsValid())
+		{
+			const char* rawCallsign = FlightPlan.GetCallsign();
+			const char* rawRemarks = FlightPlan.GetFlightPlanData().GetRemarks();
+			released = !VsmrReleased::Resolve(
+				rawCallsign != nullptr ? rawCallsign : "",
+				rawRemarks != nullptr ? rawRemarks : "").empty();
+		}
+		if (pColorCode != nullptr)
+			*pColorCode = TAG_COLOR_RGB_DEFINED;
+		if (pRGB != nullptr)
+			*pRGB = released ? RGB(0, 181, 27) : RGB(255, 0, 0);
+		strcpy_s(sItemString, 16, FlightPlan.IsValid() ? "REL" : "");
 		return;
 	}
 

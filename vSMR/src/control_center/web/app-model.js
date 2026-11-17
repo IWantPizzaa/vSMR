@@ -58,7 +58,7 @@
     },
     uncorrelated: { default: "background_on_ground_color" }
   };
-  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "language", "remark", "asid", "vsid_sid", "vsid_rwy", "vsid_cfl", "ready_startup", "tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat", "uk_stand", "sqerror", "groundstatus", "systemid"];
+  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "language", "released", "remark", "asid", "vsid_sid", "vsid_rwy", "vsid_cfl", "ready_startup", "tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat", "uk_stand", "sqerror", "groundstatus", "systemid"];
   const RULE_LIMITS = { depth: 8, nodes: 128, effects: 32, values: 128, rules: 256 };
   const RULE_FIELDS = [
     ...["tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat"].map(token => ({
@@ -69,7 +69,7 @@
     })),
     ...Object.entries({ sid: "SID", deprwy: "Departure runway", arvrwy: "Arrival runway", scratchpad: "Scratchpad",
       holdingpoint: "Holding point", origin: "Origin", destination: "Destination", actype: "Aircraft type", wake: "Wake category",
-      groundstatus: "Ground status", callsign: "Callsign", clearance: "Clearance (true / false)" })
+      groundstatus: "Ground status", callsign: "Callsign", clearance: "Clearance (true / false)", released: "Released (true / false)" })
       .map(([token, label]) => ({ id: `flight.${token}`, label: `Flight · ${label}` })),
     { id: "flight.gs", label: "Flight · Ground speed (kt)", numeric: true },
     { id: "flight.flightlevel", label: "Flight · Flight level (hundreds of ft)", numeric: true },
@@ -85,7 +85,7 @@
     ...["deice", "tobt_set_by", "flow_restriction", "ecfmp_restriction", "manual_ctot"]
       .map(token => ({ id: `cdm.${token}`, label: `CDM · ${humanize(token)}` }))
   ];
-  const RULE_EFFECT_FIELDS = ["event_booking", "ready_startup", "groundstatus", "holdingpoint", "flightlevel", "scratchpad",
+  const RULE_EFFECT_FIELDS = ["event_booking", "ready_startup", "released", "groundstatus", "holdingpoint", "flightlevel", "scratchpad",
     "clearance", "callsign", "systemid", "tendency", "uk_stand", "vsid_cfl", "vsid_rwy", "vsid_sid", "sqerror", "actype",
     "arvrwy", "deprwy", "origin", "remark", "sctype", "seprwy", "srvrwy", "aobt", "aort", "asat", "asid", "asrt", "atot",
     "ctot", "dest", "gate", "sate", "ssid", "tobt", "tsac", "tsat", "ttot", "wake", "ssr", "gs"];

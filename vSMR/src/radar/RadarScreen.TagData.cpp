@@ -4,6 +4,7 @@
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
 #include "aircraft/Language.hpp"
+#include "aircraft/Released.hpp"
 #include "integrations/RampAgentBridgeClient.hpp"
 #include "integrations/VsidBridgeClient.hpp"
 #include "tags/CdmTagHelpers.hpp"
@@ -76,6 +77,8 @@ namespace
 		input.language = VsmrLanguage::Read(input.hasFlightPlan ? CopyTagText(fp.GetFlightPlanData().GetRemarks()) : "");
 		input.holdingPoint = VsmrHoldingPoint::Resolve(holdingCallsign,
 			input.hasFlightPlan ? CopyTagText(fp.GetFlightPlanData().GetRemarks()) : "");
+		input.released = input.hasFlightPlan && !VsmrReleased::Resolve(holdingCallsign,
+			CopyTagText(fp.GetFlightPlanData().GetRemarks())).empty();
 		return input;
 	}
 
@@ -104,6 +107,8 @@ namespace
 			? std::to_string(input.flightLevel / 100) : std::string();
 		output["rule.clearance"] = input.receivedFlightPlan
 			? (input.clearance ? "true" : "false") : "";
+		output["rule.released"] = input.hasFlightPlan
+			? (input.released ? "true" : "false") : "";
 		output["rule.uk_stand"] = input.stand;
 		output["rule.remark"] = input.remark;
 	}

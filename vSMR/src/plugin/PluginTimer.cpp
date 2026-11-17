@@ -6,6 +6,7 @@
 
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
+#include "aircraft/Released.hpp"
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "insets/InsetWindow.hpp"
@@ -177,6 +178,38 @@ void CSMRPlugin::OnTimerImpl(int Counter)
 			flightPlanData.AmendFlightPlan())
 		{
 			VsmrHoldingPoint::RememberPending(callsign, "");
+			FlightDataRefreshPending.store(true, std::memory_order_release);
+		}
+	}
+	// ----- Cleaning airborne released flags -----
+	for (const std::string& callsign : VsmrReleased::KnownCallsigns())
+	{
+		CFlightPlan flightPlan = FlightPlanSelect(callsign.c_str());
+		if (!flightPlan.IsValid() || !flightPlan.GetTrackingControllerIsMe())
+			continue;
+
+		CRadarTarget radarTarget = flightPlan.GetCorrelatedRadarTarget();
+		if (!radarTarget.IsValid())
+			continue;
+		const CRadarTargetPositionData position = radarTarget.GetPosition();
+		if (!position.IsValid() || position.GetReportedGS() <= 50)
+			continue;
+
+		CFlightPlanData flightPlanData = flightPlan.GetFlightPlanData();
+		const char* rawRemarks = flightPlanData.GetRemarks();
+		const std::string remarks = rawRemarks != nullptr ? rawRemarks : "";
+		if (VsmrReleased::Read(remarks).empty())
+		{
+			(void)VsmrReleased::Resolve(callsign, remarks);
+			continue;
+		}
+
+		const std::string updatedRemarks = VsmrReleased::Write(remarks, "");
+		if (updatedRemarks != remarks &&
+			flightPlanData.SetRemarks(updatedRemarks.c_str()) &&
+			flightPlanData.AmendFlightPlan())
+		{
+			VsmrReleased::RememberPending(callsign, "");
 			FlightDataRefreshPending.store(true, std::memory_order_release);
 		}
 	}
