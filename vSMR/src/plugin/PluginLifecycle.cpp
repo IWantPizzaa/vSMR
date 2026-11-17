@@ -9,6 +9,7 @@
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "integrations/CdmBridgeClient.hpp"
+#include "integrations/DmanBridgeClient.hpp"
 #include "integrations/PluginBridgeClient.hpp"
 #include "integrations/RampAgentBridgeClient.hpp"
 #include "integrations/VsidBridgeClient.hpp"
@@ -87,6 +88,7 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 	VsmrHoldingPoint::ClearPending();
 	VsmrCdm::Shutdown();
 	VsmrRampAgent::Shutdown();
+	VsmrDman::Shutdown();
 	VsmrVsid::Shutdown();
 	VsmrPluginBridge::Shutdown();
 	NetworkCancellationRequested.store(false, std::memory_order_relaxed);
@@ -166,6 +168,7 @@ CSMRPlugin::~CSMRPlugin()
 	VsmrGroundState::ForgetAllAircraft();
 	VsmrCdm::Shutdown();
 	VsmrRampAgent::Shutdown();
+	VsmrDman::Shutdown();
 	VsmrVsid::Shutdown();
 	VsmrPluginBridge::Shutdown();
 	VsmrRdf::Stop();
@@ -192,6 +195,7 @@ bool VsmrShutdownPlugin()
 	VsmrGroundState::ForgetAllAircraft();
 	VsmrCdm::Shutdown();
 	VsmrRampAgent::Shutdown();
+	VsmrDman::Shutdown();
 	VsmrVsid::Shutdown();
 	VsmrPluginBridge::Shutdown();
 	CSMRPlugin::PrepareDatalinkRuntimeForExit();

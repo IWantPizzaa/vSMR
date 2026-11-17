@@ -1,5 +1,6 @@
 #include "PluginBridgeTests.hpp"
 #include "integrations/CdmBridgeClient.hpp"
+#include "integrations/DmanBridgeClient.hpp"
 #include "integrations/PluginBridgeClient.hpp"
 #include "integrations/ProxyBridgeSnapshot.hpp"
 #include "integrations/RampAgentBridgeClient.hpp"
@@ -556,6 +557,37 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 	VsmrVsid::CommandAction resumeAction{};
 	check(VsmrVsid::TryParseRuntimeActionId("runtime.vsid.resume-autoconfig", resumeAction) &&
 		resumeAction == VsmrVsid::CommandAction::ResumeAutoConfiguration, "resume button routes to the new configuration command");
+	// ----- DMAN's PDC station -----
+	VsmrDman::Shutdown();
+	VsmrDman::Poll(tick);
+	check(VsmrDman::GetPdcStation().empty(), "an absent DMAN provider handles no PDC station");
+	Providers["dman"] = 0U;
+	Published.push_back({ "dman/pdc_station", ESB_T_STR, " lfpg_del " });
+	const std::size_t pdcStationIndex = Published.size() - 1U;
+	VsmrDman::Poll(tick);
+	check(VsmrDman::GetPdcStation() == "LFPG_DEL", "DMAN's PDC station is read from the global field, normalized");
+	Published[pdcStationIndex].text.clear();
+	VsmrDman::Poll(tick);
+	check(VsmrDman::GetPdcStation().empty(), "an unset DMAN PDC station handles none");
+	Published[pdcStationIndex].text = "LFPG_DEL";
+	VsmrDman::Poll(tick);
+	Published[pdcStationIndex].declared = false;
+	VsmrDman::Poll(tick);
+	check(VsmrDman::GetPdcStation().empty(), "a DMAN that no longer declares the field handles no PDC station");
+	Published[pdcStationIndex].declared = true;
+	VsmrDman::Poll(tick);
+	Providers.erase("dman");
+	VsmrDman::Poll(tick);
+	check(VsmrDman::GetPdcStation().empty(), "an unloaded DMAN handles no PDC station");
+	Providers["dman"] = 0U;
+	VsmrDman::Poll(tick);
+	const auto* bridge = tick.api;
+	tick.api = nullptr;
+	VsmrDman::Poll(tick);
+	check(VsmrDman::GetPdcStation().empty(), "without a bridge DMAN handles no PDC station");
+	tick.api = bridge;
+	VsmrDman::Shutdown();
+
 	tick.api = nullptr;
 	HostAttachState = VsmrPluginBridge::AttachState::NotLoaded;
 	poll();
