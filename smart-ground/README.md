@@ -2,7 +2,6 @@
 
 Prototype HTML/TypeScript autonome pour vSMR v2 : carte géographique de Paris Charles de Gaulle, itinéraires A* contraints par configuration de roulage, trafic au sol et prévision des conflits. Tout le travail est isolé dans `smart-ground/`, sur la branche `Smart-Ground`. Le plugin C++ et ses configurations ne sont pas modifiés.
 
-Le calcul actif utilise les cheminements de référence MANEX/AIP : **desserte de l’aire → raccordement prévu → axes principaux → accès final**. Il privilégie un réseau principal continu et évite le transit par des aires étrangères ou les sorties/rentrées répétées. Il compare ensuite la distance avec un coût de courbure cumulée et de changement d’axe, pour limiter les contre-courbes et les détours entre voies parallèles. Les profils d’approche des points d’attente conservent les raccordements nominaux. Les voies intérieures des baies de dégivrage cartographiées sont exclues du transit normal simulé. Les interdictions publiées restent strictes ; les anciennes projections locales AVISO ne deviennent plus des interdictions générales. Les [sources MANEX](docs/MANEX-SOURCES.md), le [catalogue des corridors](docs/CORRIDORS.md) et la [revue des détours](docs/ROUTE-QUALITY-SOURCES.md) expliquent cette distinction.
 
 ## Lancer le simulateur
 
@@ -52,7 +51,6 @@ La stabilisation des alertes de conflit tient compte de l’âge, de l’ambigu�
 
 L’[adaptateur de rapports EuroScope](src/adapters/EuroScopeSurfaceAdapter.ts) définit déjà la projection, les sessions, les séquences et la conversion des données primitives. Le [contrat SDK vérifié](docs/EUROSCOPE-SURVEILLANCE.md) distingue notamment cap et trajectoire, vitesse transmise et repli, âge de réception et date de mesure. **Le flux C++ natif n’est pas encore connecté à cette chaîne** : l’interface utilise toujours des rapports synthétiques, sans prétendre que le portage vSMR est achevé.
 
-Glisser la carte hors d’un cercle d’édition pour la déplacer, utiliser la molette ou +/− pour zoomer, **F** ou double-cliquer pour voir tout l’aéroport. Les touches fléchées déplacent la carte lorsqu’elle a le focus. Le panneau Calques contrôle les voies, axes principaux MANEX, sens de référence et interdictions du contexte choisi, marquages AVISO, stands et enveloppes des avions. Les axes principaux sont soulignés en bleu ; le parcours sélectionné est vert s’il est standard et bleu s’il est attribué. Le bouton des nœuds ouvre l’audit de connectivité.
 
 Le bouton **Règles et sources** présente les documents datés et les restrictions appliquées. Il permet aussi de déclarer les baies SW1–SW4 occupées ou l’utilisation des axes orange/bleu pour activer leurs limites d’envergure conditionnelles. Par défaut, ces deux conditions sont désactivées et l’axe central est retenu. Les points soumis à PPR restent exclus tant que l’accord préalable simulé n’a pas été explicitement sélectionné.
 
@@ -62,7 +60,6 @@ Les restrictions liées aux travaux SUP 151/26 et SUP 188/26 sont exclues à la 
 
 Les [règles et leur couverture](docs/OPERATIONS.md) et la [validation des configurations](docs/OPERATIONS-VALIDATION.md) distinguent les interdictions AIP, les sens nominaux rapprochés de la cartographie et les éléments restant à vérifier. Une absence de règle numérisée n’est pas une preuve d’autorisation. Cette version ne prétend pas reproduire toutes les décisions ATC possibles ni les NOTAM en temps réel.
 
-Les priorités exactement raccordées provoquent un maintien avant la jonction puis une reprise automatique après dégagement de l’arrivée prioritaire. Ce comportement ne délivre aucune clairance de traversée. Le tampon de 45 m et la marge temporelle de 12 s sont des paramètres de simulation. La [planche avant/après MANEX](docs/lfpg-manex-review.png) montre des corrections réelles de sens et de convergence. L’ancienne planche `lfpg-operating-review.png` reste une référence historique du calcul précédent.
 
 L’import Ramp Agent/vSID accepte une capture JSON documentée dans [INTEGRATION.md](docs/INTEGRATION.md). Il conserve le stand et la piste attribués, puis prépare un point d’attente réel de cette piste. Une piste contraire à la configuration active ou un stand fermé est refusé, sans modifier silencieusement l’affectation du plugin. L’import ne constitue pas une connexion à EuroScope. L’exemple fourni est simulé et soumis aux contrôles de péremption.
 
@@ -82,7 +79,6 @@ Consulter [DATA.md](docs/DATA.md), [l’audit de connectivité](public/data/conn
 | `TaxiGraph` | Adjacence, index et composantes du réseau |
 | `OperatingRules` | Contraintes sourcées, contexte est/ouest et arrivée/départ, fermetures, virages et points d’attente |
 | `AircraftRestrictions` | Interdictions de sections et de transitions selon type, envergure et conditions du scénario ; conseils distincts des fermetures |
-| `TaxiFlowPolicy` | Flux nominaux MANEX/GMC, accès d’aire, convergence et continuité des axes principaux |
 | `RoutePlanner` | A* avec étapes de desserte et d’approche, continuité, courbure cumulée et changement d’axe ; distance physique conservée séparément |
 | `AircraftSimulator` | Génération mixte, activation progressive, progression métrique, suivi de l’itinéraire et raccordement après écart |
 | `TrafficScheduler` | Répartition déterministe arrivées/départs, heures prévues et espacement des origines réutilisées |
@@ -119,7 +115,6 @@ npm.cmd run build
 
 Les tests couvrent A* contre Dijkstra, mouvements exacts sur les segments, sens conditionnels, virages, absence de raccourcis par les stands, points de clairance, fournisseurs externes et scénarios LFPG jusqu’à 100 avions. Ils vérifient aussi la répartition des horaires et des mouvements, l’exclusion des avions programmés des prévisions actives et le suivi après une erreur de roulage. Ils exécutent le bundle de production et ses contrôles dans un DOM simulé. `validate` conserve la validation géométrique indépendante ; `validate:operations` vérifie le moteur contraint dans les deux configurations et les trois mouvements. Résultats : [VALIDATION.md](docs/VALIDATION.md) et [OPERATIONS-VALIDATION.md](docs/OPERATIONS-VALIDATION.md). Les rendus géographiques sont des inspections séparées, pas des captures de navigateur.
 
-`validate:flows` porte sur le mode MANEX actif : orientations physiques de F/N/E, accès nominaux, axes parcourus, comparaison avec le calcul précédent et cohérence de la simulation. Résultats : [FLOW-VALIDATION.md](docs/FLOW-VALIDATION.md). Les rapports géométriques et opérationnels antérieurs servent de référence séparée ; ils ne constituent pas une validation du nouveau choix de cheminement.
 
 `validate:route-quality` vérifie le transit hors des baies de dégivrage, la continuité des axes et les régressions de parcours signalées. Résultats : [ROUTE-QUALITY-VALIDATION.md](docs/ROUTE-QUALITY-VALIDATION.md), [traces avant/après](docs/route-quality-review-routes.json) et [planche de revue](docs/lfpg-route-quality-review.png). Le cas B12 → 26R conserve les sens de référence : la GMC face ouest indique N vers le nord sous G3 ; le trajet demandé vers le sud est donc recherché via F et ses raccordements, sans inverser N.
 
