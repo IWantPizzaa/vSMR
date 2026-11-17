@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "integrations/VsidBridgeClient.hpp"
+#include "integrations/CdmBridgeClient.hpp"
 #include "insets/InsetWindow.hpp"
 #include "insets/AvisoWindowPlacement.hpp"
 #include "plugin/Plugin.hpp"
@@ -119,6 +120,12 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		RequestRefresh();
 		return true;
 	}
+	if (objectType == RUNTIME_MENU_POPUP && std::strncmp(id, "runtime.cdm.", 12) == 0 &&
+		(button == BUTTON_LEFT || button == BUTTON_RIGHT))
+	{
+		if (!fromHostScreenObject) return true;
+		return HandleRuntimeCdmClick(id, button);
+	}
 	if (button != BUTTON_LEFT)
 	{
 		if (objectType == RUNTIME_MENU_POPUP || std::strcmp(id, "runtime.drag") == 0)
@@ -169,6 +176,8 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 			togglePopup(RuntimeMenuPopup::Profile);
 		else if (std::strcmp(id, "runtime.button.datalink") == 0)
 			togglePopup(RuntimeMenuPopup::Datalink);
+		else if (std::strcmp(id, "runtime.button.cdm") == 0)
+			togglePopup(RuntimeMenuPopup::Cdm);
 		else if (std::strcmp(id, "runtime.button.control-center") == 0)
 		{
 			CloseRuntimeMenuPopup();
@@ -194,14 +203,35 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	if (std::strcmp(id, "runtime.popup") == 0 || std::strcmp(id, "runtime.popup.cpdlc") == 0)
 		return true;
 
+	if (std::strncmp(id, "runtime.folder.", 15) == 0)
+	{
+		size_t folderIndex = 0;
+		const auto groups = GetAvisoGroups();
+		if (ParseIndexedObjectId(id, "runtime.folder.", folderIndex) && folderIndex < groups.size())
+		{
+			if (RuntimeMenuGroupFolder != groups[folderIndex].folder) RuntimeMenuGroupFolderScroll = 0;
+			RuntimeMenuGroupFolder = groups[folderIndex].folder;
+			RuntimeMenuGroupFolderTop = area.top;
+			RequestRefresh();
+		}
+		return true;
+	}
+	if (std::strcmp(id, "runtime.folder-page.previous") == 0 || std::strcmp(id, "runtime.folder-page.next") == 0)
+	{
+		RuntimeMenuGroupFolderScroll = (std::max)(0, RuntimeMenuGroupFolderScroll + (std::strcmp(id, "runtime.folder-page.next") == 0 ? 1 : -1));
+		RequestRefresh();
+		return true;
+	}
 	if (std::strcmp(id, "runtime.page.previous") == 0)
 	{
+		RuntimeMenuGroupFolder.clear();
 		RuntimeMenuPopupScrollOffset = (std::max)(0, RuntimeMenuPopupScrollOffset - 5);
 		RequestRefresh();
 		return true;
 	}
 	if (std::strcmp(id, "runtime.page.next") == 0)
 	{
+		RuntimeMenuGroupFolder.clear();
 		RuntimeMenuPopupScrollOffset += 5;
 		RequestRefresh();
 		return true;
@@ -226,6 +256,43 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 void CSMRRadar::SyncRuntimeMenuControlCenter(const std::string& reason)
 {
 	if (VsmrControlCenterDialog != nullptr) VsmrControlCenterDialog->SyncFromRadar(reason);
+}
+
+bool CSMRRadar::HandleRuntimeCdmClick(const char* id, int button)
+{
+	if (std::strcmp(id, "runtime.cdm.page.previous") == 0 || std::strcmp(id, "runtime.cdm.page.next") == 0)
+	{
+		if (button == BUTTON_LEFT)
+			RuntimeMenuPopupScrollOffset = (std::max)(0, RuntimeMenuPopupScrollOffset +
+				(std::strcmp(id, "runtime.cdm.page.next") == 0 ? 12 : -12));
+		RequestRefresh();
+		return true;
+	}
+	using VsmrCdm::CommandAction;
+	CommandAction action{};
+	std::string airport = getActiveAirport();
+	constexpr char airportPrefix[] = "runtime.cdm.airport.";
+	if (std::strncmp(id, airportPrefix, sizeof(airportPrefix) - 1) == 0)
+	{
+		airport = id + sizeof(airportPrefix) - 1;
+		const auto state = VsmrCdm::GetInterfaceState();
+		if (!state.panel) return true;
+		const auto found = std::find_if(state.panel->airports.begin(), state.panel->airports.end(),
+			[&](const VsmrCdm::AirportStatus& value) { return value.icao == airport; });
+		if (found == state.panel->airports.end()) return true;
+		action = button == BUTTON_RIGHT ? CommandAction::Capacity : found->local ? CommandAction::Slave : CommandAction::Master;
+	}
+	else if (button != BUTTON_LEFT) return true;
+	else if (std::strcmp(id, "runtime.cdm.atfcm") == 0) action = CommandAction::Atfcm;
+	else if (std::strcmp(id, "runtime.cdm.capacity") == 0) action = CommandAction::Capacity;
+	else if (std::strcmp(id, "runtime.cdm.native-panel") == 0) action = CommandAction::NativePanel;
+	else if (std::strcmp(id, "runtime.cdm.refresh") == 0) action = CommandAction::Refresh;
+	else return true;
+	std::string error;
+	if (!VsmrCdm::SubmitCommand(action, VsmrCdm::RequiresAirport(action) ? airport : "", error))
+		GetPlugIn()->DisplayUserMessage("vSMR", "CDM", error.c_str(), true, true, true, false, false);
+	RequestRefresh();
+	return true;
 }
 
 bool CSMRRadar::HandleRuntimeDatalinkClick(const char* id, RECT /*area: no PDC field is edited in place any more*/)
@@ -625,12 +692,14 @@ bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, 
 		(ActiveRuntimeMenuPopup != RuntimeMenuPopup::None &&
 			(RuntimeMenuPopupArea.PtInRect(point) != FALSE ||
 				RuntimeMenuSecondaryPopupArea.PtInRect(point) != FALSE));
-	if (message == WM_LBUTTONDOWN || message == WM_LBUTTONUP ||
-		message == WM_LBUTTONDBLCLK)
+	if (message == WM_LBUTTONDOWN || message == WM_LBUTTONUP || message == WM_LBUTTONDBLCLK ||
+		message == WM_RBUTTONDOWN || message == WM_RBUTTONUP || message == WM_RBUTTONDBLCLK)
 	{
 		for (const RuntimeMenuHitTarget& target : RuntimeMenuHitTargets)
 		{
 			if (VsmrRuntimeMenuInput::NeedsHostClickContext(target.id) &&
+				((message == WM_LBUTTONDOWN || message == WM_LBUTTONUP || message == WM_LBUTTONDBLCLK) ||
+					target.id.rfind("runtime.cdm.", 0) == 0) &&
 				::PtInRect(&target.area, point))
 			{
 				// Let EuroScope dispatch its registered screen object. Its
@@ -697,6 +766,18 @@ bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, 
 	}
 	if (message == WM_MOUSEMOVE && overMenu)
 	{
+		for (auto it = RuntimeMenuHitTargets.rbegin(); it != RuntimeMenuHitTargets.rend(); ++it)
+		{
+			if (!::PtInRect(&it->area, point)) continue;
+			if (it->id.rfind("runtime.folder.", 0) == 0)
+				HandleRuntimeMenuClick(it->type, it->id.c_str(), point, it->area, BUTTON_LEFT, false);
+			else if (it->id.rfind("runtime.group.", 0) == 0 && RuntimeMenuPopupArea.PtInRect(point) && !RuntimeMenuGroupFolder.empty())
+			{
+				RuntimeMenuGroupFolder.clear();
+				RequestRefresh();
+			}
+			break;
+		}
 		if (mouseLocation.x != point.x || mouseLocation.y != point.y)
 		{
 			mouseLocation = point;
@@ -731,6 +812,8 @@ bool CSMRRadar::HandleOverlayMouseMessage(HWND sourceWindow, POINT screenPoint, 
 
 void CSMRRadar::CloseRuntimeMenuPopup()
 {
+	RuntimeMenuGroupFolder.clear();
+	RuntimeMenuGroupFolderScroll = 0;
 	if (RuntimeInlineEditType == RuntimeInlineEditKind::Preset)
 		FinishRuntimeInlineEdit(false);
 	if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::None)

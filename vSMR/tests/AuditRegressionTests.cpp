@@ -10,6 +10,8 @@
 #include "safety/RunwayTraffic.hpp"
 #include "config/ProfileNormalization.hpp"
 #include "tags/TagDataFormatting.hpp"
+#include "aircraft/Language.hpp"
+#include "radar/RadarUiSupport.hpp"
 #include "rendering/TargetProjection.hpp"
 #include "platform/windows/network/HttpHelper.hpp"
 #include "updater/UpdaterVerification.hpp"
@@ -139,9 +141,11 @@ void TestTagDataFormatting(std::vector<std::string>& failures)
 	tagInput.assignedSquawk = "1000"; tagInput.squawk = "2000";
 	tagInput.departureRunway = "09L"; tagInput.arrivalRunway = "27R";
 	tagInput.sid = "BUBLI1A"; tagInput.scratchpad = "STAND=B12";
+	tagInput.language = VsmrLanguage::Read("PBN/B2 RMK/TCAS /FR");
 	tagInput.groundSpeed = 25; tagInput.flightLevel = 4000; tagInput.pressureAltitude = 4100; tagInput.transitionAltitude = 5000;
 	tagInput.altitudeDelta = 50; tagInput.clearance = tagInput.lineup = true;
 	VsmrTags::FormatTagData(tagInput, formatted);
+	check(formatted.at("language") == "/FR", "tag language uses the shared remarks parser used by the list item");
 	check(formatted.at("callsign") == "[AFR123/r]" && formatted.at("actype") == "A320" && formatted.at("sctype") == "A1000",
 		"callsign ownership, communication and squawk-error formatting survive extraction");
 	check(formatted.at("seprwy") == "09L" && formatted.at("srvrwy") == "25" && formatted.at("sate") == "B12",
@@ -320,6 +324,22 @@ std::vector<std::string> RunAuditRegressionTests()
 	target.tag.tokens["uk_stand"] = "A12";
 	VsmrTags::UpdateTagVariant(standDefinitions.Get(standLabels, "arrival", "default", false), target, false, standTag);
 	check(standTag.lines[0].elements[1].text == "A12", "assigned Ramp Agent stand replaces the placeholder");
+	rapidjson::Document languageLabels;
+	VsmrJson::ParseDocument(languageLabels, R"json({"departure":{"definition":[["language"]]}})json");
+	VsmrTags::DefinitionCache languageDefinitions;
+	const auto& languageDefinition = languageDefinitions.Get(languageLabels, "departure", "default", false);
+	target.tag.tokens["language"] = "";
+	auto languageTag = VsmrTags::BuildTagVariant(languageDefinition, target, false);
+	check(languageTag.lines.size() == 1 && languageTag.lines[0].elements.size() == 1 &&
+		languageTag.lines[0].elements[0].text == "LANG" && languageTag.lines[0].elements[0].action == TAG_CITEM_LANGUAGE,
+		"unset language remains a visible clickable menu in normal tags");
+	target.tag.tokens["language"] = "/EN";
+	VsmrTags::UpdateTagVariant(languageDefinition, target, false, languageTag);
+	check(languageTag.lines[0].elements[0].text == "/EN" && languageTag.lines[0].elements[0].action == TAG_CITEM_LANGUAGE,
+		"changed remarks update the cached language cell without losing its menu");
+	target.tag.tokens["language"] = "";
+	VsmrTags::UpdateTagVariant(languageDefinition, target, false, languageTag);
+	check(languageTag.lines[0].elements[0].text == "LANG", "clearing language restores its clickable placeholder");
 	target.tag.tokens["uk_stand"] = "";
 	if (normal.lines.size() == 1 && normal.lines[0].elements.size() == 5)
 	{

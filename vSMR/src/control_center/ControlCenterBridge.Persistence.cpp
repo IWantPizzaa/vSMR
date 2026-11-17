@@ -53,6 +53,10 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 	bool stagedKeepAvisoWindowPlacement = Owner->KeepAvisoWindowPlacement;
 	bool hasStagedRdfEnabled = false;
 	bool stagedRdfEnabled = VsmrRdf::GetStatus().enabled;
+	const auto* standPlugin = OwnerPlugin();
+	bool stagedHighlightArrivalStand = standPlugin == nullptr || standPlugin->HighlightArrivalStandEnabled();
+	bool stagedResetStatusAtStand = standPlugin == nullptr || standPlugin->ResetStatusAtStandEnabled();
+	bool hasStagedStandOptions = false;
 	bool hasStagedAvisoColorPalette = false;
 	std::string stagedAvisoColorPalette = Owner->GetAvisoColorPalette();
 	bool hasStagedUiColorTheme = false;
@@ -104,6 +108,14 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 			}
 			hasStagedRdfEnabled = true;
 			stagedRdfEnabled = settings["rdfEnabled"].GetBool();
+		}
+		for (const char* key : { "highlightArrivalStand", "resetStatusAtStand" })
+		{
+			if (!settings.HasMember(key)) continue;
+			if (!settings[key].IsBool()) { error = "Stand options must be boolean settings."; return false; }
+			hasStagedStandOptions = true;
+			if (strcmp(key, "highlightArrivalStand") == 0) stagedHighlightArrivalStand = settings[key].GetBool();
+			else stagedResetStatusAtStand = settings[key].GetBool();
 		}
 		if (settings.HasMember("avisoColorPalette"))
 		{
@@ -513,6 +525,8 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 	// live or persisted display state.
 	if (hasStagedRdfEnabled)
 		ApplyRdfEnabled(stagedRdfEnabled);
+	if (hasStagedStandOptions)
+		if (auto* plugin = OwnerPlugin()) plugin->SetStandOptions(stagedHighlightArrivalStand, stagedResetStatusAtStand);
 	if (hasStagedShowNorthIndicator)
 	{
 		Owner->ShowNorthIndicator = stagedShowNorthIndicator;

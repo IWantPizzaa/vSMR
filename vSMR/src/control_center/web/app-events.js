@@ -572,6 +572,7 @@
       state.ui.avisoGroupMemberSearch = event.target.value;
       renderAvisoGroupEditor();
     });
+    $("#avisoGroupFolder").addEventListener("input", () => captureAvisoGroupDraft());
     $("#avisoGroupName").addEventListener("input", event => {
       event.target.setCustomValidity(event.target.value.trim() ? "" : "Enter a group name");
       const draft = captureAvisoGroupDraft();

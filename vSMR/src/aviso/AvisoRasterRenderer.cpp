@@ -1,4 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "aviso/StandHighlight.hpp"
+#include "aviso/AvisoPaletteGeometry.hpp"
 #include "aviso/AvisoRasterRenderer.hpp"
 #include "aviso/AvisoRasterGeometry.hpp"
 #include "aviso/AvisoRenderScene.hpp"
@@ -363,7 +365,7 @@ std::unique_ptr<AvisoRasterRenderResult> VsmrAviso::AvisoRasterRenderer::Render(
 		const AvisoFeature& feature = (*request.features)[featureIndex];
 		if (renderCancelled())
 			return nullptr;
-		if (!IsAvisoGroupedItemVisible(feature.groupIds, request.groupVisibility.get()))
+		if (!GeometryVisible(feature.geometryPalettes, request.colorPalette) || !IsAvisoGroupedItemVisible(feature.groupIds, request.groupVisibility.get()))
 			continue;
 		if (feature.minimumZoomLevel > 0 && request.viewportZoomLevel < feature.minimumZoomLevel)
 			continue;
@@ -512,7 +514,7 @@ std::unique_ptr<AvisoRasterRenderResult> VsmrAviso::AvisoRasterRenderer::Render(
 			const AvisoLabel& label = (*request.labels)[labelIndex];
 			if (renderCancelled())
 				return nullptr;
-			if (!IsAvisoGroupedItemVisible(label.groupIds, request.groupVisibility.get()))
+			if (!GeometryVisible(label.geometryPalettes, request.colorPalette) || !IsAvisoGroupedItemVisible(label.groupIds, request.groupVisibility.get()))
 				continue;
 
 			const std::wstring* renderedText = &label.text;
@@ -588,9 +590,7 @@ std::unique_ptr<AvisoRasterRenderResult> VsmrAviso::AvisoRasterRenderer::Render(
 			const Color labelHaloColor = request.colorPalette == "real"
 				? label.realHaloColor
 				: request.colorPalette == "light" ? label.lightHaloColor : label.haloColor;
-			const Color labelTextColor = request.colorPalette == "real"
-				? label.realTextColor
-				: request.colorPalette == "light" ? label.lightTextColor : label.textColor;
+			const Color labelTextColor = StandLabelTextColor(label, request);
 			if (label.haloWidth > 0.0f && labelHaloColor.GetAlpha() > 0)
 			{
 				rasterGraphics.DrawPath(impl_->Stroke(labelHaloColor,

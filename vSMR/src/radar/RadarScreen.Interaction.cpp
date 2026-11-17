@@ -1276,7 +1276,7 @@ void CSMRRadar::OnClickScreenObjectImpl(int ObjectType, const char * sObjectId, 
 	// target is correlated and ready for EuroScope's Assume/Handoff menu.
 	if ((Button == BUTTON_LEFT || Button == BUTTON_RIGHT) && hasObjectId &&
 		(ObjectType == DRAWING_TAG ||
-			(ObjectType >= TAG_CITEM_NO && ObjectType <= TAG_CITEM_READY_STARTUP)))
+			(ObjectType >= TAG_CITEM_NO && ObjectType <= TAG_CITEM_LANGUAGE)))
 	{
 		const VsmrScene::RadarScene* scene = GetCurrentRadarScene();
 		const VsmrScene::Target* sceneTarget = scene != nullptr ? scene->FindTarget(objectId) : nullptr;
@@ -1343,6 +1343,7 @@ void CSMRRadar::OnClickScreenObjectImpl(int ObjectType, const char * sObjectId, 
 		openPopupListWithClose("vSMR ground status", [&]()
 		{
 			GetPlugIn()->AddPopupListElement("No Status", "", VSMR_GROUND_STATUS_SELECT, !rawParked && (currentStatus == GroundStateCategory::Gate || currentStatus == GroundStateCategory::Nsts || currentStatus == GroundStateCategory::Unknown));
+			GetPlugIn()->AddPopupListElement("Cross", "", VSMR_GROUND_STATUS_SELECT, currentStatus == GroundStateCategory::Cross);
 			if (isDeparture)
 			{
 				GetPlugIn()->AddPopupListElement("Startup", "", VSMR_GROUND_STATUS_SELECT, currentStatus == GroundStateCategory::Stup);
@@ -1395,7 +1396,7 @@ void CSMRRadar::OnClickScreenObjectImpl(int ObjectType, const char * sObjectId, 
 		}
 	};
 	if ((Button == BUTTON_LEFT || Button == BUTTON_RIGHT) &&
-		ObjectType == TAG_CITEM_HOLDINGPOINT)
+		(ObjectType == TAG_CITEM_HOLDINGPOINT || ObjectType == TAG_CITEM_LANGUAGE))
 	{
 		CRadarTarget target = selectAseAndGetTarget();
 		CFlightPlan flightPlan = target.IsValid()
@@ -1406,7 +1407,7 @@ void CSMRRadar::OnClickScreenObjectImpl(int ObjectType, const char * sObjectId, 
 			// This is a vSMR-rendered tag cell, so dispatch the vSMR function
 			// directly. StartTagFunction is intended for EuroScope-owned tag
 			// items and does not reliably open an edit from this screen object.
-			GetPlugIn()->OnFunctionCall(TAG_FUNC_HOLDING_POINT_EDIT, "", Pt, Area);
+			GetPlugIn()->OnFunctionCall(ObjectType == TAG_CITEM_LANGUAGE ? TAG_FUNC_LANGUAGE_EDIT : TAG_FUNC_HOLDING_POINT_EDIT, "", Pt, Area);
 		}
 		RequestRefresh();
 		return;

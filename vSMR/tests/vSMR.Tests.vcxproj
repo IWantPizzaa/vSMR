@@ -106,6 +106,8 @@
     <ClCompile Include="..\src\updater\UpdaterTransport.cpp" />
     <ClCompile Include="SharedRenderingTests.cpp" />
     <ClCompile Include="TagColorRuleTests.cpp" />
+    <ClCompile Include="StandArrivalTests.cpp" />
+    <ClCompile Include="..\src\aircraft\StandArrival.cpp" />
     <ClCompile Include="UpdaterUrlPolicyTests.cpp" />
     <ClCompile Include="..\src\aviso\AvisoDocumentModel.cpp" />
     <ClCompile Include="..\src\aviso\AvisoFeatureMetadata.cpp" />
@@ -144,6 +146,7 @@
     <ClInclude Include="SharedRenderingTests.hpp" />
     <ClInclude Include="..\src\radar\InsetHostPolicy.hpp" />
     <ClInclude Include="TagColorRuleTests.hpp" />
+    <ClInclude Include="StandArrivalTests.hpp" />
     <ClInclude Include="UpdaterUrlPolicyTests.hpp" />
     <ClInclude Include="..\src\aircraft\GroundState.hpp" />
     <ClInclude Include="..\src\aircraft\HoldingPoint.hpp" />

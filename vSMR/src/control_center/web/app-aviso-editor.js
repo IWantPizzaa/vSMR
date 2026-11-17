@@ -431,6 +431,7 @@
     }
     const name = $("#avisoGroupName");
     if (name) drafts.avisoGroup.data.name = name.value;
+    drafts.avisoGroup.data.folder = $("#avisoGroupFolder")?.value.trim() || "";
     return drafts.avisoGroup;
   }
 
@@ -454,6 +455,8 @@
     const group = selectedAvisoGroup();
     const editor = $(".aviso-group-editor");
     const nameControl = $("#avisoGroupName");
+    $("#avisoGroupFolder").disabled = !group;
+    $("#avisoGroupFolder").value = group ? (drafts.avisoGroup?.id === group.id ? drafts.avisoGroup.data.folder || "" : group.folder || "") : "";
     nameControl?.setCustomValidity("");
     if (!group) {
       $("#avisoGroupCaption").textContent = "No group selected";
@@ -502,7 +505,7 @@
   function duplicateAvisoGroup() {
     const source = selectedAvisoGroup();
     if (!source) return;
-    const copy = { id: uniqueAvisoGroupId(`${source.id}-copy`), name: `${source.name} copy`, visible: source.visible !== false, accent: normalizeHex(source.accent, "#84b7d5") };
+    const copy = { id: uniqueAvisoGroupId(`${source.id}-copy`), name: `${source.name} copy`, folder: source.folder || "", visible: source.visible !== false, accent: normalizeHex(source.accent, "#84b7d5") };
     avisoGroups().splice(avisoGroups().indexOf(source) + 1, 0, copy);
     avisoFeatures().forEach(feature => {
       if (featureGroupIds(feature).includes(source.id)) setFeatureGroupMembership(feature, copy.id, true);
@@ -541,6 +544,7 @@
     }
     $("#avisoGroupName")?.setCustomValidity("");
     group.name = name;
+    group.folder = String(draft.data.folder || "").trim();
     group.visible = draft.data.visible !== false;
     group.accent = normalizeHex(draft.data.accent, group.accent || "#84b7d5");
     clearUnappliedEditorSection($("#avisoGroupName"));

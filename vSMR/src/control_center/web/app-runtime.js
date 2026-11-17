@@ -12,6 +12,12 @@
 
 
 
+  function runtimePaletteGroups() {
+    const palette = normalizeAvisoColorPalette(state.settings.avisoColorPalette);
+    return avisoGroups().filter(group => !Array.isArray(group.geometry_palettes) ||
+      group.geometry_palettes.includes(palette));
+  }
+
   function featureGroupIds(feature) {
     const properties = feature?.properties || {};
     let ids = [];
@@ -170,7 +176,7 @@
     applyUiTheme();
     const menu = $("#runtimeMenu");
     if (!menu || HOST_MODE) return;
-    const groups = avisoGroups();
+    const groups = runtimePaletteGroups();
     const visibleGroups = groups.filter(group => group.visible !== false).length;
     const profile = activeProfile();
     const mode = activeModeName();
@@ -294,7 +300,7 @@
     }
 
     title.textContent = "Groups";
-    const groupRows = avisoGroups().map(group => {
+    const groupRows = runtimePaletteGroups().map(group => {
       const visible = group.visible !== false;
       return `<button type="button" class="${uiListRowClass("runtime", false, false, `runtime-choice-row runtime-compact-row ${visible ? "" : "muted"}`)}" data-runtime-group="${escapeHtml(group.id)}">${runtimeVisibilityIcon(visible)}<strong class="ui-list__label runtime-row-label">${escapeHtml(group.name)}</strong></button>`;
     }).join("");

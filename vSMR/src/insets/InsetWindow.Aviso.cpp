@@ -766,6 +766,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	request.path = path;
 	request.features = featureSnapshot;
 	request.labels = labelSnapshot;
+	request.highlightedStand = radar_screen->GetSelectedArrivalStandKey();
 	request.scene = renderScene;
 	request.preciseProjection = VsmrAviso::BilinearProjection::FromCorners(bounds,
 		projection.Project({ displayMinLon, displayMaxLat }), projection.Project({ displayMaxLon, displayMaxLat }),

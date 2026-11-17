@@ -56,13 +56,16 @@ namespace VsmrRadarTypes
 
 	struct AvisoGroup
 	{
+		unsigned geometryPalettes = 7U;
 		std::string id;
 		std::string name;
 		bool visible = true;
+		std::string folder;
 	};
 
 	struct AvisoFeature
 	{
+		unsigned geometryPalettes = 7U;
 		bool polygon = false;
 		bool polygonOutline = false;
 		bool lightPolygonOutline = false;
@@ -87,6 +90,7 @@ namespace VsmrRadarTypes
 
 	struct AvisoLabel
 	{
+		unsigned geometryPalettes = 7U;
 		AvisoPoint position;
 		int sourceFeatureIndex = -1;
 		std::string sourceFeatureId;
@@ -94,6 +98,7 @@ namespace VsmrRadarTypes
 		std::wstring text;
 		std::wstring fontFamily = L"Arial";
 		std::string labelClass;
+		std::string standKey;
 		std::string textAnchor = "center";
 		Gdiplus::Color textColor = Gdiplus::Color(255, 128, 128, 128);
 		Gdiplus::Color haloColor = Gdiplus::Color(255, 0, 0, 0);
@@ -171,6 +176,7 @@ namespace VsmrRadarTypes
 		std::optional<VsmrAviso::BilinearProjection> preciseProjection;
 		std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
 		std::string colorPalette = "dark";
+		std::string highlightedStand;
 		// Only fully opaque backgrounds are baked in; translucent viewports keep
 		// their transparent overlay and composite over EuroScope on the UI thread.
 		Gdiplus::Color backgroundColor = Gdiplus::Color(0, 0, 0, 0);
@@ -250,6 +256,7 @@ namespace VsmrRadarTypes
 		Insets,
 		Profile,
 		Datalink,
+		Cdm,
 		RecentAirports
 	};
 

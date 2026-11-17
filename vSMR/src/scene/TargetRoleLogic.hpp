@@ -2,6 +2,11 @@
 
 namespace VsmrTargetRoleLogic
 {
+	constexpr bool HasUnknownAirportGroundRole(bool airborne, bool correlated, bool receivedPlan,
+		bool departure, bool arrival) noexcept
+	{
+		return !airborne && correlated && receivedPlan && !departure && !arrival;
+	}
 	inline constexpr int ArrivalAirborneThresholdKt = 40;
 	inline constexpr int DefaultAirborneThresholdKt = 50;
 

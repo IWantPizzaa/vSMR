@@ -114,6 +114,8 @@
     <ClCompile Include="src\plugin\PluginLifecycle.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\PluginRuntimeAudio.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\PluginTimer.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\plugin\PluginStandTracking.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\aircraft\StandArrival.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\PluginControllerCallbacks.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\PluginCommandHandler.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\PluginTagCallbacks.cpp"><Filter>Source</Filter></ClCompile>
@@ -158,7 +160,11 @@
     <ClInclude Include="src\tags\TagDataFormatting.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\CallsignLookup.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\GroundState.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aircraft\StandArrival.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\StandHighlight.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\AvisoPaletteGeometry.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\HoldingPoint.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aircraft\Language.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\app\PluginEntry.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\bootstrap\RuntimeApi.hpp"><Filter>Bootstrap</Filter></ClInclude>
     <ClInclude Include="src\bootstrap\RuntimeContext.hpp"><Filter>Bootstrap</Filter></ClInclude>
@@ -201,6 +207,7 @@
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\CdmBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\CdmBridgeData.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\CdmInterfaceData.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\DmanBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\PluginBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\PluginBridgeReads.hpp"><Filter>Headers</Filter></ClInclude>

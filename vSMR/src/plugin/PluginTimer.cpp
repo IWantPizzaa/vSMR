@@ -245,6 +245,7 @@ void CSMRPlugin::OnTimerImpl(int Counter)
 	// read by the PDC cycle below
 	VsmrDman::Poll(bridgeTick);
 	VsmrPluginBridge::EndTick(*this);
+	UpdateArrivalsAtStands();
 	if (vsidChanged || cdmChanged || rampAgentChanged)
 		FlightDataRefreshPending.store(true, std::memory_order_release);
 

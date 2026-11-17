@@ -105,6 +105,8 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 	RegisterTagItemFunction("Datalink menu", TAG_FUNC_DATALINK_MENU);
 	RegisterTagItemType("Holding Point", TAG_ITEM_HOLDING_POINT);
 	RegisterTagItemFunction("Holding Point", TAG_FUNC_HOLDING_POINT_EDIT);
+	RegisterTagItemType("Language", TAG_ITEM_LANGUAGE);
+	RegisterTagItemFunction("Language", TAG_FUNC_LANGUAGE_EDIT);
 	RegisterTagItemType("RDF", TAG_ITEM_RDF);
 	RegisterTagItemFunction("RDF reset", TAG_FUNC_RDF_RESET);
 
@@ -143,6 +145,10 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 
 	bool rdfEnabled = true;
 	const char* p_value = nullptr;
+	if ((p_value = GetDataFromSettings("HighlightArrivalStand")) != nullptr)
+		HighlightArrivalStand = strcmp(p_value, "0") != 0;
+	if ((p_value = GetDataFromSettings("ResetStatusAtStand")) != nullptr)
+		ResetStatusAtStand = strcmp(p_value, "0") != 0;
 	if ((p_value = GetDataFromSettings("rdf_enabled")) != NULL)
 		rdfEnabled = atoi(p_value) != 0;
 	VsmrRdf::Start(this, rdfEnabled);
@@ -152,6 +158,13 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 	// to runtime callbacks or shutdown recovery.
 	ActivePluginInstance.store(this, std::memory_order_release);
 	VsmrVsid::SetUiRefreshCallback([] {
+		if (PluginShutdownRequested.load(std::memory_order_relaxed))
+			return;
+		for (CSMRRadar* radar : RadarScreensOpened)
+			if (radar != nullptr && !radar->IsShutdownRequested())
+				radar->RequestRefresh();
+	});
+	VsmrCdm::SetUiRefreshCallback([] {
 		if (PluginShutdownRequested.load(std::memory_order_relaxed))
 			return;
 		for (CSMRRadar* radar : RadarScreensOpened)
