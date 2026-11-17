@@ -76,7 +76,7 @@ public:
     }
     bool Submit(int action, const std::string& airport, std::uint64_t& id, std::string& error)
     {
-        if (action < 0 || action > 14 || (airport.size() != 4 && !airport.empty()) ||
+        if ((action < 0 || (action > 14 && (action < 100 || action > 105))) || (airport.size() != 4 && !airport.empty()) ||
             !std::all_of(airport.begin(), airport.end(), [](char c) { return (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'); })) {
             error = "Invalid Proxy vSID action or airport."; return false;
         }

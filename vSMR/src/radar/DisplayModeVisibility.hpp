@@ -48,6 +48,7 @@ namespace VsmrDisplayModeVisibility
 		{
 		case GroundStateCategory::Push: return statuses.push;
 		case GroundStateCategory::Stup: return statuses.startup;
+		case GroundStateCategory::Cross:
 		case GroundStateCategory::Taxi: return statuses.taxi;
 		case GroundStateCategory::Lnup: return statuses.lineup;
 		case GroundStateCategory::Depa: return statuses.departure;

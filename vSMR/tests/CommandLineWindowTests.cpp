@@ -12,6 +12,7 @@
 namespace
 {
 	namespace Adapter = VsmrCommandLineWindowTests;
+	Adapter::Owner TestOwner = Adapter::Owner::Vsid;
 	int Completed = 0;
 	int EnterCount = 0;
 	int Remaining = 0;
@@ -19,12 +20,12 @@ namespace
 
 	bool Progress()
 	{
-		const auto state = Adapter::Poll(Adapter::Owner::Vsid);
+		const auto state = Adapter::Poll(TestOwner);
 		if (state != Adapter::SubmissionStatus::Confirmed)
 			return false;
 		++Completed;
 		if (--Remaining > 0)
-			FollowupFailed = !Adapter::Begin(Adapter::Owner::Vsid, ".test next", nullptr, Progress);
+			FollowupFailed = !Adapter::Begin(TestOwner, ".test next", nullptr, Progress);
 		return true;
 	}
 
@@ -86,6 +87,15 @@ void RunCommandLineWindowTests(std::vector<std::string>& failures)
 			"native progress timer completes every command in order without duplicates");
 		check(!Adapter::IsBusy(), "real command adapter unlocks after completion");
 	}
+	TestOwner = Adapter::Owner::Cdm;
+	Completed = 0; Remaining = 1; EnterCount = 0;
+	check(Adapter::Begin(Adapter::Owner::Cdm, ".test cdm", nullptr, Progress), "CDM uses the shared command adapter");
+	check(Adapter::Poll(Adapter::Owner::Vsid) == Adapter::SubmissionStatus::Idle, "vSID cannot consume CDM command completion");
+	Adapter::Cancel(Adapter::Owner::Vsid);
+	check(Adapter::IsBusy(), "vSID cancellation leaves a pending CDM command intact");
+	PumpFor(300);
+	check(Completed == 1 && EnterCount == 1 && !Adapter::IsBusy(), "CDM gets the same fast timer completion without duplicate Enter");
+	TestOwner = Adapter::Owner::Vsid;
 	check(Adapter::Begin(Adapter::Owner::Vsid, ".test cancel", nullptr, Progress), "start cancellation test");
 	Adapter::Cancel(Adapter::Owner::Vsid);
 	const int completedBeforeCancel = Completed;

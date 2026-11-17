@@ -572,6 +572,7 @@ bool VsmrControlCenterBridgeImpl::HandleAvisoGroups(
 			return false;
 		}
 
+		group.folder = ReadString(item, "folder");
 		group.name = ReadString(item, "name");
 		if (group.name.empty())
 			group.name = group.id;

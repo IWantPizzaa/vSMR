@@ -10,6 +10,8 @@
 #include "aviso/AvisoDocumentModel.hpp"
 #include "aviso/AvisoBundledGroups.hpp"
 #include "aviso/AvisoOverrides.hpp"
+#include "aviso/AvisoPaletteGeometry.hpp"
+#include "aircraft/StandArrival.hpp"
 
 #include <cctype>
 #include <fstream>
@@ -1035,6 +1037,11 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 				continue;
 			const char* name = GetAvisoStringProperty(&groupValue, { "name", "label" });
 			addParsedGroup(id, name != nullptr ? name : id, IsAvisoFeatureVisible(&groupValue));
+			if (!parsedGroups.empty() && parsedGroups.back().id == id)
+				parsedGroups.back().geometryPalettes = VsmrAviso::GeometryPaletteMask(&groupValue);
+			const char* folder = GetAvisoStringProperty(&groupValue, { "folder", "section" });
+			if (folder != nullptr && !parsedGroups.empty() && parsedGroups.back().id == id)
+				parsedGroups.back().folder = TrimAirportCode(folder);
 		}
 	}
 	size_t polygonCount = 0;
@@ -1124,6 +1131,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 				continue;
 
 			AvisoLabel parsedLabel;
+			parsedLabel.geometryPalettes = VsmrAviso::GeometryPaletteMask(properties);
 			parsedLabel.position = { longitude, latitude };
 			parsedLabel.sourceFeatureIndex = static_cast<int>(i);
 			parsedLabel.sourceFeatureId = sourceFeatureId;
@@ -1135,6 +1143,11 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 			const char* labelClass = GetAvisoStringProperty(properties, { "label_class", "category", "section" });
 			if (labelClass != nullptr)
 				parsedLabel.labelClass = labelClass;
+			if (VsmrStand::IsStandLabel(parsedLabel.labelClass))
+			{
+				const char* airport = GetAvisoStringProperty(properties, { "airport" });
+				parsedLabel.standKey = VsmrStand::Key(airport != nullptr ? airport : getActiveAirport(), rawText);
+			}
 			const char* textAnchor = GetAvisoStringPropertyResolved(sharedPaint, properties, { "text-anchor" });
 			if (textAnchor != nullptr)
 				parsedLabel.textAnchor = textAnchor;
@@ -1157,6 +1170,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		}
 
 		AvisoFeature parsedFeature;
+		parsedFeature.geometryPalettes = VsmrAviso::GeometryPaletteMask(properties);
 		parsedFeature.sourceFeatureIndex = static_cast<int>(i);
 		parsedFeature.sourceFeatureId = sourceFeatureId;
 		parsedFeature.groupIds = groupIds;

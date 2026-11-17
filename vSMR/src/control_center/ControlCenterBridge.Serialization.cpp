@@ -379,6 +379,8 @@ void VsmrControlCenterBridgeImpl::BuildSettings(
 	// The RDF worker is plug-in wide, so the Control Center also reflects a state
 	// set through .smr rdf on|off.
 	settings.AddMember("rdfEnabled", VsmrRdf::GetStatus().enabled, allocator);
+	settings.AddMember("highlightArrivalStand", plugin == nullptr || plugin->HighlightArrivalStandEnabled(), allocator);
+	settings.AddMember("resetStatusAtStand", plugin == nullptr || plugin->ResetStatusAtStandEnabled(), allocator);
 	AddString(settings, "uiColorTheme", Owner->GetUiColorTheme(), allocator);
 	AddString(settings, "avisoColorPalette", Owner->GetAvisoColorPalette(), allocator);
 	rapidjson::Value avisoColorPalettes(rapidjson::kArrayType);
@@ -446,6 +448,7 @@ void VsmrControlCenterBridgeImpl::BuildRuntimeState(
 		rapidjson::Value item(rapidjson::kObjectType);
 		AddString(item, "id", group.id, allocator);
 		AddString(item, "name", group.name, allocator);
+		AddString(item, "folder", group.folder, allocator);
 		item.AddMember("visible", group.visible, allocator);
 		groups.PushBack(item, allocator);
 	}
@@ -556,6 +559,7 @@ void VsmrControlCenterBridgeImpl::SendAvisoState(const std::string& requestId)
 			if (!item.HasMember("id") && !item.HasMember("group_id"))
 				AddString(item, "id", group.id, aviso.GetAllocator());
 			SetStringMember(item, "name", group.name, aviso.GetAllocator());
+			SetStringMember(item, "folder", group.folder, aviso.GetAllocator());
 			SetBoolMember(item, "visible", group.visible, aviso.GetAllocator());
 			groups.PushBack(item, aviso.GetAllocator());
 		}

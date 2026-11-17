@@ -21,6 +21,7 @@ namespace
 		if (key == "uk_stand") return TAG_CITEM_UKSTAND;
 		if (key == "remark") return TAG_CITEM_REMARK;
 		if (key == "scratchpad") return TAG_CITEM_SCRATCHPAD;
+		if (key == "language") return TAG_CITEM_LANGUAGE;
 		if (key == "holdingpoint") return TAG_CITEM_HOLDINGPOINT;
 		if (key == "ready_startup") return TAG_CITEM_READY_STARTUP;
 		return TAG_CITEM_NO;
@@ -105,7 +106,7 @@ namespace
 
 	std::vector<VsmrTags::TextPart> CompileText(const std::string& text)
 	{
-		static constexpr std::string_view keys[] = { "event_booking", "ready_startup", "groundstatus", "holdingpoint", "flightlevel", "scratchpad", "clearance", "callsign", "systemid", "tendency", "uk_stand", "vsid_cfl", "vsid_rwy", "vsid_sid", "sqerror", "actype", "arvrwy", "deprwy", "origin", "remark", "sctype", "seprwy", "srvrwy", "aobt", "aort", "asat", "asid", "asrt", "atot", "ctot", "dest", "gate", "sate", "ssid", "tobt", "tsac", "tsat", "ttot", "wake", "ssr", "gs" };
+		static constexpr std::string_view keys[] = { "event_booking", "ready_startup", "language", "groundstatus", "holdingpoint", "flightlevel", "scratchpad", "clearance", "callsign", "systemid", "tendency", "uk_stand", "vsid_cfl", "vsid_rwy", "vsid_sid", "sqerror", "actype", "arvrwy", "deprwy", "origin", "remark", "sctype", "seprwy", "srvrwy", "aobt", "aort", "asat", "asid", "asrt", "atot", "ctot", "dest", "gate", "sate", "ssid", "tobt", "tsac", "tsat", "ttot", "wake", "ssr", "gs" };
 		std::vector<VsmrTags::TextPart> result;
 		std::string literal;
 		for (std::size_t offset = 0; offset < text.size();)
@@ -223,6 +224,7 @@ bool VsmrTags::UpdateTagVariant(const CompiledDefinition& definition,
 			}
 			if (!detailed && ToLowerAsciiCopy(element.token) == "scratchpad" && element.text == "...") element.text.clear();
 			if (detailed && element.action == TAG_CITEM_HOLDINGPOINT && element.text.empty()) element.text = "HP";
+			if (element.action == TAG_CITEM_LANGUAGE && element.text.empty() && target.hasFlightPlan && target.correlated) element.text = "LANG";
 			// Keep an unassigned stand clickable in both the main view and insets.
 			if (element.action == TAG_CITEM_UKSTAND && element.text.empty() && target.hasFlightPlan && target.correlated)
 				element.text = "-";

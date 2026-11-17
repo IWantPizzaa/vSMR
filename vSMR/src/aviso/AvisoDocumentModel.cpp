@@ -1617,7 +1617,7 @@ void AvisoDocumentModel::NormalizeSharedGeometry()
 	if (!Document.HasMember("metadata"))
 		Document.AddMember("metadata", rapidjson::Value(rapidjson::kObjectType), Document.GetAllocator());
 	auto& metadata = Document["metadata"];
-	if (metadata.IsObject())
+	if (metadata.IsObject() && ReadStringProperty(&metadata, "geometry_mode") != "palette_specific")
 	{
 		metadata.RemoveMember("geometry_mode");
 		metadata.AddMember("geometry_mode", "shared", Document.GetAllocator());

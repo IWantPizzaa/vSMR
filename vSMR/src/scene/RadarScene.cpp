@@ -127,6 +127,7 @@ namespace
 			return "default";
 		switch (target.groundState)
 		{
+		case GroundStateCategory::Cross:
 		case GroundStateCategory::Taxi: return "taxi";
 		case GroundStateCategory::Lnup: return "lnup";
 		case GroundStateCategory::Push: return "push";
@@ -941,7 +942,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 				const char* legacyStatusColorKey = "nsts";
 				switch (target.groundState)
 				{
-				case GroundStateCategory::Taxi: statusColorKey = "background_taxi_color"; legacyStatusColorKey = "taxi"; break;
+				case GroundStateCategory::Cross:
+		case GroundStateCategory::Taxi: statusColorKey = "background_taxi_color"; legacyStatusColorKey = "taxi"; break;
 				case GroundStateCategory::Lnup: statusColorKey = "background_lineup_color"; legacyStatusColorKey = "lnup"; break;
 				case GroundStateCategory::Push: statusColorKey = "background_push_color"; legacyStatusColorKey = "push"; break;
 				case GroundStateCategory::Stup: statusColorKey = "background_startup_color"; legacyStatusColorKey = "stup"; break;
@@ -961,8 +963,12 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 				}
 			}
 		}
-		if (tagValue("actype") == "NoFPL")
+		if (tagValue("actype") == "NoFPL" || VsmrTargetRoleLogic::HasUnknownAirportGroundRole(
+			target.airborne, target.correlated, target.flightPlanDataReceived, target.departure, target.arrival))
 			background = colorWithLegacy("background_no_fpl_color", "nofpl_color", background);
+		if (VsmrTargetRoleLogic::HasUnknownAirportGroundRole(
+			target.airborne, target.correlated, target.flightPlanDataReceived, target.departure, target.arrival))
+			backgroundOnRunway = background;
 
 		const bool isAirborneRole = target.role == TargetRole::AirborneDeparture || target.role == TargetRole::AirborneArrival;
 		if (isAirborneRole && target.hasFlightPlan && target.correlated)
@@ -1135,7 +1141,9 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		target.style.primaryReturnColor = CopyColor(primaryReturnColor);
 
 		Gdiplus::Color color = whiteColor;
-		if (!target.hasFlightPlan || (!target.airborne && !target.flightPlanDataReceived))
+		if (!target.hasFlightPlan || (!target.airborne && !target.flightPlanDataReceived) ||
+			VsmrTargetRoleLogic::HasUnknownAirportGroundRole(target.airborne, target.correlated,
+				target.flightPlanDataReceived, target.departure, target.arrival))
 			color = groundColor("nofpl", groundColor("gate", Gdiplus::Color(255, 128, 128, 128)));
 		else if (target.airborne)
 			color = target.role == TargetRole::AirborneDeparture
@@ -1148,7 +1156,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			case GroundStateCategory::Gate: color = groundColor("departure_gate", groundColor("gate", Gdiplus::Color(255, 165, 165, 165))); break;
 			case GroundStateCategory::Push: color = groundColor("push", Gdiplus::Color(255, 253, 218, 13)); break;
 			case GroundStateCategory::Stup: color = groundColor("stup", Gdiplus::Color(255, 253, 218, 13)); break;
-			case GroundStateCategory::Taxi: color = groundColor("taxi", Gdiplus::Color(255, 240, 240, 240)); break;
+			case GroundStateCategory::Cross:
+		case GroundStateCategory::Taxi: color = groundColor("taxi", Gdiplus::Color(255, 240, 240, 240)); break;
 			case GroundStateCategory::Lnup: color = groundColor("lnup", groundColor("taxi", Gdiplus::Color(255, 240, 240, 240))); break;
 			case GroundStateCategory::Depa: color = groundColor("depa", groundColor("taxi", Gdiplus::Color(255, 240, 240, 240))); break;
 			case GroundStateCategory::Nsts: color = groundColor("nsts", groundColor("departure_gate", groundColor("gate", Gdiplus::Color(255, 165, 165, 165)))); break;

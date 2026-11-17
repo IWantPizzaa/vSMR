@@ -23,6 +23,7 @@ bool VsmrAviso::AvisoViewportRenderer::Matches(const RECT& viewport,
 	return key.path == request.path && key.features == request.features && key.labels == request.labels &&
 		key.scene == request.scene && key.groupVisibility == request.groupVisibility &&
 		key.groupGeneration == request.groupGeneration && key.colorPalette == request.colorPalette &&
+		key.highlightedStand == request.highlightedStand &&
 		key.backgroundColor.GetValue() == request.backgroundColor.GetValue() &&
 		key.displayScale == request.displayScale && key.rasterScale == request.rasterScale &&
 		key.viewportZoomLevel == request.viewportZoomLevel && key.labelZoomLevel == request.labelZoomLevel &&

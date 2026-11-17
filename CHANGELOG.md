@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+- Add a CDM button below vSID/PDC in the Runtime Menu, with live airport Master ownership, pending acknowledgements, Master/Slave commands and access to the companion CDM build's draggable ATFCM and runway-capacity/BMI panels. Preserve legacy CDM aircraft timing and serialize commands with vSID.
+
+- Retrace LFPG's A380 display contours from the supplied AVISO photograph and check permanent restrictions against SIA GMC 07/08. Remove isolated photo fragments and the unsupported Z4/FN2 fills, preserve approved N/F axes and A3 continuity beneath labels, and share the corrected overlay across Real, Dark and Light.
+
+- Add optional per-airport AVISO group folders. Set Folder in the Groups editor to collect groups under a hover submenu, with independent visibility and submenu pagination.
+- Add a clickable language token and Language list item backed by the same flight-plan remarks, with /FR, /EN and Clear choices (#45).
+
+- Add a synchronized Cross ground status, displayed as CROSS in tags and treated as taxi for layout/visibility. It authorizes runway entry without disabling other aircraft or other RIMCAS alerts (#47).
+
+- Show correlated ground traffic with neither a local ADEP nor a local ADES using the configured gray/no-flight-plan palette, keeping invalid-ADEP traffic out of local flight lists (#46).
+
+- Fix LFLB runway occupancy using published paved/grass widths and exact runway identifiers, preventing Sierra and 36R from being confused with runway 36 (#42).
+
 - Leave PINEDE to DMAN while it handles this station's PDC. DMAN publishes the station it serves on the plug-in bridge (`dman/pdc_station`); while that is vSMR's own EuroScope callsign, vSMR stops polling PINEDE, never sends a logoff that would disconnect DMAN, clears its PDC tag states and refuses PDC actions, Connect and Poll. The runtime menu's PDC section reads **DMAN**. When DMAN stops handling the station, a connected vSMR polls PINEDE again on its next cycle.
 - Select PDC NEXT FREQ from the flight plan's departure airport, including LFPO when the clearance is issued from LFPG approach. Remove unrelated coordinated/issuing-station fallbacks, keep the transmitted fallback consistent with the selected or edited frequency, and require NEXT FREQ when no connected departure position is identifiable.
 

@@ -52,6 +52,7 @@ void CSMRPlugin::OnFunctionCall(
 		}
 		return;
 	}
+	if (HandleLanguageFunctionCall(FunctionId, sItemString, Area)) return;
 	if (HandleHoldingPointFunctionCall(FunctionId, sItemString, Area))
 		return;
 	HandleDatalinkFunctionCall(FunctionId, sItemString, Area);
@@ -74,6 +75,8 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	if (normalizedCallsign.empty())
 		return;
 	VsmrGroundState::ForgetAircraft(normalizedCallsign.c_str());
+	StandArrivals.Forget(normalizedCallsign);
+	StandPositionReports.erase(normalizedCallsign);
 	VsmrRdf::ForgetAircraft(normalizedCallsign.c_str());
 	VsmrHoldingPoint::ForgetPending(normalizedCallsign);
 	VsmrPluginBridge::ForgetAircraft(normalizedCallsign);
