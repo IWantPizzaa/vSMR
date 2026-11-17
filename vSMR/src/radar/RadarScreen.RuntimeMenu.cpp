@@ -734,11 +734,12 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			"runtime.datalink.poll",
 			pollArea,
 			state.pollInProgress ? "Polling..." : "Poll",
-			plugin != nullptr && !state.remoteSession && state.connected && !state.pollInProgress,
+			plugin != nullptr && !state.remoteSession && state.connected && !state.pollInProgress && !state.yieldedToDman,
 			false,
 			false,
-			"Ask PINEDE for PDC requests now");
-		const bool canConnect = state.controllerConnected && state.hasKey;
+			state.yieldedToDman ? "PDC handled by DMAN: vSMR does not poll PINEDE" : "Ask PINEDE for PDC requests now");
+		// PINEDE takes one poller per station, and DMAN is polling this one
+		const bool canConnect = state.controllerConnected && state.hasKey && !state.yieldedToDman;
 		drawRuntimeButton(
 			"runtime.datalink.connection",
 			connectionArea,
@@ -1156,7 +1157,10 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		{
 			contentTop = titleArea.top;
 			if (cpdlcPanel)
-				drawIntegrationTitle("PDC", datalinkState.connected ? "Online" : (datalinkState.connecting ? "Connecting" : "Offline"),
+				// DMAN serving this station's PDC is a working PDC, not an outage
+				drawIntegrationTitle("PDC", datalinkState.yieldedToDman ? "DMAN" :
+					datalinkState.connected ? "Online" : (datalinkState.connecting ? "Connecting" : "Offline"),
+					datalinkState.yieldedToDman ? std::optional<bool>{true} :
 					datalinkState.connecting ? std::optional<bool>{} : std::optional<bool>{datalinkState.connected});
 			else
 				drawIntegrationTitle("vSID", vsidState.providerReady ? "Online" : "Offline", vsidState.providerReady);
