@@ -448,6 +448,7 @@ void VsmrControlCenterBridgeImpl::BuildRuntimeState(
 		rapidjson::Value item(rapidjson::kObjectType);
 		AddString(item, "id", group.id, allocator);
 		AddString(item, "name", group.name, allocator);
+		AddString(item, "folder", group.folder, allocator);
 		item.AddMember("visible", group.visible, allocator);
 		groups.PushBack(item, allocator);
 	}
@@ -558,6 +559,7 @@ void VsmrControlCenterBridgeImpl::SendAvisoState(const std::string& requestId)
 			if (!item.HasMember("id") && !item.HasMember("group_id"))
 				AddString(item, "id", group.id, aviso.GetAllocator());
 			SetStringMember(item, "name", group.name, aviso.GetAllocator());
+			SetStringMember(item, "folder", group.folder, aviso.GetAllocator());
 			SetBoolMember(item, "visible", group.visible, aviso.GetAllocator());
 			groups.PushBack(item, aviso.GetAllocator());
 		}

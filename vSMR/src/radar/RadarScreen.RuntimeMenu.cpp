@@ -1,5 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "integrations/VsidBridgeClient.hpp"
+#include "integrations/CdmBridgeClient.hpp"
 #include "radar/RadarScreen.hpp"
 #include "plugin/Plugin.hpp"
 #include "shared/TextUtils.hpp"
@@ -15,7 +16,7 @@ namespace
 	constexpr int kButtonSize = 40;
 	constexpr int kButtonGap = 3;
 	constexpr int kAirportRowHeight = 22;
-	constexpr int kRailButtonCount = 6;
+	constexpr int kRailButtonCount = 7;
 	constexpr int kRailHeight =
 		kDragHeight +
 		(kRailPadding * 2) +
@@ -161,9 +162,15 @@ namespace
 		CRect rect(sourceRect);
 		::SetTextColor(hdc, color);
 		::SetBkMode(hdc, TRANSPARENT);
-		::DrawTextA(
+		UINT codePage = CP_UTF8;
+		int count = ::MultiByteToWideChar(codePage, MB_ERR_INVALID_CHARS, text.c_str(), -1, nullptr, 0);
+		if (count == 0) { codePage = CP_ACP; count = ::MultiByteToWideChar(codePage, 0, text.c_str(), -1, nullptr, 0); }
+		if (count <= 0) return;
+		std::wstring wide(static_cast<size_t>(count), L'\0');
+		::MultiByteToWideChar(codePage, 0, text.c_str(), -1, wide.data(), count);
+		::DrawTextW(
 			hdc,
-			text.c_str(),
+			wide.c_str(),
 			-1,
 			&rect,
 			alignment | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
@@ -305,11 +312,14 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 	std::vector<RuntimePopupEntry> entries;
 	std::vector<AvisoPreset> insetPresets;
 	VsmrVsid::InterfaceState vsidState;
+	VsmrCdm::InterfaceState cdmState;
+	std::vector<VsmrCdm::AirportStatus> cdmAirports;
 	DatalinkControlState datalinkState;
 	bool cpdlcPanel = false;
-	bool insetPopup = false, vsidPopup = false, showPager = false, insetPopupTooShort = false;
+	bool insetPopup = false, vsidPopup = false, cdmPopup = false, showPager = false, insetPopupTooShort = false;
 	int popupWidth = 0, popupHeight = 0, visibleRows = 0, contentTop = 0;
 	HFONT rowFont = nullptr, actionFont = nullptr;
+	bool folderView = false;
 	bool BuildPopup()
 	{
 		// ----- Building the popup -----
@@ -342,9 +352,22 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		}
 		else if (radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Groups)
 		{
-			title = "Groups";
+			title = folderView ? radar.RuntimeMenuGroupFolder : "Groups";
+			std::set<std::string> folders;
 			for (size_t index = 0; index < groups.size(); ++index)
 			{
+				if (folderView && groups[index].folder != radar.RuntimeMenuGroupFolder) continue;
+				if (!folderView && !groups[index].folder.empty())
+				{
+					if (folders.insert(groups[index].folder).second)
+					{
+						RuntimePopupEntry folder;
+						folder.id = "runtime.folder." + std::to_string(index);
+						folder.label = groups[index].folder;
+						entries.push_back(folder);
+					}
+					continue;
+				}
 				RuntimePopupEntry entry;
 				entry.id = "runtime.group." + std::to_string(index);
 				entry.label = groups[index].name;
@@ -371,9 +394,20 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		{
 			title = "vSID";
 		}
+		else if (radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Cdm)
+		{
+			title = "CDM";
+			cdmState = VsmrCdm::GetInterfaceState();
+			if (cdmState.panel) cdmAirports = cdmState.panel->airports;
+			const auto airport = radar.getActiveAirport();
+			std::stable_partition(cdmAirports.begin(), cdmAirports.end(), [&](const VsmrCdm::AirportStatus& value) {
+				return value.icao == airport;
+			});
+		}
 
 		insetPopup = radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Insets;
 		vsidPopup = radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Datalink;
+		cdmPopup = radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Cdm;
 		const bool datalinkPopup = radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Datalink;
 		vsidState = vsidPopup
 			? VsmrVsid::GetInterfaceState(radar.getActiveAirport())
@@ -390,7 +424,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		insetPresets = insetPopup
 			? radar.GetAvisoPresets()
 			: std::vector<AvisoPreset>();
-		popupWidth = vsidPopup ? kVsidPopupWidth
+		popupWidth = cdmPopup ? 290 : vsidPopup ? kVsidPopupWidth
 			: (insetPopup ? kInsetPopupWidth : kStandardPopupWidth);
 		if (bounds.Width() < popupWidth + 8)
 		{
@@ -401,7 +435,16 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		visibleRows = 0;
 		showPager = false;
 		insetPopupTooShort = false;
-		if (vsidPopup)
+		if (cdmPopup)
+		{
+			const int count = static_cast<int>(cdmAirports.size());
+			const int maxOffset = count > 0 ? ((count - 1) / 12) * 12 : 0;
+			radar.RuntimeMenuPopupScrollOffset = std::clamp(radar.RuntimeMenuPopupScrollOffset, 0, maxOffset);
+			const int rows = ((std::min)(12, count - radar.RuntimeMenuPopupScrollOffset) + 2) / 3;
+			popupHeight = cdmState.panel ? kPopupHeaderHeight + 12 + (std::max)(1, rows) * 39 +
+				(cdmAirports.size() > 12 ? kPopupPagerHeight : 0) + 8 + 2 * 24 + 4 : 88;
+		}
+		else if (vsidPopup)
 		{
 			popupHeight = VsmrParis::Supports(vsidAirport)
 				? kVsidLfpgPopupHeight
@@ -494,8 +537,14 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			DrawRuntimeVisibilityIndicator(graphics, indicatorArea, entry.active, entry.active ? foreground : palette.mutedText);
 
 		::SelectObject(hdc, rowFont);
-		CRect labelArea(rowArea.left + 24, rowArea.top, rowArea.right - 5, rowArea.bottom);
-		DrawTextEllipsis(hdc, labelArea, entry.label, foreground);
+		const bool folderRow = entry.id.rfind("runtime.folder.", 0) == 0;
+		CRect labelArea(rowArea.left + (folderRow ? 8 : 24), rowArea.top, rowArea.right - (folderRow ? 23 : 5), rowArea.bottom);
+		DrawTextEllipsis(hdc, labelArea, entry.label, foreground, DT_LEFT);
+		if (folderRow)
+		{
+			CRect arrow(rowArea.right - 21, rowArea.top, rowArea.right - 6, rowArea.bottom);
+			DrawTextEllipsis(hdc, arrow, ">", foreground, DT_RIGHT);
+		}
 		addPopupScreenObject(entry.id.c_str(), rowArea, entry.label.c_str());
 	}
 
@@ -795,7 +844,8 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 				contentTop,
 				radar.RuntimeMenuPopupArea.right - kPopupPadding,
 				contentTop + kPopupRowHeight);
-			drawChoiceRow(entries[static_cast<size_t>(index)], rowArea);
+			const auto& choice = entries[static_cast<size_t>(index)];
+			drawChoiceRow(choice, rowArea);
 			contentTop += kPopupRowHeight;
 		}
 		::RestoreDC(hdc, listClipState);
@@ -821,9 +871,9 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			DrawTextEllipsis(hdc, previousArea, "Previous", canPrevious ? palette.text : palette.disabledText, DT_CENTER);
 			DrawTextEllipsis(hdc, nextArea, "Next", canNext ? palette.text : palette.disabledText, DT_CENTER);
 			if (canPrevious)
-				addPopupScreenObject("runtime.page.previous", previousArea, "Previous choices");
+				addPopupScreenObject(folderView ? "runtime.folder-page.previous" : "runtime.page.previous", previousArea, "Previous choices");
 			if (canNext)
-				addPopupScreenObject("runtime.page.next", nextArea, "Next choices");
+				addPopupScreenObject(folderView ? "runtime.folder-page.next" : "runtime.page.next", nextArea, "Next choices");
 		}
 		}
 	}
@@ -1093,6 +1143,88 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		radar.RuntimeMenuPopupArea = vsidArea;
 	}
 
+	void DrawCdm()
+	{
+		if (!cdmState.panel)
+		{
+			::SelectObject(hdc, actionFont);
+			CRect line(radar.RuntimeMenuPopupArea.left + 8, contentTop + 5,
+				radar.RuntimeMenuPopupArea.right - 8, contentTop + 26);
+			DrawTextEllipsis(hdc, line, !cdmState.bridgeCompatible ? "Load EuroScopeBridge.dll and CDM." :
+				!cdmState.providerReady ? "Load the CDM plugin." : "Update CDM to enable its airport panel.", palette.mutedText, DT_CENTER);
+			line.OffsetRect(0, 22);
+			DrawTextEllipsis(hdc, line, "Aircraft timing tags remain independent.", palette.mutedText, DT_CENTER);
+			return;
+		}
+		const auto& panel = *cdmState.panel;
+		const int total = static_cast<int>(cdmAirports.size());
+		const int maximumOffset = total > 0 ? ((total - 1) / 12) * 12 : 0;
+		radar.RuntimeMenuPopupScrollOffset = std::clamp(radar.RuntimeMenuPopupScrollOffset, 0, maximumOffset);
+		const int start = radar.RuntimeMenuPopupScrollOffset;
+		const int count = (std::min)(12, total - start);
+		contentTop += 3;
+		const int left = radar.RuntimeMenuPopupArea.left + 6;
+		const int width = (radar.RuntimeMenuPopupArea.Width() - 12 - 8) / 3;
+		for (int i = 0; i < count; ++i)
+		{
+			const auto& airport = cdmAirports[static_cast<size_t>(start + i)];
+			CRect card(left + (i % 3) * (width + 4), contentTop + (i / 3) * 39,
+				left + (i % 3) * (width + 4) + width, contentTop + (i / 3) * 39 + 35);
+			const COLORREF fill = airport.pending ? RGB(255, 200, 30) : airport.local ? RGB(0, 145, 55) :
+				airport.master.empty() ? RGB(190, 35, 45) : RGB(145, 35, 150);
+			DrawRoundedRect(hdc, card, fill, airport.icao == radar.getActiveAirport() ? palette.accentText : palette.outerBorder,
+				kControlCornerDiameter);
+			const COLORREF foreground = airport.pending ? RGB(40, 35, 15) : RGB(255, 255, 255);
+			CRect upper = card; upper.bottom = upper.top + 18;
+			::SelectObject(hdc, rowFont);
+			DrawTextEllipsis(hdc, upper, airport.icao, foreground, DT_CENTER);
+			CRect lower = card; lower.top += 17;
+			::SelectObject(hdc, actionFont);
+			DrawTextEllipsis(hdc, lower, airport.pending ? "Pending" : airport.local ? "Master" :
+				airport.master.empty() ? "No Master" : airport.master, foreground, DT_CENTER);
+			if (!cdmState.commandLineBusy && !airport.pending)
+			{
+				const std::string tooltip = airport.icao + (airport.local ? ": click to become Slave." : ": click to become Master.") +
+					(airport.master.empty() ? "" : " Current Master: " + airport.master + ".") + " Right-click: capacity / BMI.";
+				addPopupScreenObject(("runtime.cdm.airport." + airport.icao).c_str(), card, tooltip.c_str());
+			}
+		}
+		if (count == 0)
+		{
+			CRect message(left, contentTop, radar.RuntimeMenuPopupArea.right - 3, contentTop + 35);
+			DrawTextEllipsis(hdc, message, "No CDM airports configured.", palette.mutedText, DT_CENTER);
+		}
+		contentTop += (std::max)(1, (count + 2) / 3) * 39;
+		if (total > 12)
+		{
+			const int half = (radar.RuntimeMenuPopupArea.Width() - 16) / 2;
+			drawRuntimeButton("runtime.cdm.page.previous", CRect(left, contentTop, left + half, contentTop + 21),
+				"Previous", start > 0, false, false, "Previous CDM airports");
+			drawRuntimeButton("runtime.cdm.page.next", CRect(left + half + 4, contentTop, left + half * 2 + 4, contentTop + 21),
+				"Next", start + count < total, false, false, "Next CDM airports");
+			contentTop += kPopupPagerHeight;
+		}
+		FillRectColor(hdc, CRect(left, contentTop + 2, radar.RuntimeMenuPopupArea.right - 6, contentTop + 3), palette.divider);
+		contentTop += 8;
+		const bool canOpen = !cdmState.commandLineBusy && !cdmState.proxy;
+		const bool knownAirport = std::any_of(cdmAirports.begin(), cdmAirports.end(), [&](const VsmrCdm::AirportStatus& airport) {
+			return airport.icao == radar.getActiveAirport();
+		});
+		const int half = (radar.RuntimeMenuPopupArea.Width() - 16) / 2;
+		const std::string viewHelp = cdmState.proxy ? "Open CDM floating panels in the primary EuroScope instance" :
+			"Open or close the draggable CDM panel";
+		drawRuntimeButton("runtime.cdm.atfcm", CRect(left, contentTop, left + half, contentTop + 24),
+			"ATFCM", canOpen, panel.atfcm, false, viewHelp);
+		drawRuntimeButton("runtime.cdm.capacity", CRect(left + half + 4, contentTop, left + half * 2 + 4, contentTop + 24),
+			panel.bmi ? "BMI" : "Runway capacity", canOpen && knownAirport,
+			panel.capacityAirport == radar.getActiveAirport(), false, knownAirport ? viewHelp : "Select a configured CDM airport");
+		contentTop += 28;
+		drawRuntimeButton("runtime.cdm.native-panel", CRect(left, contentTop, left + half, contentTop + 24),
+			"Original panel", canOpen, panel.nativePanel, false, "Show or hide the original CDM airport panel");
+		drawRuntimeButton("runtime.cdm.refresh", CRect(left + half + 4, contentTop, left + half * 2 + 4, contentTop + 24),
+			"Refresh CDM", !cdmState.commandLineBusy, false, false, "Ask CDM to refresh its operational data");
+	}
+
 	void DrawPopup(int forcedLeft = -1, int forcedTop = -1)
 	{
 		// ----- Drawing the popup -----
@@ -1152,7 +1284,12 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 
 		HFONT oldFont = static_cast<HFONT>(::SelectObject(hdc, headerFont));
 		CRect titleText(titleArea.left + 7, titleArea.top, titleArea.right - 7, titleArea.bottom);
-		if (vsidPopup)
+		if (cdmPopup)
+		{
+			contentTop = titleArea.top;
+			drawIntegrationTitle("CDM", cdmState.providerReady ? "Online" : "Offline", cdmState.providerReady);
+		}
+		else if (vsidPopup)
 		{
 			contentTop = titleArea.top;
 			if (cpdlcPanel)
@@ -1164,7 +1301,8 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		else DrawTextEllipsis(hdc, titleText, insetPopup ? "Insets" : title, palette.text);
 
 		contentTop = titleArea.bottom + kPopupPadding;
-		if (vsidPopup && cpdlcPanel) DrawCpdlc();
+		if (cdmPopup) DrawCdm();
+		else if (vsidPopup && cpdlcPanel) DrawCpdlc();
 		else if (vsidPopup) DrawDatalink();
 		else if (!insetPopup) DrawChoices();
 		else if (insetPopupTooShort)
@@ -1409,6 +1547,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	const std::string activeProfile = GetActiveProfileNameForEditor();
 	const std::string activeMode = activeProfile.empty() ? "" : GetActiveProfileDisplayModeForEditor(activeProfile);
 	const std::vector<AvisoGroup> groups = GetAvisoGroups();
+	if (ActiveRuntimeMenuPopup != RuntimeMenuPopup::Groups) RuntimeMenuGroupFolder.clear();
 	size_t visibleGroupCount = 0;
 	for (const AvisoGroup& group : groups)
 	{
@@ -1429,6 +1568,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		{ "runtime.button.insets", "insets", "Insets", RuntimeMenuPopup::Insets },
 		{ "runtime.button.profile", "profile", "Profile", RuntimeMenuPopup::Profile },
 		{ "runtime.button.datalink", "vsid", "vSID / PDC", RuntimeMenuPopup::Datalink },
+		{ "runtime.button.cdm", "cdm", "CDM", RuntimeMenuPopup::Cdm },
 		{ "runtime.button.control-center", "settings", "Open Control Center", RuntimeMenuPopup::None }
 	};
 
@@ -1447,7 +1587,13 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		const COLORREF fill = open ? kAccent : (hover ? kButtonHover : kButtonBackground);
 		const COLORREF foreground = open ? kAccentText : kText;
 		DrawRoundedRect(hdc, buttonArea, fill, kOuterBorder, kControlCornerDiameter);
-		if (std::strcmp(button.icon, "vsid") == 0)
+		if (std::strcmp(button.icon, "cdm") == 0)
+		{
+			HFONT previousFont = static_cast<HFONT>(::SelectObject(hdc, RuntimeMenuActionFont.GetSafeHandle()));
+			DrawTextEllipsis(hdc, buttonArea, "CDM", foreground, DT_CENTER);
+			if (previousFont != nullptr) ::SelectObject(hdc, previousFont);
+		}
+		else if (std::strcmp(button.icon, "vsid") == 0)
 		{
 			HFONT previousFont = static_cast<HFONT>(
 				::SelectObject(hdc, RuntimeMenuActionFont.GetSafeHandle()));
@@ -1527,7 +1673,31 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	if (popup.BuildPopup())
 	{
 		if (popup.vsidPopup) popup.DrawIntegrationPopups();
-		else popup.DrawPopup();
+		else
+		{
+			popup.DrawPopup();
+			if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::Groups && !RuntimeMenuGroupFolder.empty())
+			{
+				const CRect parent = RuntimeMenuPopupArea;
+				const int parentScroll = RuntimeMenuPopupScrollOffset;
+				RuntimeMenuPopupRenderer child{ *this, hdc, graphics, palette, bounds, activeProfile, activeMode, groups };
+				child.folderView = true;
+				RuntimeMenuPopupScrollOffset = RuntimeMenuGroupFolderScroll;
+				if (child.BuildPopup() && !child.entries.empty() && child.popupHeight <= bounds.Height() - 8 &&
+					(parent.right + child.popupWidth <= bounds.right - 4 || parent.left - child.popupWidth >= bounds.left + 4))
+				{
+					int left = parent.right;
+					if (left + child.popupWidth > bounds.right - 4) left = parent.left - child.popupWidth;
+					left = std::clamp(left, static_cast<int>(bounds.left + 4), static_cast<int>(bounds.right - child.popupWidth - 4));
+					const int top = std::clamp(RuntimeMenuGroupFolderTop, static_cast<int>(bounds.top + 4), static_cast<int>(bounds.bottom - child.popupHeight - 4));
+					child.DrawPopup(left, top);
+					RuntimeMenuSecondaryPopupArea = RuntimeMenuPopupArea;
+				}
+				RuntimeMenuGroupFolderScroll = RuntimeMenuPopupScrollOffset;
+				RuntimeMenuPopupScrollOffset = parentScroll;
+				RuntimeMenuPopupArea = parent;
+			}
+		}
 	}
 	graphics.Flush(Gdiplus::FlushIntentionSync);
 	DrawRuntimeInlineEdit(hdc);

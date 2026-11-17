@@ -160,6 +160,13 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 			if (radar != nullptr && !radar->IsShutdownRequested())
 				radar->RequestRefresh();
 	});
+	VsmrCdm::SetUiRefreshCallback([] {
+		if (PluginShutdownRequested.load(std::memory_order_relaxed))
+			return;
+		for (CSMRRadar* radar : RadarScreensOpened)
+			if (radar != nullptr && !radar->IsShutdownRequested())
+				radar->RequestRefresh();
+	});
 }
 
 CSMRPlugin::~CSMRPlugin()

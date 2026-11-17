@@ -161,6 +161,7 @@
     <ClInclude Include="src\aircraft\GroundState.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\StandArrival.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aviso\StandHighlight.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\AvisoPaletteGeometry.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\HoldingPoint.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\app\PluginEntry.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\bootstrap\RuntimeApi.hpp"><Filter>Bootstrap</Filter></ClInclude>
@@ -204,6 +205,7 @@
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\CdmBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\CdmBridgeData.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\CdmInterfaceData.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\PluginBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\PluginBridgeReads.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\RampAgentBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>

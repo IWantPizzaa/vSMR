@@ -10,6 +10,7 @@
 #include "aviso/AvisoDocumentModel.hpp"
 #include "aviso/AvisoBundledGroups.hpp"
 #include "aviso/AvisoOverrides.hpp"
+#include "aviso/AvisoPaletteGeometry.hpp"
 #include "aircraft/StandArrival.hpp"
 
 #include <cctype>
@@ -1036,6 +1037,11 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 				continue;
 			const char* name = GetAvisoStringProperty(&groupValue, { "name", "label" });
 			addParsedGroup(id, name != nullptr ? name : id, IsAvisoFeatureVisible(&groupValue));
+			if (!parsedGroups.empty() && parsedGroups.back().id == id)
+				parsedGroups.back().geometryPalettes = VsmrAviso::GeometryPaletteMask(&groupValue);
+			const char* folder = GetAvisoStringProperty(&groupValue, { "folder", "section" });
+			if (folder != nullptr && !parsedGroups.empty() && parsedGroups.back().id == id)
+				parsedGroups.back().folder = TrimAirportCode(folder);
 		}
 	}
 	size_t polygonCount = 0;
@@ -1125,6 +1131,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 				continue;
 
 			AvisoLabel parsedLabel;
+			parsedLabel.geometryPalettes = VsmrAviso::GeometryPaletteMask(properties);
 			parsedLabel.position = { longitude, latitude };
 			parsedLabel.sourceFeatureIndex = static_cast<int>(i);
 			parsedLabel.sourceFeatureId = sourceFeatureId;
@@ -1163,6 +1170,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		}
 
 		AvisoFeature parsedFeature;
+		parsedFeature.geometryPalettes = VsmrAviso::GeometryPaletteMask(properties);
 		parsedFeature.sourceFeatureIndex = static_cast<int>(i);
 		parsedFeature.sourceFeatureId = sourceFeatureId;
 		parsedFeature.groupIds = groupIds;

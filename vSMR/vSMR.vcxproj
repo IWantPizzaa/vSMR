@@ -290,6 +290,7 @@
     <ClInclude Include="src\aircraft\GroundState.hpp" />
     <ClInclude Include="src\aircraft\StandArrival.hpp" />
     <ClInclude Include="src\aviso\StandHighlight.hpp" />
+    <ClInclude Include="src\aviso\AvisoPaletteGeometry.hpp" />
     <ClInclude Include="src\aircraft\HoldingPoint.hpp" />
     <ClInclude Include="src\app\PluginEntry.hpp" />
     <ClInclude Include="src\bootstrap\RuntimeApi.hpp" />
@@ -338,6 +339,7 @@
     <ClInclude Include="src\diagnostics\ZoomDiagnostics.hpp" />
     <ClInclude Include="src\integrations\CdmBridgeClient.hpp" />
     <ClInclude Include="src\integrations\CdmBridgeData.hpp" />
+    <ClInclude Include="src\integrations\CdmInterfaceData.hpp" />
     <ClInclude Include="src\integrations\PluginBridgeClient.hpp" />
     <ClInclude Include="src\integrations\PluginBridgeReads.hpp" />
     <ClInclude Include="src\integrations\RampAgentBridgeClient.hpp" />

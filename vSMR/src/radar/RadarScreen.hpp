@@ -279,6 +279,9 @@ private:
 	};
 	RuntimeMenuPointerPress RuntimeMenuPress;
 	int RuntimeMenuPopupScrollOffset = 0;
+	std::string RuntimeMenuGroupFolder;
+	int RuntimeMenuGroupFolderTop = 0;
+	int RuntimeMenuGroupFolderScroll = 0;
 	bool ShowNorthIndicator = true;
 	bool KeepAvisoWindowPlacement = true;
 	POINT NorthIndicatorOffset = { -1, -1 };
@@ -556,6 +559,7 @@ public:
 		double* outRimcasMilliseconds = nullptr);
 	const VsmrScene::RadarScene* GetCurrentRadarScene() const noexcept;
 	void SyncRuntimeMenuControlCenter(const std::string& reason = "runtime");
+	bool HandleRuntimeCdmClick(const char* id, int button);
 	bool HandleRuntimeDatalinkClick(const char* id, RECT area);
 	bool HandleRuntimeListClick(const char* id);
 	bool HandleRuntimeInsetClick(const char* id);
