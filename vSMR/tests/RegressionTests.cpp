@@ -2,6 +2,7 @@
 #include <objidl.h>
 
 #include "aircraft/GroundState.hpp"
+#include "aircraft/Language.hpp"
 #include "aircraft/HoldingPoint.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
 #include "aviso/AvisoPalettePreference.hpp"
@@ -356,6 +357,12 @@ namespace
 		Expect(VsmrRimcasLogic::IsRunwayEntryAuthorized(GroundStateCategory::Cross) &&
 			!VsmrRimcasLogic::IsRunwayEntryAuthorized(GroundStateCategory::Taxi),
 			"only an explicit crossing clearance suppresses runway incursion, ordinary taxi does not");
+		Expect(VsmrLanguage::Read("PBN/A1 RMK/TCAS /fr") == "/FR" &&
+			VsmrLanguage::Read("RMK/EN") == "/EN" && VsmrLanguage::Read("REG/FRENCH /FRA").empty(),
+			"language reads only complete markers from shared flight plan remarks");
+		Expect(VsmrLanguage::Write("PBN/A1 RMK/TCAS /EN HP/N4", "/FR") == "PBN/A1 RMK/TCAS HP/N4 /FR" &&
+			VsmrLanguage::Write("/FR /EN RMK/TCAS", "") == "RMK/TCAS",
+			"language replacement and clear preserve PBN, holding point and unrelated remarks");
 		Expect(classifyGroundState("ST-UP", 0, false) == GroundStateCategory::Stup, "ground state startup alias");
 		Expect(classifyGroundState("P/B", 3, false) == GroundStateCategory::Push, "ground state push alias");
 		Expect(classifyGroundState("LINE UP", 0, true) == GroundStateCategory::Lnup, "ground state lineup alias");

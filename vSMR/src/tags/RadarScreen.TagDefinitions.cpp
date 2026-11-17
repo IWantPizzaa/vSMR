@@ -66,7 +66,8 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionTokens() const
 		"uk_stand",
 		"remark",
 		"scratchpad",
-		"holdingpoint"
+		"holdingpoint",
+		"language"
 	};
 }
 
@@ -865,6 +866,7 @@ VsmrTags::TokenValues CSMRRadar::BuildTagDefinitionPreviewMap(const std::string&
 	previewMap["remark"] = "RMK";
 	previewMap["scratchpad"] = "...";
 	previewMap["holdingpoint"] = "A3";
+	previewMap["language"] = "/FR";
 
 	// Keep the preview self-contained. Older EuroScope builds can crash when
 	// radar-target APIs are queried during detached dialog initialization.

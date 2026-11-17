@@ -164,6 +164,7 @@
     <ClInclude Include="src\aviso\StandHighlight.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoPaletteGeometry.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\HoldingPoint.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aircraft\Language.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\app\PluginEntry.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\bootstrap\RuntimeApi.hpp"><Filter>Bootstrap</Filter></ClInclude>
     <ClInclude Include="src\bootstrap\RuntimeContext.hpp"><Filter>Bootstrap</Filter></ClInclude>

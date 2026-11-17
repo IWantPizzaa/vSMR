@@ -52,6 +52,7 @@ void CSMRPlugin::OnFunctionCall(
 		}
 		return;
 	}
+	if (HandleLanguageFunctionCall(FunctionId, sItemString, Area)) return;
 	if (HandleHoldingPointFunctionCall(FunctionId, sItemString, Area))
 		return;
 	HandleDatalinkFunctionCall(FunctionId, sItemString, Area);

@@ -176,6 +176,7 @@ private:
 	void ResetDatalinkProfileSource();
 	void PersistDatalinkSettings();
 	static void PrepareDatalinkRuntimeForExit();
+	bool HandleLanguageFunctionCall(int functionId, const char* itemString, RECT area);
 	bool HandleHoldingPointFunctionCall(
 		int functionId,
 		const char* itemString,

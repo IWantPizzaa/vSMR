@@ -7,6 +7,8 @@
 - Retrace LFPG's A380 display contours from the supplied AVISO photograph and check permanent restrictions against SIA GMC 07/08. Remove isolated photo fragments and the unsupported Z4/FN2 fills, preserve approved N/F axes and A3 continuity beneath labels, and share the corrected overlay across Real, Dark and Light.
 
 - Add optional per-airport AVISO group folders. Set Folder in the Groups editor to collect groups under a hover submenu, with independent visibility and submenu pagination.
+- Add a clickable language token and Language list item backed by the same flight-plan remarks, with /FR, /EN and Clear choices (#45).
+
 - Add a synchronized Cross ground status, displayed as CROSS in tags and treated as taxi for layout/visibility. It authorizes runway entry without disabling other aircraft or other RIMCAS alerts (#47).
 
 - Show correlated ground traffic with neither a local ADEP nor a local ADES using the configured gray/no-flight-plan palette, keeping invalid-ADEP traffic out of local flight lists (#46).

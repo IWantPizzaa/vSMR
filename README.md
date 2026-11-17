@@ -321,3 +321,5 @@ The adapter skips the main vSMR map, targets, tags, RDF and RIMCAS panels. AVISO
 vSMR source code is licensed under the [GNU General Public License v3.0](LICENSE). Bundled dependencies and data assets retain their own terms; notices are under `vSMR/data/Licenses/`. Aircraft silhouettes from VATSIM Radar are separately attributed under CC BY-NC 4.0, not GPL.
 
 AVISO group folders: in Control Center > Groups, set the optional Folder field on each group (for example LVP). Groups sharing a folder appear under `Folder >` in the native Groups menu; hover opens the adjacent submenu. Leave Folder empty to keep a group at the root. Each child keeps its independent visibility and runway rules. Folder assignments are saved as per-airport user overrides.
+
+Language: add the `language` token in a tag definition or the vSMR `Language` item/function to a EuroScope list. Both use `/FR` and `/EN` in flight-plan remarks; click to change or clear the marker without altering other remarks.

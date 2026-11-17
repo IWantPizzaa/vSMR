@@ -56,6 +56,7 @@ namespace
 		output["remark"] = input.remark;
 		output["scratchpad"] = input.scratchpad.empty() ? "..." : input.scratchpad;
 		output["holdingpoint"] = input.holdingPoint;
+		output["language"] = input.language;
 	}
 
 	void FormatPosition(const TagDataInput& input, TokenValues& output)
