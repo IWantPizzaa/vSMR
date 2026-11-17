@@ -1,0 +1,16 @@
+[
+  {
+    "id": "sia-lfpg-gmc07-20261029",
+    "file": "smart-ground\\data-sources\\aircraft\\lfpg-gmc-07-20261029.pdf",
+    "url": "https://www.sia.aviation-civile.gouv.fr/media/dvd/eAIP_29_OCT_2026/FRANCE/AIRAC-2026-10-29/html/eAIP/Cartes/LFPG/AD_2_LFPG_GMC_07.pdf",
+    "sha256": "edf0cb9a74610005b618d15d2992f96209c36a0bec6874a7c1d992000b0aef0d",
+    "pages": 1
+  },
+  {
+    "id": "sia-lfpg-gmc08-20261029",
+    "file": "smart-ground\\data-sources\\aircraft\\lfpg-gmc-08-20261029.pdf",
+    "url": "https://www.sia.aviation-civile.gouv.fr/media/dvd/eAIP_29_OCT_2026/FRANCE/AIRAC-2026-10-29/html/eAIP/Cartes/LFPG/AD_2_LFPG_GMC_08.pdf",
+    "sha256": "6218af9ddf540e1bfba4919eafe174320b4f0b3806aae90b74dfb94deac28b42",
+    "pages": 1
+  }
+]

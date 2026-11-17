@@ -1,0 +1,30 @@
+[
+  {
+    "id": "airbus-a380-acp",
+    "file": "airbus-a380-acp.pdf",
+    "url": "https://www.airbus.com/sites/g/files/jlcbta136/files/2021-11/Airbus-Aircraft-AC-A380.pdf",
+    "sha256": "b365ded8dffeb911683988ea5deda4f82a454ef10579b4b5f5e08d731b378aa6",
+    "capturedOn": "2026-11-13"
+  },
+  {
+    "id": "boeing-b744-acap-revf",
+    "file": "boeing-747-400-rev-f.pdf",
+    "url": "https://www.boeing.com/content/dam/boeing/v2/airports/acaps/747-400_Rev_F.pdf",
+    "sha256": "9dd5baf00f3b9e5fdaa0bdf25425e1e65c9c6ee440d5b5c547956f95ccacef08",
+    "capturedOn": "2026-11-13"
+  },
+  {
+    "id": "boeing-b748-acap-reve",
+    "file": "boeing-747-8-rev-e.pdf",
+    "url": "https://www.boeing.com/content/dam/boeing/v2/airports/acaps/747-8_Rev_E.pdf",
+    "sha256": "78dce6ab1501a8bb3408f98f1199b5325b5b0f10fb8eeccc12248921ba378c8a",
+    "capturedOn": "2026-11-13"
+  },
+  {
+    "id": "easa-a320-tcds-issue62",
+    "file": "easa-a320-tcds.pdf",
+    "url": "https://www.easa.europa.eu/en/downloads/16507/en",
+    "sha256": "957199eed247c3fcfedc193c1d8ad5fee45aa6bc2039693d1118f5b3b538182f",
+    "capturedOn": "2026-11-13"
+  }
+]

@@ -816,8 +816,19 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		drawCenteredMessage("AVISO unavailable");
 
 	// ----- Drawing aircraft and tags -----
-
-
+	if (cacheDrawn)
+		radar_screen->RenderSmartGroundRouteProjected(*gdi, radar_screen->GetCurrentRadarScene(), viewportRect, m_Id,
+			[projection](const CPosition& position) -> POINT
+			{
+				const auto point = projection.Project({ position.m_Longitude, position.m_Latitude });
+				return { static_cast<LONG>(std::lround(point.X)), static_cast<LONG>(std::lround(point.Y)) };
+			},
+			[projection](POINT point) -> CPosition
+			{
+				const auto geographic = projection.Unproject({ static_cast<double>(point.x), static_cast<double>(point.y) });
+				CPosition position; position.m_Latitude = geographic.latitude; position.m_Longitude = geographic.longitude;
+				return position;
+			});
 	if (cacheDrawn)
 		renderAvisoAircraft(hDC, dc, radar_screen, gdi, mouseLocation, view);
 

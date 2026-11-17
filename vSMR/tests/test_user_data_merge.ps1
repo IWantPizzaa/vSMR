@@ -113,6 +113,7 @@ try {
     foreach ($name in @('vSMR.dll', 'vSMR_Data/Runtime/vSMR.Runtime.dll', 'vSMR_Data/CrashReporter/vSMRCrashHandler.dll')) {
         [IO.File]::WriteAllBytes((Join-Path $package $name), $header)
     }
+    Write-TestFile (Join-Path $packageData 'SmartGround/lfpg.json') '{"dataset":1}'
     Write-TestFile (Join-Path $packageData 'Audio/Alarm.wav') 'bundled-alarm-v1'
     Update-TestPackage '{"color":1,"size":1}' '[{"name":"Default","color":1,"size":1}]'
     & (Join-Path $packageData 'Tools/install_vsmr.ps1') -DestinationDirectory $destination -WhatIf
@@ -129,6 +130,7 @@ try {
     Write-TestFile (Join-Path $installedData 'UserData/Maps/custom.geojson') '{"custom_geometry":true}'
     Write-TestFile (Join-Path $installedData 'Audio/Custom.wav') 'my-own-sound'
     Write-TestFile (Join-Path $installedData 'version.json') '{"old_manifest":true}'
+    Write-TestFile (Join-Path $packageData 'SmartGround/lfpg.json') '{"dataset":2}'
     Write-TestFile (Join-Path $packageData 'Audio/Alarm.wav') 'bundled-alarm-v2'
     Update-TestPackage '{"color":1,"size":3}' '[{"name":"Default","color":1,"size":3}]'
     Write-TestFile (Join-Path $installedData '.update/journal.json') '{"phase":"applying"}'
@@ -141,6 +143,7 @@ try {
     Write-TestFile (Join-Path $installedData '.update/old-download.tmp') 'obsolete staged data'
     Install-TestPackage
     Check ((Get-FileHash (Join-Path $installedData 'default.json')).Hash -eq (Get-FileHash (Join-Path $packageData 'default.json')).Hash) 'complete package replaces defaults instead of restoring obsolete ones'
+    Check ([IO.File]::ReadAllText((Join-Path $installedData 'SmartGround/lfpg.json')) -eq '{"dataset":2}') 'complete package replaces obsolete Smart Ground data'
     Check ([IO.File]::ReadAllText((Join-Path $installedData 'config.json')) -eq '{"user_override":"keep exactly"}') 'complete package preserves sparse config bytes'
     Check ([IO.File]::ReadAllText((Join-Path $installedData 'UserData/Maps/custom.geojson')) -eq '{"custom_geometry":true}') 'complete package preserves user-owned geometry'
     Check ([IO.File]::ReadAllText((Join-Path $installedData 'Audio/Alarm.wav')) -eq 'bundled-alarm-v2') 'unmodified bundled alarm receives the new release sound'

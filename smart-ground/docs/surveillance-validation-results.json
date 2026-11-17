@@ -1,0 +1,250 @@
+{
+  "generatedAt": "2026-11-13T16:32:58.998Z",
+  "seed": 20261113,
+  "inputSha256": {
+    "public/data/lfpg.json": "4597cfcb70d555ca801427a378d7f8fca297e55677d3062faed0c1718ed5b9c5",
+    "public/data/lfpg-operations.json": "d881f3494335470dfa11a0fe371f99bc7f2a772c2bca7e7a1785f74d7b603736",
+    "public/data/lfpg-corridors.json": "9228e0c4e9293426c2318ea032ce5ac07fc331595201b8c6eeaa6916cdf8def3",
+    "public/data/lfpg-aircraft-restrictions.json": "913a066d2bfde160f7fdf716942c58a8ac5530931a033d74f0033fae8ec63882"
+  },
+  "codeSha256": {
+    "src/core/SurfaceTracker.ts": "beb2e482e3e56ae25462836eeb1305966ec502cf6a2d3fe0ac23cb3ffc3df7d4",
+    "src/core/TaxiGraph.ts": "d525d65afb29d17aa71eb5e68759026ab9d987e17cd7f447136c02666306db94",
+    "src/core/AircraftSimulator.ts": "8a0bc976b51e5dcb42c94eef8897da0e5add3204bab02af7bd5a320df89b23de",
+    "src/core/RoutePlanner.ts": "e7061497e46a5ba70a084019364ab5fac2b6976452bffbfed91bc57295b1c845",
+    "src/core/OperatingRules.ts": "70f833e727ff7fb0e0b0a7ce521e842f0179040ac5d3bf69b5572183cd67c92a",
+    "src/core/AircraftRestrictions.ts": "7c16fc652aa15408b1cb3ffc265ff9a9fcd5ad9cfb1a3856c10e083ea1865fe7",
+    "src/core/TaxiFlowPolicy.ts": "6ac10f84635f10d92dab1415354b3c5668047194687318f3b52d0931ea14c508",
+    "scripts/validate-surveillance.ts": "e6df21189647e0d5ff1671b35e153f56df4abdd77f086bedcd9f836f2925ec29"
+  },
+  "normalRoutes": 16,
+  "normalReports": 1679,
+  "estimatesChecked": 31901,
+  "falseConfirmedDeviations": 0,
+  "sourceIntervalSeconds": 5,
+  "positionNoiseMetres": 3,
+  "headingNoiseDegrees": 3,
+  "speedNoiseKnots": 0.25,
+  "explicitOracleCrossings": 2,
+  "scenarios": [
+    {
+      "type": "A320",
+      "configuration": "east",
+      "from": "stand:B08",
+      "to": "operation:departure:09R:D3",
+      "movement": "departure",
+      "reports": 124,
+      "ambiguous": 17,
+      "suspected": 0,
+      "falseConfirmed": 0,
+      "seconds": 615
+    },
+    {
+      "type": "A320",
+      "configuration": "east",
+      "from": "stand:M09",
+      "to": "operation:departure:08L:T3",
+      "movement": "departure",
+      "reports": 39,
+      "ambiguous": 7,
+      "suspected": 0,
+      "falseConfirmed": 0,
+      "seconds": 190
+    },
+    {
+      "type": "A320",
+      "configuration": "east",
+      "from": "stand:B03",
+      "to": "operation:departure:09R:D5",
+      "movement": "departure",
+      "reports": 112,
+      "ambiguous": 15,
+      "suspected": 1,
+      "falseConfirmed": 0,
+      "seconds": 555
+    },
+    {
+      "type": "A320",
+      "configuration": "east",
+      "from": "stand:A01",
+      "to": "operation:departure:08L:T4",
+      "movement": "departure",
+      "reports": 36,
+      "ambiguous": 6,
+      "suspected": 0,
+      "falseConfirmed": 0,
+      "seconds": 175
+    },
+    {
+      "type": "A320",
+      "configuration": "west",
+      "from": "stand:B12",
+      "to": "operation:departure:26R:T9",
+      "movement": "departure",
+      "reports": 116,
+      "ambiguous": 14,
+      "suspected": 0,
+      "falseConfirmed": 0,
+      "seconds": 575
+    },
+    {
+      "type": "A320",
+      "configuration": "west",
+      "from": "stand:F02",
+      "to": "operation:departure:26R:T11",
+      "movement": "departure",
+      "reports": 92,
+      "ambiguous": 20,
+      "suspected": 0,
+      "falseConfirmed": 0,
+      "seconds": 455
+    },
+    {
+      "type": "A320",
+      "configuration": "west",
+      "from": "operation:arrival:27R:K3",
+      "to": "stand:I24",
+      "movement": "arrival",
+      "reports": 78,
+      "ambiguous": 12,
+      "suspected": 0,
+      "falseConfirmed": 0,
+      "seconds": 385
+    },
+    {
+      "type": "A320",
+      "configuration": "east",
+      "from": "operation:arrival:09L:K6",
+      "to": "stand:F02",
+      "movement": "arrival",
+      "reports": 113,
+      "ambiguous": 15,
+      "suspected": 0,
+      "falseConfirmed": 0,
+      "seconds": 560
+    },
+    {
+      "type": "A388",
+      "configuration": "east",
+      "from": "stand:K09",
+      "to": "operation:departure:08L:T4",
+      "movement": "departure",
+      "reports": 122,
+      "ambiguous": 20,
+      "suspected": 0,
+      "falseConfirmed": 0,
+      "seconds": 605
+    },
+    {
+      "type": "A388",
+      "configuration": "east",
+      "from": "stand:W6/W7",
+      "to": "operation:departure:09R:D4",
+      "movement": "departure",
+      "reports": 50,
+      "ambiguous": 11,
+      "suspected": 1,
+      "falseConfirmed": 0,
+      "seconds": 245
+    },
+    {
+      "type": "A388",
+      "configuration": "west",
+      "from": "stand:Y08",
+      "to": "operation:departure:26R:T11",
+      "movement": "departure",
+      "reports": 166,
+      "ambiguous": 34,
+      "suspected": 0,
+      "falseConfirmed": 0,
+      "seconds": 825
+    },
+    {
+      "type": "A388",
+      "configuration": "west",
+      "from": "stand:W6/W7",
+      "to": "operation:departure:27L:Q5",
+      "movement": "departure",
+      "reports": 66,
+      "ambiguous": 8,
+      "suspected": 0,
+      "falseConfirmed": 0,
+      "seconds": 325
+    },
+    {
+      "type": "B744",
+      "configuration": "east",
+      "from": "stand:K09",
+      "to": "operation:departure:08L:T4",
+      "movement": "departure",
+      "reports": 111,
+      "ambiguous": 10,
+      "suspected": 0,
+      "falseConfirmed": 0,
+      "seconds": 550
+    },
+    {
+      "type": "B744",
+      "configuration": "west",
+      "from": "stand:Y08",
+      "to": "operation:departure:26R:T11",
+      "movement": "departure",
+      "reports": 166,
+      "ambiguous": 36,
+      "suspected": 0,
+      "falseConfirmed": 0,
+      "seconds": 825
+    },
+    {
+      "type": "B748",
+      "configuration": "east",
+      "from": "stand:K09",
+      "to": "operation:departure:08L:T4",
+      "movement": "departure",
+      "reports": 122,
+      "ambiguous": 20,
+      "suspected": 0,
+      "falseConfirmed": 0,
+      "seconds": 605
+    },
+    {
+      "type": "B748",
+      "configuration": "west",
+      "from": "stand:Y08",
+      "to": "operation:departure:26R:T11",
+      "movement": "departure",
+      "reports": 166,
+      "ambiguous": 36,
+      "suspected": 0,
+      "falseConfirmed": 0,
+      "seconds": 825
+    }
+  ],
+  "sustainedWrongBranch": {
+    "callsign": "WRONG1",
+    "faultAt": 57,
+    "confirmedAt": 72,
+    "secondsUntilConfirmed": 15,
+    "reports": [
+      {
+        "time": 62,
+        "status": "ambiguous",
+        "evidence": 0,
+        "edgeId": "osm:179615762:15"
+      },
+      {
+        "time": 67,
+        "status": "suspected-off-track",
+        "evidence": 1,
+        "edgeId": "osm:179615762:14"
+      },
+      {
+        "time": 72,
+        "status": "confirmed-off-track",
+        "evidence": 2,
+        "edgeId": "osm:179615762:13"
+      }
+    ]
+  },
+  "elapsedMs": 1038.7
+}

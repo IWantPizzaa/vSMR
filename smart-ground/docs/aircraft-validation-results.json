@@ -1,0 +1,300 @@
+{
+  "generatedAt": "2026-11-13T15:09:55.442Z",
+  "inputSha256": {
+    "public/data/lfpg.json": "4597cfcb70d555ca801427a378d7f8fca297e55677d3062faed0c1718ed5b9c5",
+    "public/data/lfpg-operations.json": "d881f3494335470dfa11a0fe371f99bc7f2a772c2bca7e7a1785f74d7b603736",
+    "public/data/lfpg-corridors.json": "9228e0c4e9293426c2318ea032ce5ac07fc331595201b8c6eeaa6916cdf8def3",
+    "public/data/lfpg-aircraft-restrictions.json": "913a066d2bfde160f7fdf716942c58a8ac5530931a033d74f0033fae8ec63882"
+  },
+  "activeProfileIds": [],
+  "aircraftContextFlags": [],
+  "aircraftProfiles": [
+    {
+      "typeCode": "A320",
+      "wingspanMetres": 35.8
+    },
+    {
+      "typeCode": "A388",
+      "wingspanMetres": 79.75
+    },
+    {
+      "typeCode": "B744",
+      "wingspanMetres": 64.92
+    },
+    {
+      "typeCode": "B748",
+      "wingspanMetres": 68.4
+    }
+  ],
+  "checkedRoutes": 2400,
+  "checkedPositions": 576000,
+  "physicalRunwayCrossingsChecked": 800,
+  "unprotectedCrossings": 0,
+  "scenarios": [
+    {
+      "type": "A320",
+      "wingspanMetres": 35.8,
+      "configuration": "east",
+      "movement": "departure",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 751.9,
+      "uniqueOrigins": 100,
+      "advisories": 0
+    },
+    {
+      "type": "A320",
+      "wingspanMetres": 35.8,
+      "configuration": "east",
+      "movement": "arrival",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 2123.4,
+      "uniqueOrigins": 6,
+      "advisories": 0
+    },
+    {
+      "type": "A320",
+      "wingspanMetres": 35.8,
+      "configuration": "east",
+      "movement": "transfer",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 1095,
+      "uniqueOrigins": 100,
+      "advisories": 0
+    },
+    {
+      "type": "A320",
+      "wingspanMetres": 35.8,
+      "configuration": "west",
+      "movement": "departure",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 730.8,
+      "uniqueOrigins": 100,
+      "advisories": 0
+    },
+    {
+      "type": "A320",
+      "wingspanMetres": 35.8,
+      "configuration": "west",
+      "movement": "arrival",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 2296.5,
+      "uniqueOrigins": 4,
+      "advisories": 0
+    },
+    {
+      "type": "A320",
+      "wingspanMetres": 35.8,
+      "configuration": "west",
+      "movement": "transfer",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 1137.5,
+      "uniqueOrigins": 100,
+      "advisories": 0
+    },
+    {
+      "type": "A388",
+      "wingspanMetres": 79.75,
+      "configuration": "east",
+      "movement": "departure",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 367.4,
+      "uniqueOrigins": 83,
+      "advisories": 0
+    },
+    {
+      "type": "A388",
+      "wingspanMetres": 79.75,
+      "configuration": "east",
+      "movement": "arrival",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 1417,
+      "uniqueOrigins": 6,
+      "advisories": 0
+    },
+    {
+      "type": "A388",
+      "wingspanMetres": 79.75,
+      "configuration": "east",
+      "movement": "transfer",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 2094.6,
+      "uniqueOrigins": 52,
+      "advisories": 0
+    },
+    {
+      "type": "A388",
+      "wingspanMetres": 79.75,
+      "configuration": "west",
+      "movement": "departure",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 510.1,
+      "uniqueOrigins": 83,
+      "advisories": 0
+    },
+    {
+      "type": "A388",
+      "wingspanMetres": 79.75,
+      "configuration": "west",
+      "movement": "arrival",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 1108.2,
+      "uniqueOrigins": 4,
+      "advisories": 0
+    },
+    {
+      "type": "A388",
+      "wingspanMetres": 79.75,
+      "configuration": "west",
+      "movement": "transfer",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 2125.3,
+      "uniqueOrigins": 52,
+      "advisories": 0
+    },
+    {
+      "type": "B744",
+      "wingspanMetres": 64.92,
+      "configuration": "east",
+      "movement": "departure",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 709.9,
+      "uniqueOrigins": 100,
+      "advisories": 0
+    },
+    {
+      "type": "B744",
+      "wingspanMetres": 64.92,
+      "configuration": "east",
+      "movement": "arrival",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 1412.9,
+      "uniqueOrigins": 6,
+      "advisories": 0
+    },
+    {
+      "type": "B744",
+      "wingspanMetres": 64.92,
+      "configuration": "east",
+      "movement": "transfer",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 1110.5,
+      "uniqueOrigins": 100,
+      "advisories": 0
+    },
+    {
+      "type": "B744",
+      "wingspanMetres": 64.92,
+      "configuration": "west",
+      "movement": "departure",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 858.2,
+      "uniqueOrigins": 100,
+      "advisories": 0
+    },
+    {
+      "type": "B744",
+      "wingspanMetres": 64.92,
+      "configuration": "west",
+      "movement": "arrival",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 1388.9,
+      "uniqueOrigins": 4,
+      "advisories": 0
+    },
+    {
+      "type": "B744",
+      "wingspanMetres": 64.92,
+      "configuration": "west",
+      "movement": "transfer",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 1116.4,
+      "uniqueOrigins": 100,
+      "advisories": 0
+    },
+    {
+      "type": "B748",
+      "wingspanMetres": 68.4,
+      "configuration": "east",
+      "movement": "departure",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 453.2,
+      "uniqueOrigins": 100,
+      "advisories": 0
+    },
+    {
+      "type": "B748",
+      "wingspanMetres": 68.4,
+      "configuration": "east",
+      "movement": "arrival",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 1285.8,
+      "uniqueOrigins": 6,
+      "advisories": 0
+    },
+    {
+      "type": "B748",
+      "wingspanMetres": 68.4,
+      "configuration": "east",
+      "movement": "transfer",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 1579.4,
+      "uniqueOrigins": 68,
+      "advisories": 0
+    },
+    {
+      "type": "B748",
+      "wingspanMetres": 68.4,
+      "configuration": "west",
+      "movement": "departure",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 587.5,
+      "uniqueOrigins": 100,
+      "advisories": 0
+    },
+    {
+      "type": "B748",
+      "wingspanMetres": 68.4,
+      "configuration": "west",
+      "movement": "arrival",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 1494.8,
+      "uniqueOrigins": 4,
+      "advisories": 0
+    },
+    {
+      "type": "B748",
+      "wingspanMetres": 68.4,
+      "configuration": "west",
+      "movement": "transfer",
+      "requested": 100,
+      "generated": 100,
+      "generationMs": 1650.2,
+      "uniqueOrigins": 68,
+      "advisories": 0
+    }
+  ],
+  "elapsedMs": 31637.8
+}

@@ -102,7 +102,7 @@
   const RULE_EFFECT_LABELS = { target_color: "Aircraft icon color", tag_color: "Tag background color", text_color: "All tag text color",
     field_color: "Field text color", field_background: "Field background color", field_bold: "Field bold", field_blink: "Field blink" };
   const AVISO_BACKGROUND_STYLE_ID = "__aviso_background__";
-  const ALERT_TYPES = ["NO PUSH", "NO TAXI", "NO TKOF", "STAT RPA", "RWY INC", "RWY TYPE", "RWY CLSD", "HIGH SPD", "EMERG"];
+  const ALERT_TYPES = ["NO PUSH", "NO TAXI", "NO TKOF", "STAT RPA", "RWY INC", "RWY TYPE", "RWY CLSD", "HIGH SPD", "EMERG", "SG COLLISION", "OFF TRACK"];
   const DEFAULT_ALERT_RUNWAYS = [
     { id: "09L / 27R", arrival: true, departure: true, closed: false },
     { id: "09R / 27L", arrival: true, departure: true, closed: false },
@@ -4720,7 +4720,11 @@
     delete data.rimcas.rimcas_label_only;
     delete data.rimcas.use_red_symbol_for_emergencies;
     const alertChecks = $$('[data-alert-type]');
-    if (alertChecks.length) data.rimcas.inactive_alerts = alertChecks.filter(input => !input.checked).map(input => input.dataset.alertType);
+    if (alertChecks.length) {
+      const editedTypes = new Set(alertChecks.map(input => input.dataset.alertType));
+      const unlistedInactive = (data.rimcas.inactive_alerts || []).map(String).filter(type => !editedTypes.has(type));
+      data.rimcas.inactive_alerts = [...new Set([...unlistedInactive, ...alertChecks.filter(input => !input.checked).map(input => input.dataset.alertType)])];
+    }
     if ($("#alertVisibilityMode")) data.visibility = $("#alertVisibilityMode").value === "lvp" ? "lvp" : "normal";
     const runwayRows = $$("[data-alert-runway-index]");
     if (runwayRows.length) data.runways = runwayRows.map(row => {
