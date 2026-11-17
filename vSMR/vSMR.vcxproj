@@ -293,6 +293,7 @@
     <ClInclude Include="src\aviso\StandHighlight.hpp" />
     <ClInclude Include="src\aviso\AvisoPaletteGeometry.hpp" />
     <ClInclude Include="src\aircraft\HoldingPoint.hpp" />
+    <ClInclude Include="src\aircraft\Language.hpp" />
     <ClInclude Include="src\app\PluginEntry.hpp" />
     <ClInclude Include="src\bootstrap\RuntimeApi.hpp" />
     <ClInclude Include="src\bootstrap\RuntimeContext.hpp" />

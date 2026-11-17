@@ -5,6 +5,7 @@
 
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
+#include "aircraft/Language.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 
 #include <algorithm>
@@ -345,4 +346,36 @@ bool CSMRPlugin::HandleHoldingPointFunctionCall(
 
 
 	return false;
+}
+
+// Both the native list item and the rendered tag dispatch this same menu.
+bool CSMRPlugin::HandleLanguageFunctionCall(int functionId, const char* itemString, RECT area)
+{
+	static std::string pendingCallsign;
+	if (functionId == TAG_FUNC_LANGUAGE_EDIT)
+	{
+		const auto fp = FlightPlanSelectASEL();
+		if (!fp.IsValid()) return true;
+		pendingCallsign = fp.GetCallsign();
+		const char* raw = fp.GetFlightPlanData().GetRemarks();
+		const auto language = VsmrLanguage::Read(raw ? raw : "");
+		OpenPopupList(area, "Language", 1);
+		AddPopupListElement("/FR", "", TAG_FUNC_LANGUAGE_SELECT, language == "/FR");
+		AddPopupListElement("/EN", "", TAG_FUNC_LANGUAGE_SELECT, language == "/EN");
+		AddPopupListElement("Clear", "", TAG_FUNC_LANGUAGE_SELECT, language.empty());
+		return true;
+	}
+	if (functionId != TAG_FUNC_LANGUAGE_SELECT) return false;
+	const std::string choice = itemString ? itemString : "";
+	if (choice != "/FR" && choice != "/EN" && choice != "Clear") return true;
+	const auto fp = FlightPlanSelect(pendingCallsign.c_str());
+	pendingCallsign.clear();
+	if (!fp.IsValid()) return true;
+	auto data = fp.GetFlightPlanData();
+	const char* raw = data.GetRemarks();
+	const auto remarks = VsmrLanguage::Write(raw ? raw : "", choice == "Clear" ? "" : choice);
+	if (!data.SetRemarks(remarks.c_str()) || !data.AmendFlightPlan())
+		DisplayUserMessage("vSMR", "Language", "EuroScope rejected the language update in flight plan remarks.", true, true, true, false, false);
+	for (auto* radar : RadarScreensOpened) if (radar && !radar->IsShutdownRequested()) radar->RequestRefresh();
+	return true;
 }
