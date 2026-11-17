@@ -21,8 +21,8 @@
     {
       "file": "lfpg_corridors.json",
       "source": "smart-ground/public/data/lfpg-corridors.json",
-      "bytes": 934165,
-      "sha256": "9228e0c4e9293426c2318ea032ce5ac07fc331595201b8c6eeaa6916cdf8def3"
+      "bytes": 814611,
+      "sha256": "f67aaa97d1d5673ce66fe5f1db8147801a7025ac0c34fa88fe0caef30116b429"
     },
     {
       "file": "lfpg_aircraft_restrictions.json",

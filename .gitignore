@@ -236,3 +236,8 @@ vSMR/Release_cli/
 /vSMR/data/AVISO/ALL_FR_*.geojson
 /vSMR/tools/procdump.zip
 /vSMR/tools/procdump/
+
+# Do not commit private LFPG MANEX documents or extracts.
+smart-ground/data-sources/manex/
+*MANEX*.pdf
+*manex*.pdf
