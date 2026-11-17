@@ -2,6 +2,7 @@
 #include <objidl.h>
 
 #include "aircraft/GroundState.hpp"
+#include "aircraft/Language.hpp"
 #include "aircraft/HoldingPoint.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
 #include "aviso/AvisoPalettePreference.hpp"
@@ -47,6 +48,7 @@
 #include "AuditRegressionTests.hpp"
 #include "PluginBridgeTests.hpp"
 #include "TagColorRuleTests.hpp"
+#include "StandArrivalTests.hpp"
 #include "PinedeProtocolTests.hpp"
 #include "UpdaterUrlPolicyTests.hpp"
 #include "updater/GroundLayoutAviso.hpp"
@@ -103,6 +105,10 @@ namespace
 				VsmrRuntimeMenuInput::OpensWindow(id),
 				std::string("runtime window requires EuroScope's click context: ") + id);
 		}
+		Expect(VsmrRuntimeMenuInput::NeedsHostClickContext("runtime.cdm.airport.LFPG") &&
+			!VsmrRuntimeMenuInput::OpensWindow("runtime.cdm.airport.LFPG") &&
+			VsmrRuntimeMenuInput::NeedsHostClickContext("runtime.cdm.capacity"),
+			"CDM command actions use EuroScope's screen-object callback and host window context");
 		Expect(VsmrRuntimeMenuInput::NeedsHostClickContext("runtime.vsid.sync") &&
 			!VsmrRuntimeMenuInput::OpensWindow("runtime.vsid.sync") &&
 			!VsmrRuntimeMenuInput::NeedsHostClickContext("runtime.datalink.poll"),
@@ -332,6 +338,31 @@ namespace
 		AssignedData rejected;
 		rejected.reject = true;
 		Expect(!VsmrGroundStateSync::SetTaxiForHoldingPoint(rejected) && rejected.status == "PUSH" && rejected.scratchpad == "KEEP", "rejected HP Taxi is not reported as successful");
+		Expect(VsmrRimcasLogic::RunwayHalfWidth("LFLB", "18", "36") == 22.5f &&
+			VsmrRimcasLogic::RunwayHalfWidth("LFLB", "18L", "36R") == 30.0f,
+			"LFLB paved and grass runway footprints use their distinct published widths");
+		Expect(55.0 > VsmrRimcasLogic::RunwayHalfWidth("LFLB", "18", "36") &&
+			VsmrRimcasLogic::RunwayHalfWidth("LFPG", "08L", "26R") == 92.5f,
+			"LFLB parallel taxiway is outside occupancy without changing other airport corridors");
+		Expect(VsmrTargetRoleLogic::HasUnknownAirportGroundRole(false, true, true, false, false),
+			"LFNM-to-LSZH at LFMN is an unknown local role and uses the gray palette");
+		Expect(!VsmrTargetRoleLogic::HasUnknownAirportGroundRole(false, true, true, true, false) &&
+			!VsmrTargetRoleLogic::HasUnknownAirportGroundRole(false, true, true, false, true) &&
+			!VsmrTargetRoleLogic::HasUnknownAirportGroundRole(true, true, true, false, false) &&
+			!VsmrTargetRoleLogic::HasUnknownAirportGroundRole(false, false, true, false, false),
+			"valid local flights, airborne traffic and uncorrelated targets retain their configured palettes");
+		Expect(classifyGroundStateWithSharedState("TAXI", 10, true, 11) == GroundStateCategory::Cross &&
+			classifyGroundStateWithSharedState("NSTS", 10, false, 11) == GroundStateCategory::Nsts,
+			"Cross is shared through TAXI plus reserved marker and revoked by a foreign status change");
+		Expect(VsmrRimcasLogic::IsRunwayEntryAuthorized(GroundStateCategory::Cross) &&
+			!VsmrRimcasLogic::IsRunwayEntryAuthorized(GroundStateCategory::Taxi),
+			"only an explicit crossing clearance suppresses runway incursion, ordinary taxi does not");
+		Expect(VsmrLanguage::Read("PBN/A1 RMK/TCAS /fr") == "/FR" &&
+			VsmrLanguage::Read("RMK/EN") == "/EN" && VsmrLanguage::Read("REG/FRENCH /FRA").empty(),
+			"language reads only complete markers from shared flight plan remarks");
+		Expect(VsmrLanguage::Write("PBN/A1 RMK/TCAS /EN HP/N4", "/FR") == "PBN/A1 RMK/TCAS HP/N4 /FR" &&
+			VsmrLanguage::Write("/FR /EN RMK/TCAS", "") == "RMK/TCAS",
+			"language replacement and clear preserve PBN, holding point and unrelated remarks");
 		Expect(classifyGroundState("ST-UP", 0, false) == GroundStateCategory::Stup, "ground state startup alias");
 		Expect(classifyGroundState("P/B", 3, false) == GroundStateCategory::Push, "ground state push alias");
 		Expect(classifyGroundState("LINE UP", 0, true) == GroundStateCategory::Lnup, "ground state lineup alias");
@@ -2205,6 +2236,8 @@ int wmain(int argc, wchar_t** argv)
 	for (const std::string& failure : RunSharedRenderingBehaviorTests())
 		Expect(false, failure);
 	for (const std::string& failure : RunTagColorRuleTests())
+		Expect(false, failure);
+	for (const std::string& failure : RunStandArrivalTests())
 		Expect(false, failure);
 	for (const std::string& failure : RunUpdaterUrlPolicyTests())
 		Expect(false, failure);

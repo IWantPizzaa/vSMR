@@ -58,7 +58,7 @@
     },
     uncorrelated: { default: "background_on_ground_color" }
   };
-  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "vsid_sid", "vsid_rwy", "vsid_cfl", "ready_startup", "tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat", "uk_stand", "sqerror", "groundstatus", "systemid"];
+  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "language", "remark", "asid", "vsid_sid", "vsid_rwy", "vsid_cfl", "ready_startup", "tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat", "uk_stand", "sqerror", "groundstatus", "systemid"];
   const RULE_LIMITS = { depth: 8, nodes: 128, effects: 32, values: 128, rules: 256 };
   const RULE_FIELDS = [
     ...["tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat"].map(token => ({
@@ -590,7 +590,7 @@
     aviso.vsmr_groups.forEach(group => {
       if (group && typeof group === "object") delete group.color_palettes;
     });
-    aviso.metadata.geometry_mode = "shared";
+    if (aviso.metadata.geometry_mode !== "palette_specific") aviso.metadata.geometry_mode = "shared";
 
     const seen = new Set();
     const groupIdAliases = new Map();
@@ -610,6 +610,7 @@
         ...sourceGroup,
         id,
         name: String(sourceGroup.name || `Group ${index + 1}`).trim() || `Group ${index + 1}`,
+        folder: String(sourceGroup.folder ?? sourceGroup.section ?? "").trim(),
         visible: sourceGroup.visible !== false,
         accent: normalizeHex(sourceGroup.accent || "#84b7d5", "#84b7d5")
       };
@@ -760,6 +761,8 @@
         aliasFile: "C:\\EuroScope\\Alias\\alias.txt",
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
         rdfEnabled: true,
+        highlightArrivalStand: true,
+        resetStatusAtStand: true,
         uiColorTheme: "night",
         weatherAllAirports: true,
         showNorthIndicator: true,

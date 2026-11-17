@@ -63,7 +63,7 @@
     },
     uncorrelated: { default: "background_on_ground_color" }
   };
-  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "vsid_sid", "vsid_rwy", "vsid_cfl", "ready_startup", "tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat", "uk_stand", "sqerror", "groundstatus", "systemid"];
+  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "language", "remark", "asid", "vsid_sid", "vsid_rwy", "vsid_cfl", "ready_startup", "tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat", "uk_stand", "sqerror", "groundstatus", "systemid"];
   const RULE_LIMITS = { depth: 8, nodes: 128, effects: 32, values: 128, rules: 256 };
   const RULE_FIELDS = [
     ...["tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat"].map(token => ({
@@ -595,7 +595,7 @@
     aviso.vsmr_groups.forEach(group => {
       if (group && typeof group === "object") delete group.color_palettes;
     });
-    aviso.metadata.geometry_mode = "shared";
+    if (aviso.metadata.geometry_mode !== "palette_specific") aviso.metadata.geometry_mode = "shared";
 
     const seen = new Set();
     const groupIdAliases = new Map();
@@ -615,6 +615,7 @@
         ...sourceGroup,
         id,
         name: String(sourceGroup.name || `Group ${index + 1}`).trim() || `Group ${index + 1}`,
+        folder: String(sourceGroup.folder ?? sourceGroup.section ?? "").trim(),
         visible: sourceGroup.visible !== false,
         accent: normalizeHex(sourceGroup.accent || "#84b7d5", "#84b7d5")
       };
@@ -765,6 +766,8 @@
         aliasFile: "C:\\EuroScope\\Alias\\alias.txt",
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
         rdfEnabled: true,
+        highlightArrivalStand: true,
+        resetStatusAtStand: true,
         uiColorTheme: "night",
         weatherAllAirports: true,
         showNorthIndicator: true,
@@ -1593,6 +1596,12 @@
 
 
 
+  function runtimePaletteGroups() {
+    const palette = normalizeAvisoColorPalette(state.settings.avisoColorPalette);
+    return avisoGroups().filter(group => !Array.isArray(group.geometry_palettes) ||
+      group.geometry_palettes.includes(palette));
+  }
+
   function featureGroupIds(feature) {
     const properties = feature?.properties || {};
     let ids = [];
@@ -1751,7 +1760,7 @@
     applyUiTheme();
     const menu = $("#runtimeMenu");
     if (!menu || HOST_MODE) return;
-    const groups = avisoGroups();
+    const groups = runtimePaletteGroups();
     const visibleGroups = groups.filter(group => group.visible !== false).length;
     const profile = activeProfile();
     const mode = activeModeName();
@@ -1875,7 +1884,7 @@
     }
 
     title.textContent = "Groups";
-    const groupRows = avisoGroups().map(group => {
+    const groupRows = runtimePaletteGroups().map(group => {
       const visible = group.visible !== false;
       return `<button type="button" class="${uiListRowClass("runtime", false, false, `runtime-choice-row runtime-compact-row ${visible ? "" : "muted"}`)}" data-runtime-group="${escapeHtml(group.id)}">${runtimeVisibilityIcon(visible)}<strong class="ui-list__label runtime-row-label">${escapeHtml(group.name)}</strong></button>`;
     }).join("");
@@ -3951,6 +3960,7 @@
     }
     const name = $("#avisoGroupName");
     if (name) drafts.avisoGroup.data.name = name.value;
+    drafts.avisoGroup.data.folder = $("#avisoGroupFolder")?.value.trim() || "";
     return drafts.avisoGroup;
   }
 
@@ -3974,6 +3984,8 @@
     const group = selectedAvisoGroup();
     const editor = $(".aviso-group-editor");
     const nameControl = $("#avisoGroupName");
+    $("#avisoGroupFolder").disabled = !group;
+    $("#avisoGroupFolder").value = group ? (drafts.avisoGroup?.id === group.id ? drafts.avisoGroup.data.folder || "" : group.folder || "") : "";
     nameControl?.setCustomValidity("");
     if (!group) {
       $("#avisoGroupCaption").textContent = "No group selected";
@@ -4022,7 +4034,7 @@
   function duplicateAvisoGroup() {
     const source = selectedAvisoGroup();
     if (!source) return;
-    const copy = { id: uniqueAvisoGroupId(`${source.id}-copy`), name: `${source.name} copy`, visible: source.visible !== false, accent: normalizeHex(source.accent, "#84b7d5") };
+    const copy = { id: uniqueAvisoGroupId(`${source.id}-copy`), name: `${source.name} copy`, folder: source.folder || "", visible: source.visible !== false, accent: normalizeHex(source.accent, "#84b7d5") };
     avisoGroups().splice(avisoGroups().indexOf(source) + 1, 0, copy);
     avisoFeatures().forEach(feature => {
       if (featureGroupIds(feature).includes(source.id)) setFeatureGroupMembership(feature, copy.id, true);
@@ -4061,6 +4073,7 @@
     }
     $("#avisoGroupName")?.setCustomValidity("");
     group.name = name;
+    group.folder = String(draft.data.folder || "").trim();
     group.visible = draft.data.visible !== false;
     group.accent = normalizeHex(draft.data.accent, group.accent || "#84b7d5");
     clearUnappliedEditorSection($("#avisoGroupName"));
@@ -4994,6 +5007,8 @@
     $("#settingsKeepAvisoWindowPlacement").checked = settings.keepAvisoWindowPlacement !== false;
     $("#settingsWeatherAirports").value = settings.weatherAllAirports !== false ? "all" : "single";
     $("#settingsRdfEnabled").checked = settings.rdfEnabled !== false;
+    $("#settingsHighlightArrivalStand").checked = settings.highlightArrivalStand !== false;
+    $("#settingsResetStatusAtStand").checked = settings.resetStatusAtStand !== false;
     const uiColorTheme = settings.uiColorTheme === "day" ? "day" : "night";
     syncToggleButtons('[data-ui-color-theme]', uiColorTheme, "uiColorTheme");
     const avisoColorPalette = normalizeAvisoColorPalette(settings.avisoColorPalette);
@@ -5015,7 +5030,9 @@
       showNorthIndicator: $("#settingsShowNorthIndicator").checked,
       keepAvisoWindowPlacement: $("#settingsKeepAvisoWindowPlacement").checked,
       weatherAllAirports: $("#settingsWeatherAirports").value === "all",
-      rdfEnabled: $("#settingsRdfEnabled").checked
+      rdfEnabled: $("#settingsRdfEnabled").checked,
+      highlightArrivalStand: $("#settingsHighlightArrivalStand").checked,
+      resetStatusAtStand: $("#settingsResetStatusAtStand").checked
     });
     state.profiles.forEach(record => {
       record.data.targets ||= {};
@@ -6160,6 +6177,7 @@
       state.ui.avisoGroupMemberSearch = event.target.value;
       renderAvisoGroupEditor();
     });
+    $("#avisoGroupFolder").addEventListener("input", () => captureAvisoGroupDraft());
     $("#avisoGroupName").addEventListener("input", event => {
       event.target.setCustomValidity(event.target.value.trim() ? "" : "Enter a group name");
       const draft = captureAvisoGroupDraft();

@@ -116,8 +116,8 @@ void CSMRRadar::EnsureRunwayGeometryCache()
 			if (configuredName == nullptr || configuredName[0] == '\0')
 				continue;
 
-			if (!VsmrRadarUiSupport::startsWith(runwayNameA.c_str(), configuredName) &&
-				!VsmrRadarUiSupport::startsWith(runwayNameB.c_str(), configuredName))
+			if (VsmrAviso::NormalizeRunway(runwayNameA) != VsmrAviso::NormalizeRunway(configuredName) &&
+				VsmrAviso::NormalizeRunway(runwayNameB) != VsmrAviso::NormalizeRunway(configuredName))
 			{
 				continue;
 			}
@@ -207,7 +207,8 @@ void CSMRRadar::EnsureRunwayGeometryCache()
 		runway.displayName = runway.runwayNameA + " / " + runway.runwayNameB;
 		resolveTrueHeading(right, left, rwy.GetRunwayHeading(0), runway.trueHeadingA, runway.trueHeadingAValid);
 		resolveTrueHeading(left, right, rwy.GetRunwayHeading(1), runway.trueHeadingB, runway.trueHeadingBValid);
-		runway.rimcasDefinition = RimcasInstance->GetRunwayArea(left, right);
+		runway.rimcasDefinition = RimcasInstance->GetRunwayArea(left, right,
+			VsmrRimcasLogic::RunwayHalfWidth(activeAirport, runway.runwayNameA, runway.runwayNameB));
 		runway.closedDefinition = loadClosedRunwayDefinition(runway.runwayNameA, runway.runwayNameB);
 		CachedRunwayGeometries.push_back(std::move(runway));
 	}

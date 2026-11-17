@@ -6,7 +6,8 @@ namespace VsmrEuroScopeCommandLine
 {
 	enum class Owner
 	{
-		Vsid
+		Vsid,
+		Cdm
 	};
 
 	enum class SubmissionStatus

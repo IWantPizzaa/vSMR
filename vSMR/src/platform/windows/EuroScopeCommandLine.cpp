@@ -23,10 +23,10 @@ namespace
 
 	PendingSubmission ActiveSubmission;
 	bool SubmissionActive = false;
-	constexpr UINT_PTR QuietVsidEnterSubclassId = 0x56534944U;
+	constexpr UINT_PTR QuietCommandEnterSubclassId = 0x56534944U;
 	constexpr UINT_PTR CommandProgressTimerId = 0x56534350U;
 
-	LRESULT CALLBACK QuietVsidEnterSubclass(
+	LRESULT CALLBACK QuietCommandEnterSubclass(
 		HWND window,
 		UINT message,
 		WPARAM wParam,
@@ -44,13 +44,13 @@ namespace
 				try { (void)ActiveSubmission.progress(); }
 				catch (...)
 				{
-					VsmrEuroScopeCommandLine::Cancel(Owner::Vsid);
+					VsmrEuroScopeCommandLine::Cancel(ActiveSubmission.owner);
 				}
 			}
 			return 0;
 		}
 		if (message == WM_CHAR && wParam == VK_RETURN &&
-			SubmissionActive && ActiveSubmission.owner == Owner::Vsid &&
+			SubmissionActive &&
 			ActiveSubmission.editControl == window)
 		{
 			// EuroScope consumes the posted key-down. Do not pass the translated
@@ -60,7 +60,7 @@ namespace
 		if (message == WM_NCDESTROY)
 		{
 			::KillTimer(window, CommandProgressTimerId);
-			::RemoveWindowSubclass(window, QuietVsidEnterSubclass, subclassId);
+			::RemoveWindowSubclass(window, QuietCommandEnterSubclass, subclassId);
 		}
 		return ::DefSubclassProc(window, message, wParam, lParam);
 	}
@@ -197,15 +197,15 @@ namespace
 
 	void ClearActiveSubmission(bool removeInsertedText) noexcept
 	{
-		if (SubmissionActive && ActiveSubmission.owner == Owner::Vsid &&
+		if (SubmissionActive &&
 			ActiveSubmission.editControl != nullptr &&
 			::IsWindow(ActiveSubmission.editControl))
 		{
 			::KillTimer(ActiveSubmission.editControl, CommandProgressTimerId);
 			::RemoveWindowSubclass(
 				ActiveSubmission.editControl,
-				QuietVsidEnterSubclass,
-				QuietVsidEnterSubclassId);
+				QuietCommandEnterSubclass,
+				QuietCommandEnterSubclassId);
 		}
 		if (removeInsertedText && SubmissionActive &&
 			ActiveSubmission.editControl != nullptr && ::IsWindow(ActiveSubmission.editControl))
@@ -253,10 +253,10 @@ bool VsmrEuroScopeCommandLine::Begin(
 		return fail("Clear EuroScope's command line before using this button.");
 	if (!::SetWindowTextA(editControl, command.c_str()))
 		return fail("EuroScope's command line could not be updated.");
-	if (owner == Owner::Vsid && !::SetWindowSubclass(
+	if (!::SetWindowSubclass(
 		editControl,
-		QuietVsidEnterSubclass,
-		QuietVsidEnterSubclassId,
+		QuietCommandEnterSubclass,
+		QuietCommandEnterSubclassId,
 		0U))
 	{
 		::SetWindowTextA(editControl, "");

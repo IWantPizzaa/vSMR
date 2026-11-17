@@ -438,6 +438,16 @@
     const newGroupButton = document.querySelector('[data-action="new-aviso-group"]');
     expect(Boolean(newGroupButton), "AVISO group action is rendered");
     newGroupButton?.click();
+    const folderInput = document.querySelector("#avisoGroupFolder");
+    expect(Boolean(folderInput), "AVISO groups expose an optional folder");
+    folderInput.value = "LVP <test>";
+    folderInput.focus();
+    folderInput.dispatchEvent(new Event("input", { bubbles: true }));
+    folderInput.dispatchEvent(new Event("change", { bubbles: true }));
+    folderInput.blur();
+    await waitFor(() => api.getState().aviso.vsmr_groups.some(group => group.folder === "LVP <test>"),
+      "Folder edits are staged into the AVISO state");
+
     await waitFor(
       () => outbound.some(message => message.type === "state.save" &&
         message.payload?.aviso?.type === "FeatureCollection"),
@@ -877,6 +887,19 @@
       "UI theme changes shared design colors without changing the AVISO palette");
 
     const rdfToggle = document.querySelector("#settingsRdfEnabled");
+    for (const [id, key] of [["settingsHighlightArrivalStand", "highlightArrivalStand"],
+      ["settingsResetStatusAtStand", "resetStatusAtStand"]]) {
+      const toggle = document.getElementById(id);
+      expect(toggle?.checked, `${key} is available and enabled by default`);
+      for (const enabled of [false, true]) {
+        const saveStart = outbound.length;
+        toggle.checked = enabled;
+        toggle.dispatchEvent(new Event("change", { bubbles: true }));
+        expect(api.getState().settings?.[key] === enabled, `${key} stages immediately`);
+        await waitFor(() => outbound.slice(saveStart).some(message => message.type === "state.save" &&
+          message.payload?.settings?.[key] === enabled), `${key} is included in automatic settings saves`);
+      }
+    }
 	const weatherAirports = document.querySelector("#settingsWeatherAirports");
 	expect(!document.querySelector("#settingsWeatherDisplayMode") && !("weatherDisplayMode" in api.getState().settings),
 	  "METAR detail is automatic with no manual mode setting");

@@ -2,6 +2,7 @@
 #include "integrations/CdmBridgeClient.hpp"
 #include "integrations/PluginBridgeClient.hpp"
 #include "integrations/PluginBridgeReads.hpp"
+#include "platform/windows/EuroScopeCommandLine.hpp"
 
 #include "shared/logging/Logger.hpp"
 
@@ -26,7 +27,7 @@ namespace
 	using VsmrPluginBridge::ReadStatus;
 
 	// CDM schema 1.0, declared by kCdmBridgeFields in CDMSingle.cpp
-	// (IWantPizzaa/CDM commit 1df65062). All fields are aircraft-scoped.
+	// (IWantPizzaa/CDM commit 1df65062). Schema 1.2 adds the optional global airport panel.
 	constexpr char ProviderId[] = "com.viffsys.cdm";
 	constexpr std::uint32_t SupportedSchemaMajor = 1U;
 
@@ -44,6 +45,7 @@ namespace
 		FlowRestriction,
 		EcfmpRestriction,
 		ManualCtot,
+		AirportPanelField,
 		FieldCount
 	};
 
@@ -61,7 +63,8 @@ namespace
 		{ "tobt_set_by", ESB_T_STR, 16U },
 		{ "flow_restriction", ESB_T_STR, 512U },
 		{ "ecfmp_restriction", ESB_T_STR, 64U },
-		{ "manual_ctot", ESB_T_BOOL, 0U }
+		{ "manual_ctot", ESB_T_BOOL, 0U },
+		{ "airport_panel", ESB_T_STR, static_cast<std::uint32_t>(VsmrCdm::MaximumPanelBytes) }
 	} };
 
 	constexpr std::uint64_t NoRevision = (std::numeric_limits<std::uint64_t>::max)();
@@ -77,6 +80,13 @@ namespace
 	std::mutex StateMutex;
 	std::unordered_map<std::string, VsmrCdm::AircraftData> AircraftByCallsign;
 	std::atomic<bool> ProviderReady{ false };
+	std::optional<VsmrCdm::AirportPanel> PanelSnapshot;
+	struct MasterChange { bool master; ULONGLONG started; };
+	std::map<std::string, MasterChange> PendingMasters;
+	void (*UiRefreshCallback)() = nullptr;
+	bool CommandRefreshPending = false;
+	VsmrPluginBridge::AttachState LastAttach = VsmrPluginBridge::AttachState::NotLoaded;
+	bool LastReady = false;
 
 	// Timer-only polling state.
 	std::uint64_t LastProviderRevision = NoRevision;
@@ -84,14 +94,17 @@ namespace
 
 	bool DisconnectProvider()
 	{
+		VsmrEuroScopeCommandLine::Cancel(VsmrEuroScopeCommandLine::Owner::Cdm);
 		Provider.Reset();
 		ProviderReady.store(false, std::memory_order_relaxed);
 		LastProviderRevision = NoRevision;
 		LastScannedCallsigns.clear();
 		std::lock_guard<std::mutex> guard(StateMutex);
-		if (AircraftByCallsign.empty())
+		if (AircraftByCallsign.empty() && !PanelSnapshot && PendingMasters.empty())
 			return false;
 		AircraftByCallsign.clear();
+		PanelSnapshot.reset();
+		PendingMasters.clear();
 		return true;
 	}
 
@@ -106,7 +119,11 @@ namespace
 	}
 }
 
-bool VsmrCdm::Poll(const VsmrPluginBridge::Tick& tick)
+namespace VsmrCdm
+{
+namespace
+{
+bool PollState(const VsmrPluginBridge::Tick& tick, bool interfaceOnly)
 {
 	try
 	{
@@ -124,13 +141,30 @@ bool VsmrCdm::Poll(const VsmrPluginBridge::Tick& tick)
 		// Coarse gate (B2.5): every CDM write or clear advances the provider revision.
 		const std::uint64_t providerRevision = api.provider_revision(ProviderId);
 		if (!Provider.SourceChanged() && providerRevision == LastProviderRevision &&
-			tick.callsigns == LastScannedCallsigns)
+			(interfaceOnly || tick.callsigns == LastScannedCallsigns))
 		{
 			return false;
 		}
 
-		std::unordered_map<std::string, AircraftData> next;
 		bool snapshotComplete = true;
+		bool panelChanged = false;
+		std::optional<AirportPanel> nextPanel;
+		if (Provider.Field(AirportPanelField) != ESB_FIELD_NONE)
+		{
+			std::string raw;
+			const auto status = VsmrPluginBridge::ReadGlobalString(api, Provider.Field(AirportPanelField),
+				static_cast<std::uint32_t>(MaximumPanelBytes), raw);
+			if (status == ReadStatus::ProviderLost) return DisconnectProvider();
+			if (status == ReadStatus::Value) nextPanel = ParseAirportPanel(raw);
+			if (status == ReadStatus::Failed) snapshotComplete = false;
+		}
+		{
+			std::lock_guard<std::mutex> guard(StateMutex);
+			panelChanged = PanelSnapshot != nextPanel;
+			PanelSnapshot = std::move(nextPanel);
+		}
+		if (interfaceOnly) return panelChanged;
+		std::unordered_map<std::string, AircraftData> next;
 		for (const std::string& callsign : tick.callsigns)
 		{
 			ESB_Aircraft aircraft = ESB_AIRCRAFT_NONE;
@@ -203,7 +237,7 @@ bool VsmrCdm::Poll(const VsmrPluginBridge::Tick& tick)
 		// Retry incomplete reads even when the provider revision did not advance.
 		LastProviderRevision = snapshotComplete ? providerRevision : NoRevision;
 		LastScannedCallsigns = tick.callsigns;
-		return ReplaceSnapshot(std::move(next));
+		return ReplaceSnapshot(std::move(next)) || panelChanged;
 	}
 	catch (const std::exception& exception)
 	{
@@ -214,6 +248,79 @@ bool VsmrCdm::Poll(const VsmrPluginBridge::Tick& tick)
 		Logger::info("CDM bridge poll failed: unknown exception");
 	}
 	return DisconnectProvider();
+}
+
+bool PollCommandProgress()
+{
+	const auto result = VsmrEuroScopeCommandLine::Poll(VsmrEuroScopeCommandLine::Owner::Cdm);
+	if (result == VsmrEuroScopeCommandLine::SubmissionStatus::Idle) return false;
+	bool changed = result == VsmrEuroScopeCommandLine::SubmissionStatus::Confirmed ||
+		result == VsmrEuroScopeCommandLine::SubmissionStatus::Ambiguous;
+	if (result != VsmrEuroScopeCommandLine::SubmissionStatus::Pending)
+		changed = PollState({ VsmrPluginBridge::AttachForUi(), {} }, true) || changed;
+	CommandRefreshPending = CommandRefreshPending || changed;
+	if (changed && UiRefreshCallback) UiRefreshCallback();
+	return changed;
+}
+} // namespace
+} // namespace VsmrCdm
+
+bool VsmrCdm::Poll(const VsmrPluginBridge::Tick& tick)
+{
+	bool changed = PollCommandProgress();
+	changed = PollState(tick, false) || changed || CommandRefreshPending;
+	CommandRefreshPending = false;
+	const auto attach = VsmrPluginBridge::GetAttachState();
+	const bool ready = ProviderReady.load(std::memory_order_relaxed);
+	changed = changed || attach != LastAttach || ready != LastReady;
+	LastAttach = attach; LastReady = ready;
+	std::lock_guard<std::mutex> guard(StateMutex);
+	for (auto entry = PendingMasters.begin(); entry != PendingMasters.end();)
+	{
+		const auto found = PanelSnapshot ? std::find_if(PanelSnapshot->airports.begin(), PanelSnapshot->airports.end(),
+			[&](const AirportStatus& airport) { return airport.icao == entry->first; }) : std::vector<AirportStatus>::iterator{};
+		if (::GetTickCount64() - entry->second.started >= 15000 ||
+			(PanelSnapshot && found != PanelSnapshot->airports.end() && found->local == entry->second.master))
+		{
+			entry = PendingMasters.erase(entry); changed = true;
+		}
+		else ++entry;
+	}
+	return changed;
+}
+
+void VsmrCdm::SetUiRefreshCallback(void (*callback)()) noexcept { UiRefreshCallback = callback; }
+
+bool VsmrCdm::SubmitCommand(CommandAction action, const std::string& airport, std::string& error)
+{
+	error.clear();
+	const auto state = GetInterfaceState();
+	if (!state.bridgeLoaded) error = VsmrPluginBridge::MissingBridgeMessage();
+	else if (!state.bridgeCompatible || !state.providerReady) error = "A compatible CDM provider is not available through the bridge.";
+	else if (!state.panel) error = "Update CDM to a build that publishes its airport panel (bridge schema 1.2).";
+	else if (state.commandLineBusy) error = "EuroScope is still processing another vSMR command.";
+	else if (state.proxy && (action == CommandAction::NativePanel || action == CommandAction::Atfcm || action == CommandAction::Capacity))
+		error = "Open CDM floating panels in the primary EuroScope instance.";
+	if (!error.empty()) return false;
+	if (RequiresAirport(action))
+	{
+		const auto found = std::find_if(state.panel->airports.begin(), state.panel->airports.end(),
+			[&](const AirportStatus& value) { return value.icao == airport; });
+		if (found == state.panel->airports.end()) { error = "Select a configured CDM airport."; return false; }
+		if (found->pending) { error = "CDM is still confirming this airport's Master change."; return false; }
+		if ((action == CommandAction::Master && found->local) || (action == CommandAction::Slave && !found->local)) return true;
+	}
+	const auto command = BuildCommand(action, airport);
+	if (command.empty()) { error = "Invalid CDM action or airport."; return false; }
+	const bool accepted = state.proxy
+		? VsmrPluginBridge::SubmitProxyCdm(static_cast<int>(action), airport, error)
+		: VsmrEuroScopeCommandLine::Begin(VsmrEuroScopeCommandLine::Owner::Cdm, command, &error, PollCommandProgress);
+	if (accepted && (action == CommandAction::Master || action == CommandAction::Slave))
+	{
+		std::lock_guard<std::mutex> guard(StateMutex);
+		PendingMasters[airport] = { action == CommandAction::Master, ::GetTickCount64() };
+	}
+	return accepted;
 }
 
 bool VsmrCdm::TryGetAircraftData(
@@ -242,15 +349,26 @@ VsmrCdm::InterfaceState VsmrCdm::GetInterfaceState()
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
 		state.aircraftCount = AircraftByCallsign.size();
+		state.panel = PanelSnapshot;
+		if (state.panel) for (auto& airport : state.panel->airports)
+			airport.pending = airport.pending || PendingMasters.count(airport.icao) != 0U;
 	}
+	state.commandLineBusy = VsmrEuroScopeCommandLine::IsBusy() || VsmrPluginBridge::ProxyCommandPending();
+	state.proxy = VsmrPluginBridge::IsProxyBridge();
 	return state;
 }
 
 void VsmrCdm::Shutdown() noexcept
 {
+	UiRefreshCallback = nullptr;
+	CommandRefreshPending = false;
+	LastAttach = VsmrPluginBridge::AttachState::NotLoaded; LastReady = false;
+	VsmrEuroScopeCommandLine::Cancel(VsmrEuroScopeCommandLine::Owner::Cdm);
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
 		AircraftByCallsign.clear();
+		PanelSnapshot.reset();
+		PendingMasters.clear();
 	}
 	Provider.Reset();
 	Diagnostics.Reset();
