@@ -1,5 +1,6 @@
 #include "PluginBridgeTests.hpp"
 #include "integrations/CdmBridgeClient.hpp"
+#include "integrations/DmanBridgeClient.hpp"
 #include "integrations/PluginBridgeClient.hpp"
 #include "integrations/ProxyBridgeSnapshot.hpp"
 #include "integrations/RampAgentBridgeClient.hpp"
@@ -619,6 +620,37 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 	for (const auto& invalid : { std::string(65537, ' '), std::string(1000, '[') + std::string(1000, ']'),
 		std::string(R"({"version":2})"), std::string(R"({"version":1,"can_control":true,"native_panel":false,"atfcm":false,"bmi":false,"capacity_airport":"","airports":[{"icao":"LFPG","master":"a\u0000b","local":false}]})") })
 		check(!VsmrCdm::ParseAirportPanel(invalid), "invalid, oversized and control-character CDM UI snapshots fail closed");
+	// ----- DMAN's PDC station -----
+	VsmrDman::Shutdown();
+	VsmrDman::Poll(tick);
+	check(VsmrDman::GetPdcStation().empty(), "an absent DMAN provider handles no PDC station");
+	Providers["dman"] = 0U;
+	Published.push_back({ "dman/pdc_station", ESB_T_STR, " lfpg_del " });
+	const std::size_t pdcStationIndex = Published.size() - 1U;
+	VsmrDman::Poll(tick);
+	check(VsmrDman::GetPdcStation() == "LFPG_DEL", "DMAN's PDC station is read from the global field, normalized");
+	Published[pdcStationIndex].text.clear();
+	VsmrDman::Poll(tick);
+	check(VsmrDman::GetPdcStation().empty(), "an unset DMAN PDC station handles none");
+	Published[pdcStationIndex].text = "LFPG_DEL";
+	VsmrDman::Poll(tick);
+	Published[pdcStationIndex].declared = false;
+	VsmrDman::Poll(tick);
+	check(VsmrDman::GetPdcStation().empty(), "a DMAN that no longer declares the field handles no PDC station");
+	Published[pdcStationIndex].declared = true;
+	VsmrDman::Poll(tick);
+	Providers.erase("dman");
+	VsmrDman::Poll(tick);
+	check(VsmrDman::GetPdcStation().empty(), "an unloaded DMAN handles no PDC station");
+	Providers["dman"] = 0U;
+	VsmrDman::Poll(tick);
+	const auto* bridge = tick.api;
+	tick.api = nullptr;
+	VsmrDman::Poll(tick);
+	check(VsmrDman::GetPdcStation().empty(), "without a bridge DMAN handles no PDC station");
+	tick.api = bridge;
+	VsmrDman::Shutdown();
+
 	tick.api = nullptr;
 	HostAttachState = VsmrPluginBridge::AttachState::NotLoaded;
 	poll();
