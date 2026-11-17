@@ -3,6 +3,7 @@
 #include "aviso/AvisoFeatureMetadata.hpp"
 #include "aviso/AvisoRunwayVisibility.hpp"
 #include "aviso/AvisoSharedConfig.hpp"
+#include "aviso/AvisoPaletteGeometry.hpp"
 #include "insets/InsetWindow.hpp"
 #include "radar/RadarScreen.hpp"
 
@@ -34,7 +35,10 @@ namespace
 std::vector<CSMRRadar::AvisoGroup> CSMRRadar::GetAvisoGroups() const
 {
 	std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-	return AvisoRuntimeGroups;
+	std::vector<AvisoGroup> groups;
+	for (const auto& group : AvisoRuntimeGroups)
+		if (VsmrAviso::GeometryVisible(group.geometryPalettes, AvisoColorPalette)) groups.push_back(group);
+	return groups;
 }
 
 std::shared_ptr<const std::unordered_map<std::string, bool>> CSMRRadar::GetAvisoGroupVisibilitySnapshot(
@@ -499,6 +503,7 @@ bool CSMRRadar::UpdateAvisoGroups(const std::vector<AvisoGroup>& groups)
 		AvisoGroup group = source;
 		if (group.id.empty() || !knownIds.insert(group.id).second)
 			continue;
+		group.folder = TrimAirportCode(group.folder);
 		group.name = TrimAirportCode(group.name);
 		if (group.name.empty())
 			group.name = group.id;
@@ -508,6 +513,10 @@ bool CSMRRadar::UpdateAvisoGroups(const std::vector<AvisoGroup>& groups)
 	bool changed = false;
 	{
 		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
+		// Group editors do not edit palette availability; retain the loaded masks.
+		for (auto& group : normalizedGroups)
+			for (const auto& existing : AvisoRuntimeGroups)
+				if (existing.id == group.id) { group.geometryPalettes = existing.geometryPalettes; break; }
 		if (AvisoRuntimeGroups.size() != normalizedGroups.size())
 		{
 			changed = true;
@@ -518,6 +527,7 @@ bool CSMRRadar::UpdateAvisoGroups(const std::vector<AvisoGroup>& groups)
 			{
 				if (AvisoRuntimeGroups[i].id != normalizedGroups[i].id ||
 					AvisoRuntimeGroups[i].name != normalizedGroups[i].name ||
+					AvisoRuntimeGroups[i].folder != normalizedGroups[i].folder ||
 					AvisoRuntimeGroups[i].visible != normalizedGroups[i].visible)
 				{
 					changed = true;

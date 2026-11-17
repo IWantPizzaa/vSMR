@@ -438,6 +438,16 @@
     const newGroupButton = document.querySelector('[data-action="new-aviso-group"]');
     expect(Boolean(newGroupButton), "AVISO group action is rendered");
     newGroupButton?.click();
+    const folderInput = document.querySelector("#avisoGroupFolder");
+    expect(Boolean(folderInput), "AVISO groups expose an optional folder");
+    folderInput.value = "LVP <test>";
+    folderInput.focus();
+    folderInput.dispatchEvent(new Event("input", { bubbles: true }));
+    folderInput.dispatchEvent(new Event("change", { bubbles: true }));
+    folderInput.blur();
+    await waitFor(() => api.getState().aviso.vsmr_groups.some(group => group.folder === "LVP <test>"),
+      "Folder edits are staged into the AVISO state");
+
     await waitFor(
       () => outbound.some(message => message.type === "state.save" &&
         message.payload?.aviso?.type === "FeatureCollection"),

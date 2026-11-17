@@ -8,17 +8,21 @@ namespace VsmrRuntimeMenuInput
 	inline bool NeedsHostClickContext(std::string_view id) noexcept
 	{
 		constexpr std::string_view vsidPrefix = "runtime.vsid.";
+		constexpr std::string_view cdmPrefix = "runtime.cdm.";
 		return id == "runtime.airport" ||
 			id == "runtime.datalink.credentials" ||
 			id == "runtime.preset.rename" ||
 			id == "runtime.button.control-center" ||
-			id.substr(0, vsidPrefix.size()) == vsidPrefix;
+			id.substr(0, vsidPrefix.size()) == vsidPrefix ||
+			id.substr(0, cdmPrefix.size()) == cdmPrefix;
 	}
 
 	inline bool OpensWindow(std::string_view id) noexcept
 	{
 		constexpr std::string_view vsidPrefix = "runtime.vsid.";
-		return NeedsHostClickContext(id) && id.substr(0, vsidPrefix.size()) != vsidPrefix;
+		constexpr std::string_view cdmPrefix = "runtime.cdm.";
+		return NeedsHostClickContext(id) && id.substr(0, vsidPrefix.size()) != vsidPrefix &&
+			id.substr(0, cdmPrefix.size()) != cdmPrefix;
 	}
 
 	inline bool IsRepeatedWindowOpen(

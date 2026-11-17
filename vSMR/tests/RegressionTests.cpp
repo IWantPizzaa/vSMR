@@ -104,6 +104,10 @@ namespace
 				VsmrRuntimeMenuInput::OpensWindow(id),
 				std::string("runtime window requires EuroScope's click context: ") + id);
 		}
+		Expect(VsmrRuntimeMenuInput::NeedsHostClickContext("runtime.cdm.airport.LFPG") &&
+			!VsmrRuntimeMenuInput::OpensWindow("runtime.cdm.airport.LFPG") &&
+			VsmrRuntimeMenuInput::NeedsHostClickContext("runtime.cdm.capacity"),
+			"CDM command actions use EuroScope's screen-object callback and host window context");
 		Expect(VsmrRuntimeMenuInput::NeedsHostClickContext("runtime.vsid.sync") &&
 			!VsmrRuntimeMenuInput::OpensWindow("runtime.vsid.sync") &&
 			!VsmrRuntimeMenuInput::NeedsHostClickContext("runtime.datalink.poll"),

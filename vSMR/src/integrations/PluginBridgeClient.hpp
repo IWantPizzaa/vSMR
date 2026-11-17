@@ -41,6 +41,7 @@ namespace VsmrPluginBridge
 	bool IsProxyBridge() noexcept;
 	bool ProxyCommandPending() noexcept;
 	bool SubmitProxyVsid(int action, const std::string& airport, std::string& error);
+	bool SubmitProxyCdm(int action, const std::string& airport, std::string& error);
 
 	// UI thread only: validate the bridge without scanning flight plans. The
 	// returned API is used within this callback only, never retained by callers.

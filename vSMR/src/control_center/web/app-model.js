@@ -590,7 +590,7 @@
     aviso.vsmr_groups.forEach(group => {
       if (group && typeof group === "object") delete group.color_palettes;
     });
-    aviso.metadata.geometry_mode = "shared";
+    if (aviso.metadata.geometry_mode !== "palette_specific") aviso.metadata.geometry_mode = "shared";
 
     const seen = new Set();
     const groupIdAliases = new Map();
@@ -610,6 +610,7 @@
         ...sourceGroup,
         id,
         name: String(sourceGroup.name || `Group ${index + 1}`).trim() || `Group ${index + 1}`,
+        folder: String(sourceGroup.folder ?? sourceGroup.section ?? "").trim(),
         visible: sourceGroup.visible !== false,
         accent: normalizeHex(sourceGroup.accent || "#84b7d5", "#84b7d5")
       };

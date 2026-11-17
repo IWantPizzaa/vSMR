@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Add a CDM button below vSID/PDC in the Runtime Menu, with live airport Master ownership, pending acknowledgements, Master/Slave commands and access to the companion CDM build's draggable ATFCM and runway-capacity/BMI panels. Preserve legacy CDM aircraft timing and serialize commands with vSID.
+
+- Retrace LFPG's A380 display contours from the supplied AVISO photograph and check permanent restrictions against SIA GMC 07/08. Remove isolated photo fragments and the unsupported Z4/FN2 fills, preserve approved N/F axes and A3 continuity beneath labels, and share the corrected overlay across Real, Dark and Light.
+
+- Add optional per-airport AVISO group folders. Set Folder in the Groups editor to collect groups under a hover submenu, with independent visibility and submenu pagination.
+
 - Select PDC NEXT FREQ from the flight plan's departure airport, including LFPO when the clearance is issued from LFPG approach. Remove unrelated coordinated/issuing-station fallbacks, keep the transmitted fallback consistent with the selected or edited frequency, and require NEXT FREQ when no connected departure position is identifiable.
 
 - Refuse to send a PDC whose destination, runway, SID, initial climb or squawk is empty: the PDC dialog frames each empty field in red, names what is missing in its panel header and keeps Send off until the flight plan is completed.

@@ -9,6 +9,7 @@
 #include "integrations/PluginBridgeClient.hpp"
 #include "integrations/ProxyBridgeSnapshot.hpp"
 #include "integrations/VsidBridgeClient.hpp"
+#include "integrations/CdmBridgeClient.hpp"
 
 #include "EuroScopePlugIn.h"
 #include "shared/TextUtils.hpp"
@@ -155,21 +156,32 @@ bool VsmrPluginBridge::SubmitProxyVsid(int action, const std::string& airport, s
 	return ProxyBridge.channel.Submit(action, airport, PendingProxyCommand, error);
 }
 
+bool VsmrPluginBridge::SubmitProxyCdm(int action, const std::string& airport, std::string& error)
+{
+	if (PendingProxyCommand) { error = "A Proxy action is still awaiting confirmation."; return false; }
+	if (action < 0 || action > static_cast<int>(VsmrCdm::CommandAction::Refresh)) return false;
+	return ProxyBridge.channel.Submit(VsmrCdm::ProxyActionBase + action, airport, PendingProxyCommand, error);
+}
+
 void VsmrPluginBridge::EndTick(EuroScopePlugIn::CPlugIn& plugin)
 {
 	ProxySessionChannel::Command command;
 	if (!RemoteBridge && ProxyBridge.channel.Take(command)) {
 		std::string error;
-		const bool valid = command.action >= 0 && command.action <= static_cast<int>(VsmrVsid::CommandAction::ReloadConfiguration);
-		const bool accepted = valid && VsmrVsid::SubmitCommand(static_cast<VsmrVsid::CommandAction>(command.action), command.airport, error);
-		if (!valid) error = "Invalid Proxy vSID action.";
+		bool accepted = false;
+		if (command.action >= 0 && command.action <= static_cast<int>(VsmrVsid::CommandAction::ReloadConfiguration))
+			accepted = VsmrVsid::SubmitCommand(static_cast<VsmrVsid::CommandAction>(command.action), command.airport, error);
+		else if (command.action >= VsmrCdm::ProxyActionBase &&
+			command.action <= VsmrCdm::ProxyActionBase + static_cast<int>(VsmrCdm::CommandAction::Refresh))
+			accepted = VsmrCdm::SubmitCommand(static_cast<VsmrCdm::CommandAction>(command.action - VsmrCdm::ProxyActionBase), command.airport, error);
+		else error = "Invalid Proxy integration action.";
 		ProxyBridge.channel.Complete(command.id, accepted, error);
 	}
 	if (PendingProxyCommand) {
 		bool success = false; std::string error;
 		if (ProxyBridge.channel.Result(PendingProxyCommand, success, error)) {
 			PendingProxyCommand = 0;
-			if (!success) plugin.DisplayUserMessage("vSMR", "Proxy vSID", error.c_str(), true, true, true, false, false);
+			if (!success) plugin.DisplayUserMessage("vSMR", "Proxy integration", error.c_str(), true, true, true, false, false);
 		}
 	}
 }
