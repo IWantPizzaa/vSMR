@@ -337,6 +337,12 @@ namespace
 		AssignedData rejected;
 		rejected.reject = true;
 		Expect(!VsmrGroundStateSync::SetTaxiForHoldingPoint(rejected) && rejected.status == "PUSH" && rejected.scratchpad == "KEEP", "rejected HP Taxi is not reported as successful");
+		Expect(VsmrRimcasLogic::RunwayHalfWidth("LFLB", "18", "36") == 22.5f &&
+			VsmrRimcasLogic::RunwayHalfWidth("LFLB", "18L", "36R") == 30.0f,
+			"LFLB paved and grass runway footprints use their distinct published widths");
+		Expect(55.0 > VsmrRimcasLogic::RunwayHalfWidth("LFLB", "18", "36") &&
+			VsmrRimcasLogic::RunwayHalfWidth("LFPG", "08L", "26R") == 92.5f,
+			"LFLB parallel taxiway is outside occupancy without changing other airport corridors");
 		Expect(classifyGroundState("ST-UP", 0, false) == GroundStateCategory::Stup, "ground state startup alias");
 		Expect(classifyGroundState("P/B", 3, false) == GroundStateCategory::Push, "ground state push alias");
 		Expect(classifyGroundState("LINE UP", 0, true) == GroundStateCategory::Lnup, "ground state lineup alias");
