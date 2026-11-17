@@ -961,8 +961,12 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 				}
 			}
 		}
-		if (tagValue("actype") == "NoFPL")
+		if (tagValue("actype") == "NoFPL" || VsmrTargetRoleLogic::HasUnknownAirportGroundRole(
+			target.airborne, target.correlated, target.flightPlanDataReceived, target.departure, target.arrival))
 			background = colorWithLegacy("background_no_fpl_color", "nofpl_color", background);
+		if (VsmrTargetRoleLogic::HasUnknownAirportGroundRole(
+			target.airborne, target.correlated, target.flightPlanDataReceived, target.departure, target.arrival))
+			backgroundOnRunway = background;
 
 		const bool isAirborneRole = target.role == TargetRole::AirborneDeparture || target.role == TargetRole::AirborneArrival;
 		if (isAirborneRole && target.hasFlightPlan && target.correlated)
@@ -1135,7 +1139,9 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		target.style.primaryReturnColor = CopyColor(primaryReturnColor);
 
 		Gdiplus::Color color = whiteColor;
-		if (!target.hasFlightPlan || (!target.airborne && !target.flightPlanDataReceived))
+		if (!target.hasFlightPlan || (!target.airborne && !target.flightPlanDataReceived) ||
+			VsmrTargetRoleLogic::HasUnknownAirportGroundRole(target.airborne, target.correlated,
+				target.flightPlanDataReceived, target.departure, target.arrival))
 			color = groundColor("nofpl", groundColor("gate", Gdiplus::Color(255, 128, 128, 128)));
 		else if (target.airborne)
 			color = target.role == TargetRole::AirborneDeparture
