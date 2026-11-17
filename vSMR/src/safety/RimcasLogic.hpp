@@ -6,6 +6,18 @@
 
 namespace VsmrRimcasLogic
 {
+	// LFLB's parallel grass runway and Sierra lie inside the generic 185 m
+	// corridor. Use the published pavement widths for this close runway pair.
+	// SIA AD 2 LFLB 2.12: 18/36 = 45 m, 18L/36R = 60 m.
+	inline float RunwayHalfWidth(const std::string& airport, const std::string& first, const std::string& second)
+	{
+		if (airport == "LFLB")
+		{
+			if ((first == "18" && second == "36") || (first == "36" && second == "18")) return 22.5f;
+			if ((first == "18L" && second == "36R") || (first == "36R" && second == "18L")) return 30.0f;
+		}
+		return 92.5f;
+	}
 	struct RunwayMonitoring
 	{
 		bool arrivals = false;
