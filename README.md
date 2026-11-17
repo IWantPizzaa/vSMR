@@ -167,7 +167,7 @@ The Geometry **Background** entry provides an opacity slider per Dark/Light/Real
 
 ## Profile Rules
 
-Control Center > Profiles > Rules supports nested **All**, **Any** and **Not** groups, exact value lists, text comparisons and numeric ranges. Flight fields include SID, departure/arrival runway, scratchpad, holding point, callsign, origin/destination, aircraft type, wake, status, clearance, speed (knots) and flight level (hundreds of feet). CDM time conditions use **now minus the event time**, in minutes: -5 means five minutes before TOBT, +5 means five minutes after. They use UTC timestamps, not the displayed HHMM string.
+Control Center > Profiles > Rules supports nested **All**, **Any** and **Not** groups, exact value lists, text comparisons and numeric ranges. Flight fields include SID, departure/arrival runway, scratchpad, holding point, callsign, origin/destination, aircraft type, wake, status, clearance, released, speed (knots) and flight level (hundreds of feet). CDM time conditions use **now minus the event time**, in minutes: -5 means five minutes before TOBT, +5 means five minutes after. They use UTC timestamps, not the displayed HHMM string.
 
 Each rule can apply several visual effects: aircraft color, tag background/text, or an individual tag field's color, background, bold or dim blinking. Rules never change flight plans or aircraft status. Rules run in list order; later matches override earlier effects on the same property. **Stop processing** stops the remaining rules after a match. Existing display-mode filters and safety alerts remain independent.
 
@@ -325,3 +325,4 @@ AVISO group folders: in Control Center > Groups, set the optional Folder field o
 Language: add the `language` token in a tag definition or the vSMR `Language` item/function to a EuroScope list. Both use `/FR` and `/EN` in flight-plan remarks; click to change or clear the marker without altering other remarks.
 
 Smart Ground is disabled at startup. Toggle it for the current runtime session with `.smr SG` or `.smr smart ground`; both accept `on`, `off` and `status`. Disabled Route list items show `No Data`. See [Smart Ground](docs/Smart-Ground.md) for routing, editing and alerts.
+Released: add the `released` token in a tag definition or the vSMR `Released` item with its `Toggle released` function to a EuroScope list. REL is green when the flight is released to ground and red otherwise; click to toggle. The flag is a `VSMRREL/HHMM` token (UTC release time) in the flight-plan remarks, shared with other controllers and DMAN. Releasing a flight with no ASRT also makes it ready through CDM (the RDY toggle); un-releasing leaves the ASRT as it is. The token is removed once the aircraft is airborne.

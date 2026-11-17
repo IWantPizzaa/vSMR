@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 - Merge Smart Ground routing, route editing and conflict/Off Track alerts into dev, disabled at startup and enabled only by `.smr SG` or `.smr smart ground`. Disabled Route list items show `No Data`; turning it off clears pending interactions and traffic state.
+- Add a Released flag shared through the flight-plan remarks as `VSMRREL/HHMM` (UTC release time), with a `released` tag token, a vSMR `Released` list item and a `Toggle released` function. REL is green when released and red otherwise. Releasing a flight without an ASRT first makes it ready through CDM, as the RDY cell does; un-releasing never touches the ASRT. The token is removed once the aircraft is airborne. RDY and the ASRT are unchanged.
 
 - Add a CDM button below vSID/PDC in the Runtime Menu, with live airport Master ownership, pending acknowledgements, Master/Slave commands and access to the companion CDM build's draggable ATFCM and runway-capacity/BMI panels. Preserve legacy CDM aircraft timing and serialize commands with vSID.
 

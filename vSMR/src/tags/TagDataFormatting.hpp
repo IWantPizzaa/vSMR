@@ -7,6 +7,7 @@ namespace VsmrTags
 	{
 		bool hasRadarTarget = false, hasFlightPlan = false, receivedFlightPlan = false;
 		bool correlated = false, proMode = false, primary = true, clearance = false, lineup = false, crossing = false;
+		bool released = false;
 		int groundSpeed = 0, flightLevel = 0, pressureAltitude = 0, transitionAltitude = 0;
 		int altitudeDelta = 0, flightPlanState = 0;
 		char assignedCommunication = 0, filedCommunication = 0, wake = '?';
