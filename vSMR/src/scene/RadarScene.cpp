@@ -3,6 +3,7 @@
 #include "scene/RadarScene.hpp"
 #include "scene/TargetRoleLogic.hpp"
 
+#include "integrations/DmanBridgeClient.hpp"
 #include "radar/RadarScreen.hpp"
 #include "shared/TextUtils.hpp"
 #include "tags/TagColorRules.hpp"
@@ -639,6 +640,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		++scene->stats.cdmLookups;
 		target.hasCdmData = TryGetCdmPilotDataForTarget(radarTarget, flightPlan, target.cdmData);
 		const CdmPilotData* capturedCdmData = target.hasCdmData ? &target.cdmData : nullptr;
+		target.dmanActivated = VsmrDman::GetActivated(target.normalizedCallsign);
 		target.passesDisplayMode = ShouldDisplayTargetForDisplayMode(
 			flightPlan,
 			target.correlated,
@@ -1038,9 +1040,11 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 				}
 				else if (token == "ready_startup")
 				{
-					// Ready Start-up follows CDM's ASRT state while keeping RDY visible in both states.
-					element.effectiveColor = target.hasCdmData &&
-						VsmrCdm::IsReadyStartup(&target.cdmData.bridgeData)
+					// Ready Start-up follows DMAN's activation of a flight DMAN publishes, and
+					// CDM's ASRT state otherwise, while keeping RDY visible in both states.
+					element.effectiveColor = VsmrDman::RdyGreen(
+						target.dmanActivated,
+						target.hasCdmData && VsmrCdm::IsReadyStartup(&target.cdmData.bridgeData))
 						? VsmrScene::Color{ 255, 0, 181, 27 }
 						: VsmrScene::Color{ 255, 255, 0, 0 };
 				}

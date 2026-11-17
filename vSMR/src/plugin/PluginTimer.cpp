@@ -242,10 +242,10 @@ void CSMRPlugin::OnTimerImpl(int Counter)
 	const bool vsidChanged = VsmrVsid::Poll(bridgeTick);
 	const bool cdmChanged = VsmrCdm::Poll(bridgeTick);
 	const bool rampAgentChanged = VsmrRampAgent::Poll(bridgeTick);
-	// read by the PDC cycle below
-	VsmrDman::Poll(bridgeTick);
+	// the station is read by the PDC cycle below, the activations by the RDY tag item
+	const bool dmanChanged = VsmrDman::Poll(bridgeTick);
 	VsmrPluginBridge::EndTick(*this);
-	if (vsidChanged || cdmChanged || rampAgentChanged)
+	if (vsidChanged || cdmChanged || rampAgentChanged || dmanChanged)
 		FlightDataRefreshPending.store(true, std::memory_order_release);
 
 	// Refreshing screens after synchronized flight-plan changes

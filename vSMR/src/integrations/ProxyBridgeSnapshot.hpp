@@ -16,7 +16,7 @@ class ProxyBridgeSnapshot final
 {
 public:
     struct Spec { const char* provider; const char* field; ESB_Type type; bool global; };
-    inline static constexpr std::array<Spec, 23> Specs{{
+    inline static constexpr std::array<Spec, 24> Specs{{
         {"vsid", "sid", ESB_T_STR, false}, {"vsid", "rwy", ESB_T_STR, false}, {"vsid", "cfl", ESB_T_STR, false},
         {"vsid", "automode", ESB_T_STR, true}, {"vsid", "paris", ESB_T_STR, true}, {"vsid", "lfpg_taxi", ESB_T_STR, true},
         {"vsid", "rules", ESB_T_STR, true}, {"vsid", "areas", ESB_T_STR, true}, {"vsid", "autoconfig", ESB_T_STR, true},
@@ -26,7 +26,8 @@ public:
         {"com.viffsys.cdm", "asat", ESB_T_I64, false}, {"com.viffsys.cdm", "deice", ESB_T_STR, false},
         {"com.viffsys.cdm", "tobt_set_by", ESB_T_STR, false}, {"com.viffsys.cdm", "flow_restriction", ESB_T_STR, false},
         {"com.viffsys.cdm", "ecfmp_restriction", ESB_T_STR, false}, {"com.viffsys.cdm", "manual_ctot", ESB_T_BOOL, false},
-        {"rampagent", "stand", ESB_T_STR, false}, {"rampagent", "remark", ESB_T_STR, false}
+        {"rampagent", "stand", ESB_T_STR, false}, {"rampagent", "remark", ESB_T_STR, false},
+        {"dman", "activated", ESB_T_BOOL, false}
     }};
     ProxySessionChannel channel;
     bool Open(const std::wstring& identity)
@@ -52,7 +53,7 @@ public:
         std::string signature;
         for (const auto& call : sorted) signature += call + ";";
         std::map<std::string, std::array<std::uint64_t, 3>> providers;
-        for (const char* id : {"vsid", "com.viffsys.cdm", "rampagent"}) {
+        for (const char* id : {"vsid", "com.viffsys.cdm", "rampagent", "dman"}) {
             std::uint32_t major = 0, minor = 0;
             if (api.provider_version(id, &major, &minor) == ESB_OK && major == 1) {
                 providers[id] = {major, minor, api.provider_revision(id)};

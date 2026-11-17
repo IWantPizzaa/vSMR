@@ -33,6 +33,8 @@ namespace
 		std::string text;
 		std::int64_t scalar = 0;
 		bool declared = true;
+		// answered instead of the value, e.g. ESB_E_UNSET or a passing failure
+		ESB_Status status = ESB_OK;
 	};
 	std::vector<PublishedField> Published;
 	std::map<std::string, std::uint32_t> Providers;
@@ -78,6 +80,7 @@ namespace
 		if (field == 0U || field > Published.size()) return ESB_E_NO_FIELD;
 		const auto& value = Published[field - 1U];
 		if (!value.declared) return ESB_E_NO_FIELD;
+		if (value.status != ESB_OK) return value.status;
 		out->type = value.type;
 		if (value.type == ESB_T_I64)
 		{
@@ -587,6 +590,68 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 	check(VsmrDman::GetPdcStation().empty(), "without a bridge DMAN handles no PDC station");
 	tick.api = bridge;
 	VsmrDman::Shutdown();
+
+	// ----- DMAN's activation of a flight, for the RDY indicator -----
+	tick.callsigns = { "AFR123" };
+	check(VsmrDman::RdyGreen(true, false) && !VsmrDman::RdyGreen(false, true) &&
+		VsmrDman::RdyGreen(std::nullopt, true) && !VsmrDman::RdyGreen(std::nullopt, false),
+		"RDY follows DMAN's activation when DMAN publishes the flight, and CDM's ASRT otherwise");
+	check(!VsmrDman::Poll(tick) && !VsmrDman::GetActivated("AFR123"),
+		"a DMAN that does not declare activated publishes no flight");
+	Published.push_back({ "dman/activated", ESB_T_BOOL, {}, 1 });
+	const std::size_t activatedIndex = Published.size() - 1U;
+	++Revision;
+	check(VsmrDman::Poll(tick) && VsmrDman::GetActivated(" afr123 ") == true &&
+		VsmrDman::GetPdcStation() == "LFPG_DEL",
+		"DMAN's activated aircraft field is read per flight, next to the PDC station");
+	check(!VsmrDman::GetActivated("BAW1"), "a flight DMAN does not publish has no activation");
+	const int readsBeforeGate = AircraftReads;
+	check(!VsmrDman::Poll(tick) && AircraftReads == readsBeforeGate,
+		"an unchanged DMAN revision over the same flights skips aircraft reads");
+	Published[activatedIndex].scalar = 0; ++Revision;
+	check(VsmrDman::Poll(tick) && VsmrDman::GetActivated("AFR123") == false,
+		"a flight DMAN has not activated reads false");
+	Published[activatedIndex].status = ESB_E_LIMIT; ++Revision;
+	check(!VsmrDman::Poll(tick) && VsmrDman::GetActivated("AFR123") == false,
+		"a passing read failure keeps DMAN's last activation of the flight");
+	Published[activatedIndex].status = ESB_OK; Published[activatedIndex].scalar = 1;
+	check(VsmrDman::Poll(tick) && VsmrDman::GetActivated("AFR123") == true,
+		"a failed read is retried on the next tick without a revision change");
+	Published[activatedIndex].status = ESB_E_UNSET; ++Revision;
+	check(VsmrDman::Poll(tick) && !VsmrDman::GetActivated("AFR123"),
+		"an unset activation hands RDY back to CDM's ASRT");
+	Published[activatedIndex].status = ESB_OK; ++Revision;
+	VsmrDman::Poll(tick);
+	Published[activatedIndex].declared = false; ++Revision;
+	check(VsmrDman::Poll(tick) && !VsmrDman::GetActivated("AFR123") && VsmrDman::GetPdcStation() == "LFPG_DEL",
+		"a DMAN that no longer declares activated publishes no flight but keeps its PDC station");
+	check(!VsmrDman::Poll(tick) && !VsmrDman::GetActivated("AFR123") && VsmrDman::GetPdcStation() == "LFPG_DEL",
+		"the undeclared field stays unread on the next tick");
+	Published[activatedIndex].declared = true;
+	VsmrDman::Poll(tick);
+	{
+		ProxyBridgeSnapshot primary, secondary;
+		const auto key = L"bridge-dman-" + std::to_wstring(::GetCurrentProcessId()) + L"-" + std::to_wstring(::GetTickCount64());
+		check(primary.Open(key) && secondary.Open(key) && primary.Publish(api, tick.callsigns), "primary relays DMAN's activations");
+		tick.api = secondary.RemoteApi();
+		check(tick.api != nullptr, "the secondary sees the primary's bridge");
+		if (tick.api != nullptr) VsmrDman::Poll(tick);
+		check(VsmrDman::GetActivated("AFR123") == true && VsmrDman::GetPdcStation().empty(),
+			"a Proxy secondary reads DMAN's activations through the primary, never its PDC station");
+		primary.Close();
+		tick.api = &api;
+		VsmrDman::Poll(tick);
+	}
+	Providers.erase("dman");
+	check(VsmrDman::Poll(tick) && !VsmrDman::GetActivated("AFR123"), "an unloaded DMAN publishes no flight");
+	Providers["dman"] = 0U;
+	VsmrDman::Poll(tick);
+	tick.api = nullptr;
+	check(VsmrDman::Poll(tick) && !VsmrDman::GetActivated("AFR123"), "without a bridge DMAN publishes no flight");
+	tick.api = bridge;
+	VsmrDman::Shutdown();
+	check(!VsmrDman::GetActivated("AFR123"), "shutdown forgets DMAN's activations");
+	tick.callsigns.clear();
 
 	tick.api = nullptr;
 	HostAttachState = VsmrPluginBridge::AttachState::NotLoaded;

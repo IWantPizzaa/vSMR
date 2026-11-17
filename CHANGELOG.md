@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Turn RDY green on DMAN's activation for the departures DMAN publishes on the plug-in bridge (`dman/activated`): while DMAN holds a flight, an ASRT set by the pilot or another controller no longer turns it green before DMAN hands the flight to ground. Flights DMAN does not publish, and sessions without DMAN, keep RDY on CDM's ASRT. Clicking RDY still toggles CDM's Ready Start-up. A Proxy secondary reads the activations through the primary.
 - Leave PINEDE to DMAN while it handles this station's PDC. DMAN publishes the station it serves on the plug-in bridge (`dman/pdc_station`); while that is vSMR's own EuroScope callsign, vSMR stops polling PINEDE, never sends a logoff that would disconnect DMAN, clears its PDC tag states and refuses PDC actions, Connect and Poll. The runtime menu's PDC section reads **DMAN**. When DMAN stops handling the station, a connected vSMR polls PINEDE again on its next cycle.
 - Select PDC NEXT FREQ from the flight plan's departure airport, including LFPO when the clearance is issued from LFPG approach. Remove unrelated coordinated/issuing-station fallbacks, keep the transmitted fallback consistent with the selected or edited frequency, and require NEXT FREQ when no connected departure position is identifiable.
 

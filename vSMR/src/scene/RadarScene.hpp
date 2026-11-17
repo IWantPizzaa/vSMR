@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -182,6 +183,8 @@ namespace VsmrScene
 		RimcasState rimcas;
 		bool hasCdmData = false;
 		CdmPilotData cdmData;
+		// DMAN's activation of the flight, empty when DMAN publishes none for it
+		std::optional<bool> dmanActivated;
 	};
 
 	struct ControllerState
