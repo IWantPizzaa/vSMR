@@ -7,11 +7,14 @@
 #include "aircraft/HoldingPoint.hpp"
 #include "aircraft/Language.hpp"
 #include "integrations/SmartGroundIntegration.hpp"
+#include "aircraft/Released.hpp"
+#include "integrations/CdmBridgeClient.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -379,5 +382,94 @@ bool CSMRPlugin::HandleLanguageFunctionCall(int functionId, const char* itemStri
 	if (!data.SetRemarks(remarks.c_str()) || !data.AmendFlightPlan())
 		DisplayUserMessage("vSMR", "Language", "EuroScope rejected the language update in flight plan remarks.", true, true, true, false, false);
 	for (auto* radar : RadarScreensOpened) if (radar && !radar->IsShutdownRequested()) radar->RequestRefresh();
+	return true;
+}
+
+// Both the native list item and the rendered tag dispatch this same toggle.
+bool CSMRPlugin::HandleReleasedFunctionCall(int functionId, POINT point, RECT area)
+{
+	if (functionId != TAG_FUNC_RELEASED_TOGGLE)
+		return false;
+
+	auto showError = [this](const char* message)
+	{
+		DisplayUserMessage("vSMR", "Released", message, true, true, false, false, false);
+	};
+	CFlightPlan flightPlan = FlightPlanSelectASEL();
+	if (!flightPlan.IsValid())
+	{
+		showError("Select a correlated aircraft first.");
+		return true;
+	}
+	const char* rawCallsign = flightPlan.GetCallsign();
+	const std::string callsign = rawCallsign != nullptr ? rawCallsign : "";
+	if (callsign.empty())
+		return true;
+
+	const char* rawRemarks = flightPlan.GetFlightPlanData().GetRemarks();
+	const bool released = !VsmrReleased::Resolve(callsign, rawRemarks != nullptr ? rawRemarks : "").empty();
+	VsmrCdm::AircraftData cdmData;
+	const bool hasAsrt = VsmrCdm::TryGetAircraftData(callsign, cdmData) && VsmrCdm::IsReadyStartup(&cdmData);
+	const VsmrReleased::ToggleAction action = VsmrReleased::DecideToggle(released, hasAsrt);
+
+	std::string releaseTime;
+	if (action != VsmrReleased::ToggleAction::Unrelease)
+	{
+		const std::time_t now = std::time(nullptr);
+		std::tm utc{};
+		if (gmtime_s(&utc, &now) == 0)
+			releaseTime = VsmrReleased::FormatReleaseTime(utc);
+		if (releaseTime.empty())
+		{
+			showError("The UTC release time is not available.");
+			return true;
+		}
+	}
+
+	if (action == VsmrReleased::ToggleAction::ReadyThenRelease)
+	{
+		// Same call as the RDY cell: CDM's own toggle keeps its permissions and state authoritative.
+		const auto screen = std::find_if(RadarScreensOpened.begin(), RadarScreensOpened.end(),
+			[](CSMRRadar* radar) { return radar != nullptr && !radar->IsShutdownRequested(); });
+		if (screen == RadarScreensOpened.end())
+		{
+			showError("Open a vSMR screen so CDM can set the ASRT before the release.");
+			return true;
+		}
+		(*screen)->StartTagFunction(
+			callsign.c_str(),
+			VsmrCdm::PluginName,
+			VsmrCdm::ReadyStartupTagItemCode,
+			"RDY",
+			VsmrCdm::PluginName,
+			VsmrCdm::ToggleReadyStartupFunctionId,
+			point,
+			area);
+	}
+
+	// Read the remarks again: the CDM call may have amended the flight plan.
+	flightPlan = FlightPlanSelect(callsign.c_str());
+	if (!flightPlan.IsValid())
+	{
+		showError("The selected flight plan is no longer available.");
+		return true;
+	}
+	CFlightPlanData flightPlanData = flightPlan.GetFlightPlanData();
+	rawRemarks = flightPlanData.GetRemarks();
+	const std::string currentRemarks = rawRemarks != nullptr ? rawRemarks : "";
+	const std::string updatedRemarks = VsmrReleased::Write(currentRemarks, releaseTime);
+	if (updatedRemarks != currentRemarks &&
+		(!flightPlanData.SetRemarks(updatedRemarks.c_str()) || !flightPlanData.AmendFlightPlan()))
+	{
+		showError("EuroScope rejected the flight plan remarks update. Shorten the remarks or check that you can amend this flight plan.");
+		return true;
+	}
+	VsmrReleased::RememberPending(callsign, releaseTime);
+
+	for (CSMRRadar* radar : RadarScreensOpened)
+	{
+		if (radar != nullptr && !radar->IsShutdownRequested())
+			radar->RequestRefresh();
+	}
 	return true;
 }

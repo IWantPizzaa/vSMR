@@ -57,6 +57,8 @@ namespace
 		output["scratchpad"] = input.scratchpad.empty() ? "..." : input.scratchpad;
 		output["holdingpoint"] = input.holdingPoint;
 		output["language"] = input.language;
+		// REL stays visible in both states; its colour tells whether the flight is released.
+		output["released"] = input.hasFlightPlan && input.correlated ? "REL" : "";
 	}
 
 	void FormatPosition(const TagDataInput& input, TokenValues& output)

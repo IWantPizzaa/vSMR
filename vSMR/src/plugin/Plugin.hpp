@@ -178,6 +178,7 @@ private:
 	void PersistDatalinkSettings();
 	static void PrepareDatalinkRuntimeForExit();
 	bool HandleLanguageFunctionCall(int functionId, const char* itemString, RECT area);
+	bool HandleReleasedFunctionCall(int functionId, POINT point, RECT area);
 	bool HandleHoldingPointFunctionCall(
 		int functionId,
 		const char* itemString,

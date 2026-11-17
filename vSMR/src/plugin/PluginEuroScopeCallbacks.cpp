@@ -4,6 +4,7 @@
 
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
+#include "aircraft/Released.hpp"
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "integrations/PluginBridgeClient.hpp"
@@ -58,7 +59,6 @@ void CSMRPlugin::OnFunctionCall(
 	RECT Area)
 {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFunctionCall");
-	(void)Pt;
 	if (Logger::is_verbose_mode())
 		Logger::info(std::string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
@@ -75,6 +75,7 @@ void CSMRPlugin::OnFunctionCall(
 		return;
 	}
 	if (HandleLanguageFunctionCall(FunctionId, sItemString, Area)) return;
+	if (HandleReleasedFunctionCall(FunctionId, Pt, Area)) return;
 	if (HandleHoldingPointFunctionCall(FunctionId, sItemString, Area))
 		return;
 	if (HandleSmartGroundRouteFunctionCall(FunctionId, sItemString, Area))
@@ -103,6 +104,7 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	StandPositionReports.erase(normalizedCallsign);
 	VsmrRdf::ForgetAircraft(normalizedCallsign.c_str());
 	VsmrHoldingPoint::ForgetPending(normalizedCallsign);
+	VsmrReleased::ForgetPending(normalizedCallsign);
 	VsmrPluginBridge::ForgetAircraft(normalizedCallsign);
 	VsmrSmartGroundBridge::Forget(normalizedCallsign);
 	ForgetSmartGroundRouteMenus(normalizedCallsign);
@@ -153,6 +155,9 @@ void CSMRPlugin::OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan)
 			callsign != nullptr ? callsign : "",
 			remarks != nullptr ? remarks : "");
         VsmrSmartGroundBridge::UpdateHoldingPoint(callsign != nullptr ? callsign : "", holdingPoint);
+		(void)VsmrReleased::Resolve(
+			callsign != nullptr ? callsign : "",
+			remarks != nullptr ? remarks : "");
 	}
 
 	// Flight-plan amendments are synchronized between controllers. Defer the
