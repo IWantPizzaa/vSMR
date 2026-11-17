@@ -4,6 +4,7 @@
 #include "aircraft/GroundState.hpp"
 #include "aircraft/Language.hpp"
 #include "aircraft/HoldingPoint.hpp"
+#include "aircraft/Released.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
 #include "aviso/AvisoPalettePreference.hpp"
 #include "aviso/AvisoRunwayVisibility.hpp"
@@ -488,6 +489,72 @@ namespace
 		Expect(VsmrHoldingPoint::Read(replaced) == "A3", "holding point reads synchronized marker");
 		Expect(VsmrHoldingPoint::Write(replaced, "A3") == replaced, "holding point write is idempotent");
 		Expect(VsmrHoldingPoint::Write(replaced, "") == "RMK OTHER", "holding point None removes the marker");
+	}
+
+	void TestReleasedRemarks()
+	{
+		Expect(VsmrReleased::IsReleaseTime("0000") && VsmrReleased::IsReleaseTime("2359") &&
+			VsmrReleased::IsReleaseTime("1432"), "released time accepts every UTC HHMM");
+		Expect(!VsmrReleased::IsReleaseTime("2400") && !VsmrReleased::IsReleaseTime("1260") &&
+			!VsmrReleased::IsReleaseTime("143") && !VsmrReleased::IsReleaseTime("14321") &&
+			!VsmrReleased::IsReleaseTime("14:3") && !VsmrReleased::IsReleaseTime("") &&
+			!VsmrReleased::IsReleaseTime("-123"), "released time rejects out-of-range, short, long and non-digit values");
+		std::tm utc{};
+		utc.tm_hour = 7; utc.tm_min = 5;
+		Expect(VsmrReleased::FormatReleaseTime(utc) == "0705", "released time is zero-padded HHMM");
+		utc.tm_hour = 23; utc.tm_min = 59;
+		Expect(VsmrReleased::FormatReleaseTime(utc) == "2359", "released time formats the last minute of the day");
+		utc.tm_hour = 24;
+		Expect(VsmrReleased::FormatReleaseTime(utc).empty(), "released time refuses an invalid clock");
+
+		Expect(VsmrReleased::Read("").empty() && VsmrReleased::Read("PBN/A1 RMK/TCAS VSMRHP/A3").empty(),
+			"no VSMRREL/ token means not released, a holding point is not a release");
+		Expect(VsmrReleased::Read("PBN/A1 VSMRHP/A3 VSMRREL/1432 RMK/TCAS") == "1432",
+			"released reads the token among other remarks");
+		Expect(VsmrReleased::Read("vsmrrel/0915") == "0915", "released marker is case-insensitive");
+		Expect(VsmrReleased::Read("VSMRREL/2460").empty() && VsmrReleased::Read("VSMRREL/").empty() &&
+			VsmrReleased::Read("VSMRREL/14321").empty() && VsmrReleased::Read("VSMRREL/ABCD").empty() &&
+			VsmrReleased::Read("XVSMRREL/1432").empty() && VsmrReleased::Read("VSMRREL 1432").empty(),
+			"a malformed token does not read as released");
+		Expect(VsmrReleased::Read("VSMRREL/1000 VSMRREL/1005") == "1005", "the newest of duplicate tokens wins");
+
+		const std::string released = VsmrReleased::Write("PBN/A1 VSMRREL/0900 VSMRHP/A3 VSMRREL/99 RMK/TCAS", "1432");
+		Expect(released == "PBN/A1 VSMRHP/A3 RMK/TCAS VSMRREL/1432",
+			"writing replaces every current and malformed token and keeps the holding point and other remarks");
+		Expect(VsmrReleased::Read(released) == "1432" && VsmrHoldingPoint::Read(released) == "A3",
+			"released and holding point tokens coexist");
+		Expect(VsmrReleased::Write(released, "1432") == released, "released write is idempotent");
+		Expect(VsmrReleased::Write("", "0001") == "VSMRREL/0001", "released write on empty remarks");
+		Expect(VsmrReleased::Write(released, "") == "PBN/A1 VSMRHP/A3 RMK/TCAS", "un-release removes the token");
+		Expect(VsmrReleased::Write("RMK/TCAS VSMRREL/ABCD", "") == "RMK/TCAS", "un-release also removes a malformed token");
+		Expect(VsmrReleased::Write("RMK/TCAS", "2500") == "RMK/TCAS", "an invalid time is never written");
+		Expect(VsmrHoldingPoint::Write(released, "B2") == "PBN/A1 RMK/TCAS VSMRREL/1432 VSMRHP/B2",
+			"a holding point change keeps the released token");
+
+		Expect(VsmrReleased::DecideToggle(true, true) == VsmrReleased::ToggleAction::Unrelease &&
+			VsmrReleased::DecideToggle(true, false) == VsmrReleased::ToggleAction::Unrelease,
+			"un-release never touches the ASRT, with or without one");
+		Expect(VsmrReleased::DecideToggle(false, true) == VsmrReleased::ToggleAction::Release,
+			"releasing a ready flight only writes the token");
+		Expect(VsmrReleased::DecideToggle(false, false) == VsmrReleased::ToggleAction::ReadyThenRelease,
+			"releasing a flight without ASRT makes it ready through CDM first");
+
+		VsmrReleased::ClearPending();
+		VsmrReleased::RememberPending("afr 123", "1432");
+		Expect(VsmrReleased::Resolve("AFR123", "RMK/TCAS") == "1432",
+			"a local release stays visible until EuroScope echoes the remarks");
+		Expect(VsmrReleased::KnownCallsigns() == std::vector<std::string>({ "AFR123" }),
+			"a released callsign is kept for the airborne cleanup");
+		Expect(VsmrReleased::Resolve("AFR123", "RMK/TCAS VSMRREL/1432") == "1432" &&
+			VsmrReleased::Resolve("AFR123", "RMK/TCAS").empty(),
+			"once echoed, the synchronized remarks decide, including another controller's removal");
+		Expect(VsmrReleased::KnownCallsigns().empty(), "an un-released callsign leaves the cleanup list");
+		VsmrReleased::RememberPending("AFR123", "");
+		Expect(VsmrReleased::Resolve("AFR123", "VSMRREL/1432").empty(), "a local un-release stays visible while syncing");
+		VsmrReleased::ForgetPending("AFR123");
+		Expect(VsmrReleased::Resolve("AFR123", "VSMRREL/1432") == "1432", "a forgotten flight reads its remarks again");
+		VsmrReleased::ClearPending();
+		Expect(VsmrReleased::KnownCallsigns().empty(), "clearing pending state empties the cleanup list");
 	}
 
 	void TestTagTokens()
@@ -2209,6 +2276,7 @@ int wmain(int argc, wchar_t** argv)
 	TestRapidJsonUtilities();
 	TestJsonInputLimitBoundaries();
 	TestHoldingPointRemarks();
+	TestReleasedRemarks();
 	TestTagTokens();
 	TestVsidBridgeData();
 	TestRecentAirports();

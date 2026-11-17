@@ -211,7 +211,7 @@ std::vector<std::string> RunTagColorRuleTests()
 		{ "rule.actype", "A320" }, { "rule.wake", "M" },
 		{ "rule.callsign", "AFR123" }, { "rule.groundstatus", "TAXI" },
 		{ "rule.gs", "12" }, { "rule.flightlevel", "8" },
-		{ "rule.clearance", "false" }, { "rule.vsid_sid", "OPALE6B" },
+		{ "rule.clearance", "false" }, { "rule.released", "true" }, { "rule.vsid_sid", "OPALE6B" },
 		{ "rule.vsid_rwy", "26R" }, { "rule.vsid_cfl", "A50" }
 	};
 	auto evaluate = [&](const StructuredTagColorRule& rule, const VsmrTags::TokenValues& values,
@@ -273,13 +273,18 @@ std::vector<std::string> RunTagColorRuleTests()
 		{ "flight.sid", "OPALE6B" }, { "flight.deprwy", "26R" }, { "flight.arvrwy", "27R" },
 		{ "flight.origin", "LFPG" }, { "flight.destination", "LFBO" }, { "flight.actype", "A320" },
 		{ "flight.wake", "M" }, { "flight.callsign", "AFR123" }, { "flight.groundstatus", "TAXI" },
-		{ "flight.clearance", "false" }, { "vsid.sid", "OPALE6B" }, { "vsid.rwy", "26R" }, { "vsid.cfl", "A50" }
+		{ "flight.clearance", "false" }, { "flight.released", "true" }, { "vsid.sid", "OPALE6B" }, { "vsid.rwy", "26R" }, { "vsid.cfl", "A50" }
 	})
 	{
 		StructuredTagColorRule field;
 		const bool parsed = ParseV2(RuleJson("{\"field\":\"" + test.first + "\",\"op\":\"equals\",\"value\":\"" + test.second + "\"}"), field);
 		Check(parsed && evaluate(field, rawFlight).hasTagColor, "v2 field aliases resolve canonical raw flight/bridge values", failures);
 	}
+	StructuredTagColorRule releasedField;
+	Check(ParseV2(RuleJson(R"({"field":"flight.released","op":"equals","value":"true"})",
+		R"([{"type":"field_background","field":"released","color":{"r":1,"g":2,"b":3}}])"), releasedField) &&
+		evaluate(releasedField, rawFlight).fieldEffects.count("released") == 1U,
+		"released is both a rule condition and a field effect target", failures);
 	StructuredTagColorRule numeric;
 	Check(ParseV2(RuleJson(R"({"field":"flight.gs","op":"gte","value":12})"), numeric) && evaluate(numeric, rawFlight).hasTagColor,
 		"numeric ground speed uses captured knots", failures);
