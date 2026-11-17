@@ -40,6 +40,7 @@ std::atomic<bool> DatalinkConnecting(false);
 std::atomic<bool> DatalinkPollInProgress(false);
 std::atomic<unsigned long long> DatalinkConnectionGeneration(0);
 std::atomic<unsigned long long> DatalinkPollGeneration(0);
+std::atomic<bool> DatalinkYieldedToDman(false);
 std::atomic<unsigned long long> DatalinkStateRevision(0);
 std::atomic<bool> ConnectionMessage(false);
 std::atomic<bool> FailedToConnectMessage(false);
