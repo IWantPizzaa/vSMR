@@ -1044,9 +1044,10 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 				}
 				else if (token == "ready_startup")
 				{
-					// Ready Start-up follows CDM's ASRT state while keeping RDY visible in both states.
+					// RDY follows the DEL's release to ground (the ASRT with an older CDM)
+					// and stays visible in both states.
 					element.effectiveColor = target.hasCdmData &&
-						VsmrCdm::IsReadyStartup(&target.cdmData.bridgeData)
+						VsmrCdm::IsReleasedToGround(&target.cdmData.bridgeData)
 						? VsmrScene::Color{ 255, 0, 181, 27 }
 						: VsmrScene::Color{ 255, 255, 0, 0 };
 				}

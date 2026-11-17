@@ -27,7 +27,8 @@ namespace
 	using VsmrPluginBridge::ReadStatus;
 
 	// CDM schema 1.0, declared by kCdmBridgeFields in CDMSingle.cpp
-	// (IWantPizzaa/CDM commit 1df65062). Schema 1.2 adds the optional global airport panel.
+	// (IWantPizzaa/CDM commit 1df65062). Schema 1.2 adds the optional global airport panel,
+	// schema 1.3 the optional "released" flag the DEL's Ready Start-up toggles.
 	constexpr char ProviderId[] = "com.viffsys.cdm";
 	constexpr std::uint32_t SupportedSchemaMajor = 1U;
 
@@ -40,6 +41,7 @@ namespace
 		Tsac,
 		Asrt,
 		Asat,
+		Released,
 		Deice,
 		TobtSetBy,
 		FlowRestriction,
@@ -59,6 +61,7 @@ namespace
 		{ "tsac", ESB_T_I64, 0U },
 		{ "asrt", ESB_T_I64, 0U },
 		{ "asat", ESB_T_I64, 0U },
+		{ "released", ESB_T_I64, 0U },
 		{ "deice", ESB_T_STR, 32U },
 		{ "tobt_set_by", ESB_T_STR, 16U },
 		{ "flow_restriction", ESB_T_STR, 512U },
@@ -223,6 +226,8 @@ bool PollState(const VsmrPluginBridge::Tick& tick, bool interfaceOnly)
 			readTime(Tsac, data.tsac);
 			readTime(Asrt, data.asrt);
 			readTime(Asat, data.asat);
+			data.releasedDeclared = Provider.Field(Released) != ESB_FIELD_NONE;
+			readTime(Released, data.released);
 			readText(Deice, data.deice);
 			readText(TobtSetBy, data.tobtSetBy);
 			readText(FlowRestriction, data.flowRestriction);

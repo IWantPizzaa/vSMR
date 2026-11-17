@@ -34,6 +34,7 @@ namespace
 		std::string text;
 		std::int64_t scalar = 0;
 		bool declared = true;
+		bool unset = false;
 	};
 	std::vector<PublishedField> Published;
 	std::map<std::string, std::uint32_t> Providers;
@@ -79,6 +80,7 @@ namespace
 		if (field == 0U || field > Published.size()) return ESB_E_NO_FIELD;
 		const auto& value = Published[field - 1U];
 		if (!value.declared) return ESB_E_NO_FIELD;
+		if (value.unset) return ESB_E_UNSET;
 		out->type = value.type;
 		if (value.type == ESB_T_I64)
 		{
@@ -620,6 +622,67 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 	for (const auto& invalid : { std::string(65537, ' '), std::string(1000, '[') + std::string(1000, ']'),
 		std::string(R"({"version":2})"), std::string(R"({"version":1,"can_control":true,"native_panel":false,"atfcm":false,"bmi":false,"capacity_airport":"","airports":[{"icao":"LFPG","master":"a\u0000b","local":false}]})") })
 		check(!VsmrCdm::ParseAirportPanel(invalid), "invalid, oversized and control-character CDM UI snapshots fail closed");
+	// ----- CDM "released" flag (schema 1.3) -----
+	Published.push_back({ "com.viffsys.cdm/asrt", ESB_T_I64, {}, 7 * 60 + 2 });
+	const std::size_t asrtIndex = Published.size() - 1U;
+	Published.push_back({ "com.viffsys.cdm/released", ESB_T_I64, {}, 7 * 60 + 4, false });
+	const std::size_t releasedIndex = Published.size() - 1U;
+	++Revision; poll();
+	check(VsmrCdm::TryGetAircraftData("AFR123", cdm) && !cdm.releasedDeclared && !cdm.released &&
+		cdm.asrt == 7 * 60 + 2 && VsmrCdm::IsReleasedToGround(&cdm),
+		"a CDM without the released field keeps RDY green on the ASRT");
+	Published[asrtIndex].unset = true; ++Revision; poll();
+	check(VsmrCdm::TryGetAircraftData("AFR123", cdm) && !cdm.asrt && !VsmrCdm::IsReleasedToGround(&cdm),
+		"a CDM without the released field keeps RDY red without an ASRT");
+	Published[asrtIndex].unset = false;
+	Published[releasedIndex].declared = true;
+	Published[releasedIndex].unset = true;
+	++Revision; poll();
+	check(VsmrCdm::TryGetAircraftData("AFR123", cdm) && cdm.releasedDeclared && !cdm.released &&
+		cdm.asrt == 7 * 60 + 2 && !VsmrCdm::IsReleasedToGround(&cdm),
+		"a declared but unset released field keeps RDY red even when the pilot is ready");
+	Published[releasedIndex].unset = false; ++Revision; poll();
+	check(VsmrCdm::TryGetAircraftData("AFR123", cdm) && cdm.releasedDeclared &&
+		cdm.released == 7 * 60 + 4 && VsmrCdm::IsReleasedToGround(&cdm),
+		"a set released field turns RDY green");
+	Published[asrtIndex].unset = true; ++Revision; poll();
+	check(VsmrCdm::TryGetAircraftData("AFR123", cdm) && !cdm.asrt && VsmrCdm::IsReleasedToGround(&cdm),
+		"RDY follows the release, not the ASRT, once CDM declares the released field");
+	{
+		ProxyBridgeSnapshot primary, secondary;
+		const auto key = L"cdm-released-" + std::to_wstring(::GetCurrentProcessId()) + L"-" + std::to_wstring(::GetTickCount64());
+		check(primary.Open(key) && secondary.Open(key) && primary.Publish(api, tick.callsigns), "released CDM snapshot is published to secondary instances");
+		tick.api = secondary.RemoteApi(); poll();
+		check(tick.api && VsmrCdm::TryGetAircraftData("AFR123", cdm) && cdm.releasedDeclared &&
+			cdm.released == 7 * 60 + 4 && VsmrCdm::IsReleasedToGround(&cdm),
+			"the Proxy facade relays CDM's released field");
+		tick.api = &api; Published[releasedIndex].unset = true; ++Revision; poll();
+		check(primary.Publish(api, tick.callsigns), "primary publishes the withdrawn release");
+		tick.api = secondary.RemoteApi(); poll();
+		check(tick.api && VsmrCdm::TryGetAircraftData("AFR123", cdm) && cdm.releasedDeclared && !cdm.released &&
+			!VsmrCdm::IsReleasedToGround(&cdm),
+			"the Proxy facade keeps the released field declared while it is unset");
+		tick.api = &api; poll();
+	}
+	{
+		VsmrCdm::Shutdown();
+		Published[asrtIndex].unset = false;
+		Published[releasedIndex].declared = false;
+		++Revision; poll();
+		ProxyBridgeSnapshot primary, secondary;
+		const auto key = L"cdm-legacy-" + std::to_wstring(::GetCurrentProcessId()) + L"-" + std::to_wstring(::GetTickCount64());
+		check(primary.Open(key) && secondary.Open(key) && primary.Publish(api, tick.callsigns), "legacy CDM snapshot is published to secondary instances");
+		tick.api = secondary.RemoteApi(); poll();
+		check(tick.api && VsmrCdm::TryGetAircraftData("AFR123", cdm) && !cdm.releasedDeclared &&
+			VsmrCdm::IsReleasedToGround(&cdm),
+			"through the Proxy facade an older CDM keeps RDY on the ASRT");
+		tick.api = &api; poll();
+	}
+	Published[releasedIndex].declared = false;
+	Published[asrtIndex].declared = false;
+	VsmrCdm::Shutdown();
+	++Revision; poll();
+
 	// ----- DMAN's PDC station -----
 	VsmrDman::Shutdown();
 	VsmrDman::Poll(tick);

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Turn the RDY item green when the DEL has released the flight to ground, read from CDM's new `released` bridge field (schema 1.3), instead of on the ASRT, which CDM also sets when a pilot declares ready through vIFF. RDY stays red or green and clicking it still toggles CDM's Ready Start-up. With an older CDM that does not publish `released`, RDY keeps following the ASRT. Secondary Proxy instances receive the field like the other CDM data.
+
 - Add a CDM button below vSID/PDC in the Runtime Menu, with live airport Master ownership, pending acknowledgements, Master/Slave commands and access to the companion CDM build's draggable ATFCM and runway-capacity/BMI panels. Preserve legacy CDM aircraft timing and serialize commands with vSID.
 
 - Retrace LFPG's A380 display contours from the supplied AVISO photograph and check permanent restrictions against SIA GMC 07/08. Remove isolated photo fragments and the unsupported Z4/FN2 fills, preserve approved N/F axes and A3 continuity beneath labels, and share the corrected overlay across Real, Dark and Light.

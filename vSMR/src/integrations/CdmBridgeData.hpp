@@ -55,6 +55,10 @@ namespace VsmrCdm
 		std::optional<std::int64_t> tsac;
 		std::optional<std::int64_t> asrt;
 		std::optional<std::int64_t> asat;
+		// Set while the DEL has released the flight to ground (CDM schema 1.3).
+		std::optional<std::int64_t> released;
+		// The provider declares "released"; older CDM builds do not.
+		bool releasedDeclared = false;
 		std::string deice;
 		std::string tobtSetBy;
 		std::string flowRestriction;
@@ -66,7 +70,9 @@ namespace VsmrCdm
 			return tobt == other.tobt && tsat == other.tsat &&
 				ttot == other.ttot && ctot == other.ctot &&
 				tsac == other.tsac && asrt == other.asrt &&
-				asat == other.asat && deice == other.deice &&
+				asat == other.asat && released == other.released &&
+				releasedDeclared == other.releasedDeclared &&
+				deice == other.deice &&
 				tobtSetBy == other.tobtSetBy &&
 				flowRestriction == other.flowRestriction &&
 				ecfmpRestriction == other.ecfmpRestriction &&
@@ -96,7 +102,8 @@ namespace VsmrCdm
 		return data.tobt.has_value() || data.tsat.has_value() ||
 			data.ttot.has_value() || data.ctot.has_value() ||
 			data.tsac.has_value() || data.asrt.has_value() ||
-			data.asat.has_value() || !data.deice.empty() ||
+			data.asat.has_value() || data.released.has_value() ||
+			!data.deice.empty() ||
 			!data.tobtSetBy.empty() || !data.flowRestriction.empty() ||
 			!data.ecfmpRestriction.empty() || data.manualCtot.has_value();
 	}
@@ -104,6 +111,15 @@ namespace VsmrCdm
 	inline bool IsReadyStartup(const AircraftData* data) noexcept
 	{
 		return data != nullptr && data->asrt.has_value();
+	}
+
+	// The RDY item shows the DEL's release to ground. A CDM that does not
+	// declare "released" still carries it in the ASRT.
+	inline bool IsReleasedToGround(const AircraftData* data) noexcept
+	{
+		if (data == nullptr)
+			return false;
+		return data->releasedDeclared ? data->released.has_value() : IsReadyStartup(data);
 	}
 
 	template<class TokenMap>

@@ -769,6 +769,29 @@ namespace
 			VsmrCdm::IsReadyStartup(&data) && !VsmrCdm::IsReadyStartup(nullptr),
 			"CDM Ready Start-up follows the published ASRT state");
 		Expect(
+			VsmrCdm::IsReleasedToGround(&data) && !VsmrCdm::IsReleasedToGround(nullptr),
+			"an older CDM without the released field shows RDY on the ASRT");
+		{
+			VsmrCdm::AircraftData legacy = data;
+			legacy.asrt.reset();
+			Expect(!VsmrCdm::IsReleasedToGround(&legacy),
+				"an older CDM without an ASRT shows RDY red");
+			VsmrCdm::AircraftData released = data;
+			released.releasedDeclared = true;
+			Expect(!VsmrCdm::IsReleasedToGround(&released) && VsmrCdm::IsReadyStartup(&released),
+				"a pilot's ASRT does not turn RDY green once CDM declares the release");
+			released.released = 7 * 60 + 4;
+			Expect(VsmrCdm::IsReleasedToGround(&released),
+				"a published release turns RDY green");
+			released.asrt.reset();
+			Expect(VsmrCdm::IsReleasedToGround(&released) && VsmrCdm::HasPublishedAircraftData(released),
+				"a release without an ASRT still turns RDY green");
+			VsmrCdm::AircraftData declaredOnly;
+			declaredOnly.releasedDeclared = true;
+			Expect(!VsmrCdm::HasPublishedAircraftData(declaredOnly),
+				"declaring the released field alone publishes no aircraft data");
+		}
+		Expect(
 			std::string(VsmrCdm::PluginName) == "CDM Plugin" &&
 			VsmrCdm::ReadyStartupTagItemCode == 12 &&
 			VsmrCdm::ToggleReadyStartupFunctionId == 106,
