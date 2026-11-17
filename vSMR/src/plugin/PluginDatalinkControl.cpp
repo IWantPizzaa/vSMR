@@ -11,6 +11,7 @@
 #include "datalink/DatalinkProtocolSupport.hpp"
 #include "datalink/PinedeProtocol.hpp"
 #include "integrations/CdmBridgeClient.hpp"
+#include "integrations/DmanBridgeClient.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "shared/TextUtils.hpp"
 #include "weather/WeatherStore.hpp"
@@ -47,6 +48,43 @@ namespace
 	constexpr const char* kServerSetting = "pdc_server_url";
 	// Hoppie settings of earlier versions, erased on first load
 	constexpr const char* kLegacyHoppieSettings[] = { "cpdlc_logon", "cpdlc_password" };
+	constexpr const char* kHandledByDmanMessage = "PDC handled by DMAN.";
+}
+
+// DMAN publishes the station whose PDC it drives through PINEDE. While that is
+// this station, vSMR leaves PINEDE to it; once DMAN stops, the next timer
+// cycle polls again, which is all PINEDE needs to route requests back here.
+void CSMRPlugin::RefreshDatalinkDmanYield()
+{
+	const std::string station = SnapshotDatalinkCredentials().callsign;
+	const bool yielded = GetConnectionType() != CONNECTION_TYPE_VIA_PROXY &&
+		VsmrPinede::YieldsToDman(VsmrDman::GetPdcStation(), station);
+	if (yielded == DatalinkYieldedToDman.exchange(yielded, std::memory_order_acq_rel))
+		return;
+	// the runtime menu and the tags show the change
+	RefreshControllerDependentOverlays();
+	// the controller is told only when vSMR's own PDC session changes
+	const bool online = DatalinkConnected.load(std::memory_order_acquire) ||
+		DatalinkConnecting.load(std::memory_order_acquire);
+	if (yielded)
+	{
+		// what PINEDE gave this station is now DMAN's to act on
+		ClearDatalinkTagState();
+		Logger::info("PDC handled by DMAN for " + station + ": vSMR stops polling PINEDE");
+		if (online)
+			DisplayUserMessage("PDC", "Server", ("PDC handled by DMAN for " + station + ".").c_str(),
+				true, true, false, true, false);
+		return;
+	}
+	Logger::info("PDC no longer handled by DMAN for " + station);
+	if (DatalinkConnected.load(std::memory_order_acquire))
+	{
+		// poll on this cycle rather than up to 10 seconds later
+		DatalinkLastPollAt = PluginSteadyClock::now() - std::chrono::seconds(11);
+		SetDatalinkStatusMessage("Connected as " + station + ".");
+		DisplayUserMessage("PDC", "Server", "PDC no longer handled by DMAN: vSMR polls PINEDE again.",
+			true, true, false, true, false);
+	}
 }
 
 void CSMRPlugin::SynchronizeProxyDatalink()
@@ -77,17 +115,18 @@ DatalinkControlState CSMRPlugin::GetDatalinkControlState() const
 	state.connecting = DatalinkConnecting.load(std::memory_order_acquire);
 	state.pollInProgress = DatalinkPollInProgress.load(std::memory_order_acquire);
 	state.controllerConnected = ControllerMyself().IsController();
+	state.yieldedToDman = DatalinkYieldedToDman.load(std::memory_order_acquire);
 	{
 		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
 		state.logonCallsign = logonCallsign;
 		state.hasKey = !TrimAsciiWhitespaceCopy(logonCode).empty();
 		state.serverUrl = DatalinkBaseUrl;
-		state.statusMessage = DatalinkStatusMessage;
+		state.statusMessage = state.yieldedToDman ? kHandledByDmanMessage : DatalinkStatusMessage;
 	}
 	state.remoteSession = GetConnectionType() == CONNECTION_TYPE_VIA_PROXY;
 	if (state.remoteSession) {
 		state.connected = ProxyDatalink.connected; state.connecting = ProxyDatalink.connecting;
-		state.pollInProgress = ProxyDatalink.polling; state.hasKey = false;
+		state.pollInProgress = ProxyDatalink.polling; state.hasKey = false; state.yieldedToDman = false;
 		if (ProxyDatalink.remote) state.logonCallsign = ProxyDatalink.logon;
 		state.statusMessage = "PDC is managed in the primary EuroScope instance.";
 	}
@@ -186,6 +225,12 @@ bool CSMRPlugin::ConnectDatalink(std::string& error)
 		error = "PDC is already connected.";
 		return false;
 	}
+	// the login is a poll, and PINEDE takes one poller per station
+	if (DatalinkYieldedToDman.load(std::memory_order_acquire))
+	{
+		error = "DMAN handles the PDC of this station.";
+		return false;
+	}
 
 	RefreshDatalinkStation();
 	const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
@@ -256,7 +301,10 @@ bool CSMRPlugin::DisconnectDatalink(std::string& error)
 	ConnectionMessage.store(false, std::memory_order_relaxed);
 	FailedToConnectMessage.store(false, std::memory_order_relaxed);
 	SetDatalinkStatusMessage("Disconnected.");
-	if (wasOnline && !QueueNetworkJob([credentials]() { datalinkLogoff(credentials); }))
+	// a logoff names the station: while DMAN polls it, it would disconnect DMAN
+	if (wasOnline && DatalinkYieldedToDman.load(std::memory_order_acquire))
+		Logger::info("PDC logoff not sent: DMAN handles the station");
+	else if (wasOnline && !QueueNetworkJob([credentials]() { datalinkLogoff(credentials); }))
 		Logger::info("PDC logoff could not be queued; PINEDE will time the station out");
 	// what this station showed is no longer its to act on
 	ClearDatalinkTagState();
@@ -320,6 +368,7 @@ void CSMRPlugin::ResetDatalinkRuntime()
 	DatalinkConnected.store(false, std::memory_order_relaxed);
 	DatalinkConnecting.store(false, std::memory_order_relaxed);
 	DatalinkPollInProgress.store(false, std::memory_order_relaxed);
+	DatalinkYieldedToDman.store(false, std::memory_order_relaxed);
 	ConnectionMessage.store(false, std::memory_order_relaxed);
 	FailedToConnectMessage.store(false, std::memory_order_relaxed);
 	{

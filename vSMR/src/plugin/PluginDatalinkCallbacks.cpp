@@ -60,6 +60,12 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 		DisplayUserMessage("vSMR", "Proxy PDC", "Use the primary EuroScope instance for PDC actions. This instance displays shared status only.", true, true, true, false, false);
 		return;
 	}
+	// DMAN answers this station's requests through PINEDE meanwhile
+	if (FunctionId >= TAG_FUNC_DATALINK_MENU && FunctionId <= TAG_FUNC_DATALINK_MESSAGE &&
+		DatalinkYieldedToDman.load(std::memory_order_acquire)) {
+		DisplayUserMessage("PDC", "Server", "PDC handled by DMAN for this station.", true, true, false, true, false);
+		return;
+	}
 	// ----- Handling CPDLC tag actions -----
 	if (FunctionId == TAG_FUNC_DATALINK_MENU) {
 		CFlightPlan FlightPlan = FlightPlanSelectASEL();
@@ -364,6 +370,8 @@ void CSMRPlugin::RunDatalinkTimerCycle()
 	// PINEDE routes by callsign: follow EuroScope's, for the next request
 	if (GetConnectionType() == CONNECTION_TYPE_DIRECT)
 		RefreshDatalinkStation();
+	// before the offline logoff and the poll below, which both depend on it
+	RefreshDatalinkDmanYield();
 
 	if (DatalinkConnected.load() && ConnectionMessage.load()) {
 		const std::string message = GetDatalinkStatusMessageCopy();

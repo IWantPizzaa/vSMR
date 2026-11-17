@@ -102,4 +102,10 @@ namespace VsmrPinede
 
 	// A line for the controller explaining a failed call
 	std::string DescribeFailure(bool completed, unsigned long status, const std::string& body);
+
+	// At most one client polls PINEDE per station, and a logoff names the
+	// station, not the client. DMAN publishes the station whose PDC it drives
+	// (bridge field dman/pdc_station); while that is this station, vSMR neither
+	// polls nor logs off. Trimmed, case-insensitive; an empty side never matches.
+	bool YieldsToDman(const std::string& dmanStation, const std::string& ownCallsign);
 }
