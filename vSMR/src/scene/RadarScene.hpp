@@ -106,6 +106,15 @@ namespace VsmrScene
 		int severity = 0;
 	};
 
+	struct SmartGroundState
+	{
+		bool collision = false;
+		bool offTrack = false;
+		bool critical = false;
+		std::string conflictingCallsign;
+		std::string reason;
+	};
+
 	struct TargetStyle
 	{
 		IconStyle icon = IconStyle::Nova;
@@ -140,6 +149,9 @@ namespace VsmrScene
 		std::string assignedSquawk;
 		std::string reportedSquawk;
 		std::string groundStateText;
+		std::string departureRunway;
+		std::string arrivalRunway;
+		std::string holdingPoint;
 		std::string towerModeGroundStateText;
 
 		GeoPoint position;
@@ -180,6 +192,7 @@ namespace VsmrScene
 		TargetStyle style;
 		TagContent tag;
 		RimcasState rimcas;
+		SmartGroundState smartGround;
 		bool hasCdmData = false;
 		CdmPilotData cdmData;
 	};

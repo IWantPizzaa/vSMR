@@ -323,3 +323,5 @@ vSMR source code is licensed under the [GNU General Public License v3.0](LICENSE
 AVISO group folders: in Control Center > Groups, set the optional Folder field on each group (for example LVP). Groups sharing a folder appear under `Folder >` in the native Groups menu; hover opens the adjacent submenu. Leave Folder empty to keep a group at the root. Each child keeps its independent visibility and runway rules. Folder assignments are saved as per-airport user overrides.
 
 Language: add the `language` token in a tag definition or the vSMR `Language` item/function to a EuroScope list. Both use `/FR` and `/EN` in flight-plan remarks; click to change or clear the marker without altering other remarks.
+
+Smart Ground is disabled at startup. Toggle it for the current runtime session with `.smr SG` or `.smr smart ground`; both accept `on`, `off` and `status`. Disabled Route list items show `No Data`. See [Smart Ground](docs/Smart-Ground.md) for routing, editing and alerts.

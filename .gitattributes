@@ -27,3 +27,8 @@ vSMR/data/AVISO/*.geojson text eol=lf
 # Preserve CRLF in the upstream RDF patch because that repository tracks the
 # target source file with CRLF bytes and git apply matches those bytes exactly.
 vSMR/data/Tools/RDF-vSMR-ground-view.patch -text whitespace=cr-at-eol,-space-before-tab
+
+# Preserve pinned Smart Ground evidence and dataset hashes across checkouts.
+smart-ground/data-sources/** -text
+smart-ground/public/data/** -text
+vSMR/data/SmartGround/** -text

@@ -150,6 +150,21 @@ void CInsetWindow::renderSecondaryRadarTargets(CDC& dc, CSMRRadar* radar_screen,
 		getRimcasEditorColor("warning_alert_text_color", Color(255, 255, 255, 255));
 
 	const VsmrScene::RadarScene* radarScene = radar_screen->GetCurrentRadarScene();
+	if (m_AirportPositionValid)
+	{
+		const CPosition airport = m_AirportPosition;
+		POINT origin = windowAreaCRect.CenterPoint(); origin.x += m_Offset.x; origin.y += m_Offset.y;
+		const double scale = (std::max)(1.0, static_cast<double>(m_Scale)), rotation = m_Rotation;
+		radar_screen->RenderSmartGroundRouteProjected(*gdi, radarScene, windowAreaCRect, m_Id,
+			[this](const CPosition& position) { return projectPoint(position); },
+			[airport, origin, scale, rotation](POINT point) -> CPosition
+			{
+				if (rotation != 0.0) point = rotate_point(point, -rotation, origin);
+				const double east = static_cast<double>(point.x - origin.x), north = static_cast<double>(origin.y - point.y);
+				const double direction = std::atan2(east, north) * 180.0 / M_PI;
+				return BetterHarversine(airport, direction, std::hypot(east, north) * kAvisoMetersPerNm / scale);
+			});
+	}
 	const VsmrScene::TargetPresentation defaultTargetPresentation;
 	const VsmrScene::TargetPresentation& targetPresentation = radarScene != nullptr
 		? radarScene->targetPresentation
