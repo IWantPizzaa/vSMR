@@ -11,7 +11,7 @@ namespace VsmrTags
 		int altitudeDelta = 0, flightPlanState = 0;
 		char assignedCommunication = 0, filedCommunication = 0, wake = '?';
 		std::string callsign, assignedSquawk, squawk, aircraftType, departureRunway, arrivalRunway;
-		std::string scratchpad, sid, origin, destination, groundState, stand, remark, holdingPoint;
+		std::string scratchpad, sid, origin, destination, groundState, stand, remark, holdingPoint, language;
 	};
 
 	// Formats one captured snapshot without SDK or integration lookups.

@@ -3,6 +3,7 @@
 #include "radar/RadarScreen.hpp"
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
+#include "aircraft/Language.hpp"
 #include "integrations/RampAgentBridgeClient.hpp"
 #include "integrations/VsidBridgeClient.hpp"
 #include "tags/CdmTagHelpers.hpp"
@@ -72,6 +73,7 @@ namespace
 			}
 		}
 		const std::string holdingCallsign = !stableCallsign.empty() ? stableCallsign : (input.hasFlightPlan ? CopyTagText(fp.GetCallsign()) : "");
+		input.language = VsmrLanguage::Read(input.hasFlightPlan ? CopyTagText(fp.GetFlightPlanData().GetRemarks()) : "");
 		input.holdingPoint = VsmrHoldingPoint::Resolve(holdingCallsign,
 			input.hasFlightPlan ? CopyTagText(fp.GetFlightPlanData().GetRemarks()) : "");
 		return input;

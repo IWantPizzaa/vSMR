@@ -3,6 +3,7 @@
 #include "plugin/Plugin.RuntimeState.hpp"
 
 #include "aircraft/HoldingPoint.hpp"
+#include "aircraft/Language.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "rdf/RdfOverlay.hpp"
 
@@ -69,6 +70,18 @@ void CSMRPlugin::OnGetTagItem(
 			return;
 		}
 		strcpy_s(sItemString, 16, "TX");
+		return;
+	}
+
+	if (ItemCode == TAG_ITEM_LANGUAGE)
+	{
+		if (pColorCode) *pColorCode = TAG_COLOR_DEFAULT;
+		std::string language;
+		if (FlightPlan.IsValid()) {
+			const char* remarks = FlightPlan.GetFlightPlanData().GetRemarks();
+			language = VsmrLanguage::Read(remarks ? remarks : "");
+		}
+		strcpy_s(sItemString, 16, language.empty() ? "LANG" : language.c_str());
 		return;
 	}
 
