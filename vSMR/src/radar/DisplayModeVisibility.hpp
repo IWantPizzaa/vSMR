@@ -1,9 +1,16 @@
 #pragma once
 
 #include "aircraft/GroundState.hpp"
+#include "integrations/CdmBridgeData.hpp"
 
 namespace VsmrDisplayModeVisibility
 {
+	// A display mode that requires ready flights shows those whose RDY item is green.
+	inline bool PassesReadyRequirement(bool requireReady, const VsmrCdm::AircraftData* cdm) noexcept
+	{
+		return !requireReady || VsmrCdm::IsReleasedToGround(cdm);
+	}
+
 	template <typename StatusVisibility>
 	bool IsVisible(
 		const StatusVisibility& statuses,

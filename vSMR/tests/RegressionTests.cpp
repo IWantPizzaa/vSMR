@@ -1067,6 +1067,22 @@ namespace
 			"TAXI", 0, false, VsmrGroundStateSync::LineupAssignedSpeed);
 		Expect(!IsVisible(statuses, false, true, true, 0, false, sharedLineup),
 			"shared lineup remains controlled by Lineup rather than No Status");
+
+		using VsmrDisplayModeVisibility::PassesReadyRequirement;
+		VsmrCdm::AircraftData cdm;
+		Expect(PassesReadyRequirement(false, nullptr) && PassesReadyRequirement(false, &cdm),
+			"display modes that do not require ready flights show every flight");
+		Expect(!PassesReadyRequirement(true, nullptr) && !PassesReadyRequirement(true, &cdm),
+			"ready display modes hide flights without CDM data or ASRT");
+		cdm.asrt = 7 * 60 + 2;
+		Expect(PassesReadyRequirement(true, &cdm),
+			"ready display modes keep the ASRT rule with an older CDM");
+		cdm.releasedDeclared = true;
+		Expect(!PassesReadyRequirement(true, &cdm),
+			"ready display modes hide a pilot-ready flight CDM has not released");
+		cdm.released = 7 * 60 + 4;
+		Expect(PassesReadyRequirement(true, &cdm),
+			"ready display modes show flights CDM has released");
 	}
 
 	void TestRuntimeReleaseLifecycle()

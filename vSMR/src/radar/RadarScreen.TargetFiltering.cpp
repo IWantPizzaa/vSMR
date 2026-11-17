@@ -77,8 +77,8 @@ bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorre
 
 	if (settings.requireClearance && (!fp.IsValid() || !fp.GetClearenceFlag()))
 		return false;
-	if (settings.requireReady &&
-		(capturedCdmData == nullptr || !capturedCdmData->hasAsrt))
+	if (!VsmrDisplayModeVisibility::PassesReadyRequirement(settings.requireReady,
+		capturedCdmData != nullptr ? &capturedCdmData->bridgeData : nullptr))
 	{
 		return false;
 	}
