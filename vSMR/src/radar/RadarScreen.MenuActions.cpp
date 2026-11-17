@@ -49,6 +49,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	if (FunctionId == VSMR_GROUND_STATUS_SELECT)
 	{
 		const bool selectLineup = _stricmp(itemString, "Line Up") == 0;
+		const bool selectCrossing = _stricmp(itemString, "Cross") == 0;
 		const char* euroScopeStatus = nullptr;
 		if (_stricmp(itemString, "No Status") == 0)
 			euroScopeStatus = "NSTS";
@@ -56,6 +57,8 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 			euroScopeStatus = "STUP";
 		else if (_stricmp(itemString, "Push") == 0)
 			euroScopeStatus = "PUSH";
+		else if (selectCrossing)
+			euroScopeStatus = "TAXI";
 		else if (selectLineup)
 			// Written as a pair with the reserved assigned speed, so every client
 			// can tell a vSMR line up from a status set outside vSMR.
@@ -107,7 +110,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		// assigned speed the other clients read back. A real speed assignment is
 		// left alone; only a reserved value is cleared.
 		const int sharedAssignedSpeed = VsmrGroundStateSync::AssignedSpeedForCategory(
-			selectLineup ? GroundStateCategory::Lnup : GroundStateCategory::Unknown);
+			selectCrossing ? GroundStateCategory::Cross : selectLineup ? GroundStateCategory::Lnup : GroundStateCategory::Unknown);
 		const int previousAssignedSpeed = assignedData.GetAssignedSpeed();
 		if (sharedAssignedSpeed != 0 && !VsmrGroundStateSync::CanWriteSharedState(previousAssignedSpeed))
 		{

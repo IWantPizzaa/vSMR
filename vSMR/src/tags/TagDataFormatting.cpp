@@ -50,7 +50,7 @@ namespace
 		output["origin"] = correlatedPlan ? input.origin : "????";
 		output["dest"] = correlatedPlan ? input.destination : "????";
 		output["groundstatus"] = correlatedPlan
-			? (input.lineup ? "LNUP" : (input.groundState.empty() ? "STS" : input.groundState)) : "STS";
+			? (input.crossing ? "CROSS" : input.lineup ? "LNUP" : (input.groundState.empty() ? "STS" : input.groundState)) : "STS";
 		output["clearance"] = input.hasFlightPlan && input.correlated ? (input.clearance ? "[x]" : "[ ]") : "";
 		output["uk_stand"] = input.stand;
 		output["remark"] = input.remark;

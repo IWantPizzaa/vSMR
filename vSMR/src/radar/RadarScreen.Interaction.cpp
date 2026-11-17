@@ -1343,6 +1343,7 @@ void CSMRRadar::OnClickScreenObjectImpl(int ObjectType, const char * sObjectId, 
 		openPopupListWithClose("vSMR ground status", [&]()
 		{
 			GetPlugIn()->AddPopupListElement("No Status", "", VSMR_GROUND_STATUS_SELECT, !rawParked && (currentStatus == GroundStateCategory::Gate || currentStatus == GroundStateCategory::Nsts || currentStatus == GroundStateCategory::Unknown));
+			GetPlugIn()->AddPopupListElement("Cross", "", VSMR_GROUND_STATUS_SELECT, currentStatus == GroundStateCategory::Cross);
 			if (isDeparture)
 			{
 				GetPlugIn()->AddPopupListElement("Startup", "", VSMR_GROUND_STATUS_SELECT, currentStatus == GroundStateCategory::Stup);
