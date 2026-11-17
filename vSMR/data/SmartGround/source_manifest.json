@@ -1,0 +1,34 @@
+{
+  "airport": "LFPG",
+  "coordinateOrigin": [
+    49.0097,
+    2.5479
+  ],
+  "worksRestrictionsEnabled": false,
+  "files": [
+    {
+      "file": "lfpg.json",
+      "source": "smart-ground/public/data/lfpg.json",
+      "bytes": 3344887,
+      "sha256": "4597cfcb70d555ca801427a378d7f8fca297e55677d3062faed0c1718ed5b9c5"
+    },
+    {
+      "file": "lfpg_operations.json",
+      "source": "smart-ground/public/data/lfpg-operations.json",
+      "bytes": 1284353,
+      "sha256": "d881f3494335470dfa11a0fe371f99bc7f2a772c2bca7e7a1785f74d7b603736"
+    },
+    {
+      "file": "lfpg_corridors.json",
+      "source": "smart-ground/public/data/lfpg-corridors.json",
+      "bytes": 934165,
+      "sha256": "9228e0c4e9293426c2318ea032ce5ac07fc331595201b8c6eeaa6916cdf8def3"
+    },
+    {
+      "file": "lfpg_aircraft_restrictions.json",
+      "source": "smart-ground/public/data/lfpg-aircraft-restrictions.json",
+      "bytes": 196973,
+      "sha256": "913a066d2bfde160f7fdf716942c58a8ac5530931a033d74f0033fae8ec63882"
+    }
+  ]
+}

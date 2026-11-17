@@ -1,0 +1,16 @@
+{
+  "sessions": 6,
+  "tracksWithProvisionalReferences": 224,
+  "recordedReports": 80326,
+  "acceptedReports": 80321,
+  "reportsWithRoute": 79532,
+  "reportsWithConfirmedStandardDifference": 24374,
+  "collisionTagSnapshots": 1974,
+  "predictionCycles": 14076,
+  "elapsedMilliseconds": 51498,
+  "groundTruthTaxiClearancesAvailable": false,
+  "groundTruthCollisionLabelsAvailable": false,
+  "falsePositiveRateMeasured": false,
+  "orientation": "estimated geometric motion axis; replay PBH true/magnetic reference unverified",
+  "purpose": "Native engine ingestion, duplicate rejection, finite geometry, report-age and expiry invariants on local anonymized replay caches. Provisional standards are not issued taxi clearances; alert counts are not proven pilot errors or collisions."
+}

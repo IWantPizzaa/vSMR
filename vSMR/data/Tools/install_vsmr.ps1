@@ -403,7 +403,7 @@ if ($hadData -and -not $ReplaceUserData) {
         Remove-Item -LiteralPath (Join-Path $stageData 'config.json') -Force
     }
     $immutableNames = @(
-        'vSMR_webUI', 'CrashReporter', 'Licenses', 'Runtime', 'Tools',
+        'vSMR_webUI', 'CrashReporter', 'Licenses', 'Runtime', 'Tools', 'SmartGround',
         'RELEASE-METADATA.json', 'SHA256SUMS.txt', 'INSTALLATION.json',
         'AVISO-UPDATE-POLICY.json', 'AVISO-INVENTORY.json', 'AVISO-UPDATE-REPORT.json',
         'airports_hp.json', 'AVISO', 'UpdateBaselines', 'DATA-UPDATE-REPORT.json',

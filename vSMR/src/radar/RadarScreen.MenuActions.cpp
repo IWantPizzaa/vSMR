@@ -31,6 +31,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	(void)Area;
 	Logger::info(std::string(__FUNCSIG__));
 	mouseLocation = Pt;
+	if (HandleSmartGroundFunction(FunctionId, sItemString)) return;
 	const bool hasItemString = (sItemString != nullptr && sItemString[0] != '\0');
 	const char* itemString = hasItemString ? sItemString : "";
 	auto getAppWindowById = [&](int id) -> CInsetWindow*
