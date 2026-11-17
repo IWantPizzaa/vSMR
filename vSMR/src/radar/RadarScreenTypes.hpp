@@ -56,13 +56,16 @@ namespace VsmrRadarTypes
 
 	struct AvisoGroup
 	{
+		unsigned geometryPalettes = 7U;
 		std::string id;
 		std::string name;
 		bool visible = true;
+		std::string folder;
 	};
 
 	struct AvisoFeature
 	{
+		unsigned geometryPalettes = 7U;
 		bool polygon = false;
 		bool polygonOutline = false;
 		bool lightPolygonOutline = false;
@@ -87,6 +90,7 @@ namespace VsmrRadarTypes
 
 	struct AvisoLabel
 	{
+		unsigned geometryPalettes = 7U;
 		AvisoPoint position;
 		int sourceFeatureIndex = -1;
 		std::string sourceFeatureId;
@@ -252,6 +256,7 @@ namespace VsmrRadarTypes
 		Insets,
 		Profile,
 		Datalink,
+		Cdm,
 		RecentAirports
 	};
 

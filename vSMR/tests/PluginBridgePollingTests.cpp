@@ -16,6 +16,7 @@
 namespace
 {
 	VsmrPluginBridge::AttachState HostAttachState = VsmrPluginBridge::AttachState::Attached;
+	VsmrEuroScopeCommandLine::Owner SubmittedOwner = VsmrEuroScopeCommandLine::Owner::Vsid;
 	std::string SubmittedCommand;
 	std::vector<std::string> SubmittedCommands;
 	bool AcceptCommand = true;
@@ -119,6 +120,7 @@ const ESB_Api_v1* VsmrPluginBridge::AttachForUi() { return UiApi; }
 bool VsmrPluginBridge::IsProxyBridge() noexcept { return ProxyBridgeActive; }
 bool VsmrPluginBridge::ProxyCommandPending() noexcept { return false; }
 bool VsmrPluginBridge::SubmitProxyVsid(int action, const std::string& airport, std::string&) { ProxyAction = action; ProxyAirport = airport; return true; }
+bool VsmrPluginBridge::SubmitProxyCdm(int action, const std::string& airport, std::string&) { ProxyAction = VsmrCdm::ProxyActionBase + action; ProxyAirport = airport; return true; }
 const char* VsmrPluginBridge::MissingBridgeMessage() noexcept { return ESB_MISSING_MESSAGE; }
 std::string VsmrPluginBridge::NormalizeCallsign(const std::string& callsign)
 {
@@ -126,17 +128,19 @@ std::string VsmrPluginBridge::NormalizeCallsign(const std::string& callsign)
 }
 void VsmrPluginBridge::ProviderDiagnostics::Report(const ProviderBinding&) {}
 void VsmrPluginBridge::ProviderDiagnostics::Reset() noexcept {}
-bool VsmrEuroScopeCommandLine::Begin(Owner, const std::string& command, std::string*, ProgressCallback progress)
+bool VsmrEuroScopeCommandLine::Begin(Owner owner, const std::string& command, std::string*, ProgressCallback progress)
 {
 	if (!AcceptCommand) return false;
+	SubmittedOwner = owner;
 	CommandProgress = progress;
 	SubmittedCommand = command;
 	SubmittedCommands.push_back(command);
 	SubmissionResult = SubmissionStatus::Pending;
 	return true;
 }
-VsmrEuroScopeCommandLine::SubmissionStatus VsmrEuroScopeCommandLine::Poll(Owner)
+VsmrEuroScopeCommandLine::SubmissionStatus VsmrEuroScopeCommandLine::Poll(Owner owner)
 {
+	if (owner != SubmittedOwner) return SubmissionStatus::Idle;
 	const auto result = SubmissionResult;
 	if (result != SubmissionStatus::Pending)
 	{
@@ -146,8 +150,9 @@ VsmrEuroScopeCommandLine::SubmissionStatus VsmrEuroScopeCommandLine::Poll(Owner)
 	return result;
 }
 bool VsmrEuroScopeCommandLine::IsBusy() noexcept { return SubmissionResult == SubmissionStatus::Pending; }
-void VsmrEuroScopeCommandLine::Cancel(Owner) noexcept
+void VsmrEuroScopeCommandLine::Cancel(Owner owner) noexcept
 {
+	if (owner != SubmittedOwner) return;
 	SubmittedCommand.clear();
 	CommandProgress = nullptr;
 	SubmissionResult = SubmissionStatus::Idle;
@@ -556,6 +561,64 @@ void RunPluginBridgePollingTests(std::vector<std::string>& failures)
 	VsmrVsid::CommandAction resumeAction{};
 	check(VsmrVsid::TryParseRuntimeActionId("runtime.vsid.resume-autoconfig", resumeAction) &&
 		resumeAction == VsmrVsid::CommandAction::ResumeAutoConfiguration, "resume button routes to the new configuration command");
+
+	check(VsmrCdm::GetInterfaceState().providerReady && !VsmrCdm::GetInterfaceState().panel,
+		"legacy CDM providers retain aircraft timing without inventing airport state");
+	tick.callsigns = { "AFR123" };
+	const std::size_t panelIndex = Published.size();
+	const std::string panelJson = R"({"version":1,"can_control":true,"native_panel":true,"atfcm":false,"bmi":true,"capacity_airport":"","airports":[{"icao":"LFPG","master":"","local":false},{"icao":"LFPO","master":"LFPO_DEL","local":false}]})";
+	Published.push_back({ "com.viffsys.cdm/airport_panel", ESB_T_STR, panelJson });
+	Providers["com.viffsys.cdm"] = 2U; ++Revision; poll();
+	auto cdmState = VsmrCdm::GetInterfaceState();
+	check(cdmState.panel && cdmState.panel->airports.size() == 2 && !cdmState.panel->airports[0].local &&
+		cdmState.panel->airports[1].master == "LFPO_DEL", "CDM panel distinguishes unassigned and other-controller Master airports");
+	check(VsmrCdm::SubmitCommand(VsmrCdm::CommandAction::Master, "LFPG", error) && SubmittedCommand == ".cdm master LFPG",
+		"CDM Master button sends an explicit airport-scoped command");
+	check(VsmrCdm::GetInterfaceState().panel->airports[0].pending && !VsmrCdm::GetInterfaceState().panel->airports[0].local,
+		"Master submission stays yellow pending rather than claiming server confirmation");
+	check(!VsmrVsid::SubmitCommand(VsmrVsid::CommandAction::ReloadConfiguration, "LFPG", error),
+		"CDM and vSID share a single serialized host command line");
+	completeCommand();
+	check(!VsmrCdm::SubmitCommand(VsmrCdm::CommandAction::Master, "LFPG", error), "duplicate pending Master change is not retried");
+	Published[panelIndex].text = R"({"version":1,"can_control":true,"native_panel":false,"atfcm":true,"bmi":true,"capacity_airport":"LFPG","airports":[{"icao":"LFPG","master":"LFPG_DEL","local":true}]})";
+	++Revision; poll();
+	cdmState = VsmrCdm::GetInterfaceState();
+	check(cdmState.panel && cdmState.panel->airports[0].local && !cdmState.panel->airports[0].pending &&
+		cdmState.panel->atfcm && cdmState.panel->capacityAirport == "LFPG", "published Master acknowledgement clears pending and refreshes floating-panel controls");
+	const auto commandsBeforeNoop = SubmittedCommands.size();
+	check(VsmrCdm::SubmitCommand(VsmrCdm::CommandAction::Master, "LFPG", error) && SubmittedCommands.size() == commandsBeforeNoop,
+		"reapplying an acknowledged Master selection is a no-op");
+	check(!VsmrCdm::SubmitCommand(VsmrCdm::CommandAction::Slave, "LFPG .quit", error) &&
+		!VsmrCdm::SubmitCommand(VsmrCdm::CommandAction::Capacity, "LFZZ", error), "CDM rejects injected and unconfigured airport actions");
+	check(VsmrCdm::SubmitCommand(VsmrCdm::CommandAction::Capacity, "LFPG", error) && SubmittedCommand == ".cdm capacity LFPG",
+		"CDM capacity button opens the airport's native monitoring/BMI panel");
+	completeCommand();
+	ProxyBridgeActive = true;
+	check(!VsmrCdm::SubmitCommand(VsmrCdm::CommandAction::Atfcm, "", error), "native floating panels are not opened in the wrong Proxy process");
+	check(VsmrCdm::SubmitCommand(VsmrCdm::CommandAction::Slave, "LFPG", error) && ProxyAction == 101 && ProxyAirport == "LFPG",
+		"Proxy Master actions are routed to the primary through the CDM action namespace");
+	ProxyBridgeActive = false;
+	{
+		ProxyBridgeSnapshot primary, secondary;
+		const auto key = L"cdm-ui-" + std::to_wstring(::GetCurrentProcessId()) + L"-" + std::to_wstring(::GetTickCount64());
+		check(primary.Open(key) && secondary.Open(key) && primary.Publish(api, tick.callsigns), "CDM UI snapshot is published to secondary instances");
+		tick.api = secondary.RemoteApi(); poll();
+		check(VsmrCdm::GetInterfaceState().panel && VsmrCdm::GetInterfaceState().panel->bmi, "CDM UI survives the validated Proxy snapshot facade");
+		tick.api = &api; poll();
+	}
+	Published[panelIndex].text = "{}"; ++Revision; poll();
+	check(!VsmrCdm::GetInterfaceState().panel && VsmrCdm::TryGetAircraftData("AFR123", cdm),
+		"malformed airport UI cannot invalidate existing aircraft timing data");
+	Published[panelIndex].text = R"({"version":1,"can_control":false,"native_panel":false,"atfcm":false,"bmi":false,"capacity_airport":"","airports":[{"icao":"LFPG","master":"","local":false}]})";
+	++Revision; poll();
+	check(VsmrCdm::SubmitCommand(VsmrCdm::CommandAction::Master, "LFPG", error) && SubmittedCommand == ".cdm master LFPG",
+		"airport buttons delegate Master eligibility to CDM just like its original panel, including local/offline use");
+	completeCommand();
+	check(VsmrCdm::GetInterfaceState().panel->airports[0].pending && !VsmrCdm::GetInterfaceState().panel->airports[0].local,
+		"delegating to CDM does not fabricate a successful Master assignment");
+	for (const auto& invalid : { std::string(65537, ' '), std::string(1000, '[') + std::string(1000, ']'),
+		std::string(R"({"version":2})"), std::string(R"({"version":1,"can_control":true,"native_panel":false,"atfcm":false,"bmi":false,"capacity_airport":"","airports":[{"icao":"LFPG","master":"a\u0000b","local":false}]})") })
+		check(!VsmrCdm::ParseAirportPanel(invalid), "invalid, oversized and control-character CDM UI snapshots fail closed");
 	tick.api = nullptr;
 	HostAttachState = VsmrPluginBridge::AttachState::NotLoaded;
 	poll();

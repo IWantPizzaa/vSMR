@@ -595,7 +595,7 @@
     aviso.vsmr_groups.forEach(group => {
       if (group && typeof group === "object") delete group.color_palettes;
     });
-    aviso.metadata.geometry_mode = "shared";
+    if (aviso.metadata.geometry_mode !== "palette_specific") aviso.metadata.geometry_mode = "shared";
 
     const seen = new Set();
     const groupIdAliases = new Map();
@@ -615,6 +615,7 @@
         ...sourceGroup,
         id,
         name: String(sourceGroup.name || `Group ${index + 1}`).trim() || `Group ${index + 1}`,
+        folder: String(sourceGroup.folder ?? sourceGroup.section ?? "").trim(),
         visible: sourceGroup.visible !== false,
         accent: normalizeHex(sourceGroup.accent || "#84b7d5", "#84b7d5")
       };
@@ -1595,6 +1596,12 @@
 
 
 
+  function runtimePaletteGroups() {
+    const palette = normalizeAvisoColorPalette(state.settings.avisoColorPalette);
+    return avisoGroups().filter(group => !Array.isArray(group.geometry_palettes) ||
+      group.geometry_palettes.includes(palette));
+  }
+
   function featureGroupIds(feature) {
     const properties = feature?.properties || {};
     let ids = [];
@@ -1753,7 +1760,7 @@
     applyUiTheme();
     const menu = $("#runtimeMenu");
     if (!menu || HOST_MODE) return;
-    const groups = avisoGroups();
+    const groups = runtimePaletteGroups();
     const visibleGroups = groups.filter(group => group.visible !== false).length;
     const profile = activeProfile();
     const mode = activeModeName();
@@ -1877,7 +1884,7 @@
     }
 
     title.textContent = "Groups";
-    const groupRows = avisoGroups().map(group => {
+    const groupRows = runtimePaletteGroups().map(group => {
       const visible = group.visible !== false;
       return `<button type="button" class="${uiListRowClass("runtime", false, false, `runtime-choice-row runtime-compact-row ${visible ? "" : "muted"}`)}" data-runtime-group="${escapeHtml(group.id)}">${runtimeVisibilityIcon(visible)}<strong class="ui-list__label runtime-row-label">${escapeHtml(group.name)}</strong></button>`;
     }).join("");
@@ -3953,6 +3960,7 @@
     }
     const name = $("#avisoGroupName");
     if (name) drafts.avisoGroup.data.name = name.value;
+    drafts.avisoGroup.data.folder = $("#avisoGroupFolder")?.value.trim() || "";
     return drafts.avisoGroup;
   }
 
@@ -3976,6 +3984,8 @@
     const group = selectedAvisoGroup();
     const editor = $(".aviso-group-editor");
     const nameControl = $("#avisoGroupName");
+    $("#avisoGroupFolder").disabled = !group;
+    $("#avisoGroupFolder").value = group ? (drafts.avisoGroup?.id === group.id ? drafts.avisoGroup.data.folder || "" : group.folder || "") : "";
     nameControl?.setCustomValidity("");
     if (!group) {
       $("#avisoGroupCaption").textContent = "No group selected";
@@ -4024,7 +4034,7 @@
   function duplicateAvisoGroup() {
     const source = selectedAvisoGroup();
     if (!source) return;
-    const copy = { id: uniqueAvisoGroupId(`${source.id}-copy`), name: `${source.name} copy`, visible: source.visible !== false, accent: normalizeHex(source.accent, "#84b7d5") };
+    const copy = { id: uniqueAvisoGroupId(`${source.id}-copy`), name: `${source.name} copy`, folder: source.folder || "", visible: source.visible !== false, accent: normalizeHex(source.accent, "#84b7d5") };
     avisoGroups().splice(avisoGroups().indexOf(source) + 1, 0, copy);
     avisoFeatures().forEach(feature => {
       if (featureGroupIds(feature).includes(source.id)) setFeatureGroupMembership(feature, copy.id, true);
@@ -4063,6 +4073,7 @@
     }
     $("#avisoGroupName")?.setCustomValidity("");
     group.name = name;
+    group.folder = String(draft.data.folder || "").trim();
     group.visible = draft.data.visible !== false;
     group.accent = normalizeHex(draft.data.accent, group.accent || "#84b7d5");
     clearUnappliedEditorSection($("#avisoGroupName"));
@@ -6166,6 +6177,7 @@
       state.ui.avisoGroupMemberSearch = event.target.value;
       renderAvisoGroupEditor();
     });
+    $("#avisoGroupFolder").addEventListener("input", () => captureAvisoGroupDraft());
     $("#avisoGroupName").addEventListener("input", event => {
       event.target.setCustomValidity(event.target.value.trim() ? "" : "Enter a group name");
       const draft = captureAvisoGroupDraft();

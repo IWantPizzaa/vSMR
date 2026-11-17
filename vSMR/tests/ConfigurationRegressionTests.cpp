@@ -525,71 +525,95 @@ namespace
 			}
 			if (airport == "LFPG")
 			{
-				bool east = false, west = false;
-				Expect(document["vsmr_groups"].Size() == 6U, "LFPG has independent arrow and LVP groups");
+				Expect(model.FeatureCount() == 3227U, "LFPG retains both geometry variants without obsolete A380 display fragments");
+				Expect(document["metadata"]["color_palettes"].Size() == 3U, "Unified LFPG exposes Dark, Light and Real palettes");
+				unsigned originalCount = 0, realCount = 0;
+				for (const auto& feature : document["features"].GetArray())
+				{
+					const auto& variantPalettes = feature["properties"]["geometry_palettes"];
+					if (variantPalettes.Size() == 2U) ++originalCount; else ++realCount;
+				}
+				Expect(originalCount == 1505U && realCount == 1722U, "Dark/Light and Real retain their independent feature sets");
+				const auto insidePolygon = [](const rapidjson::Value& rings, double longitude, double latitude)
+				{
+					bool inside = false;
+					for (const auto& ring : rings.GetArray())
+						for (rapidjson::SizeType i = 0, j = ring.Size() - 1; i < ring.Size(); j = i++)
+						{
+							const double ax = ring[i][0].GetDouble(), ay = ring[i][1].GetDouble();
+							const double bx = ring[j][0].GetDouble(), by = ring[j][1].GetDouble();
+							if ((ay > latitude) != (by > latitude) &&
+								longitude < (bx - ax) * (latitude - ay) / (by - ay) + ax) inside = !inside;
+						}
+					return inside;
+				};
+				const auto a380RestrictedAt = [&](double longitude, double latitude)
+				{
+					for (const auto& feature : document["features"].GetArray())
+					{
+						bool restricted = false;
+						for (const auto& entry : feature["properties"]["vsmr_group_ids"].GetArray())
+							restricted = restricted || std::string(entry.GetString()) == "wb-a380";
+						if (!restricted) continue;
+						const auto& geometry = feature["geometry"];
+						const auto& coordinates = geometry["coordinates"];
+						if (std::string(geometry["type"].GetString()) == "Polygon")
+						{
+							if (insidePolygon(coordinates, longitude, latitude)) return true;
+						}
+						else for (const auto& polygon : coordinates.GetArray())
+							if (insidePolygon(polygon, longitude, latitude)) return true;
+					}
+					return false;
+				};
+				Expect(a380RestrictedAt(2.550980000, 49.024503063), "A380 restriction covers the prohibited Z5 corridor");
+				Expect(a380RestrictedAt(2.543629689, 49.013969378), "A3 remains prohibited beneath the photograph's opaque labels");
+				Expect(a380RestrictedAt(2.533436667, 48.994139009), "A380-only C/U restriction remains visible");
+				Expect(!a380RestrictedAt(2.537455272, 49.023689028), "Approved Z4 is not prohibited by an older photograph");
+				Expect(!a380RestrictedAt(2.552884313, 49.006929024), "FN2 does not acquire a blanket A380 prohibition from the adjacent E wedge");
+				Expect(!a380RestrictedAt(2.553070000, 49.004260360) &&
+					!a380RestrictedAt(2.554653333, 49.004260360), "Approved N and F axes remain clear of adjacent A380 fills");
+				Expect(std::string(document["metadata"]["geometry_mode"].GetString()) == "palette_specific",
+					"Loading and normalizing the editor preserves explicit geometry variants");
+				bool east = false, west = false, gates = false;
 				for (const auto& group : document["vsmr_groups"].GetArray())
 				{
 					const std::string id = group["id"].GetString();
 					east = east || id == "ground-layout-east";
 					west = west || id == "ground-layout-west";
-					Expect(group["visible"].GetBool(), "LFPG grouped geometry is initially visible");
+					gates = gates || id == "display-gates";
+					Expect(id.rfind("real-", 0) != 0, "LFPG group identifiers are common across palettes");
+					Expect(id != "dgv-labels-north" && id != "dgv-labels-south", "Rapid exit groups have been removed");
+					for (const char* field : { "name", "folder" })
+						for (const unsigned char c : std::string(group[field].GetString()))
+							Expect(c < 128U, "LFPG group names and folders use plain English UTF-8 text");
+					for (const char* paletteName : { "dark", "light", "real" })
+					{
+						if (group.HasMember("geometry_palettes") && std::string(paletteName) != "real") continue;
+						unsigned affected = 0;
+						for (const auto& feature : document["features"].GetArray())
+						{
+							const auto& props = feature["properties"];
+							bool paletteMatches = false, groupMatches = false;
+							for (const auto& paletteEntry : props["geometry_palettes"].GetArray())
+								paletteMatches = paletteMatches || std::string(paletteEntry.GetString()) == paletteName;
+							for (const auto& groupEntry : props["vsmr_group_ids"].GetArray())
+								groupMatches = groupMatches || std::string(groupEntry.GetString()) == id;
+							if (paletteMatches && groupMatches) ++affected;
+						}
+						Expect(affected > 0U, "Each LFPG group toggles actual geometry in every palette: " + id + "/" + paletteName);
+					}
+
 				}
-				Expect(east && west, "LFPG exposes East Arrows and West Arrows separately");
-				Expect(model.FeatureCount() == 1559U, "LFPG retains 1476 airport features and adds 83 LVP features");
-				bool eastLimit = false, westLimit = false;
-				int eastArrows = 0, westArrows = 0, ungroupedFeatures = 0;
-				std::map<std::string, int> lvpCounts;
+				Expect(east && west && gates, "Unified LFPG preserves arrow and stand visibility controls");
+				const auto& grass = document["styles"]["polygon.grassurface.00512f"]["paint"];
+				Expect(std::string(grass["fill"].GetString()) == "#010D19" &&
+					std::string(grass["palette-overrides"]["light"]["fill"].GetString()) == "#00512F" &&
+					std::string(document["styles"]["real-polygon.grassurface.00512f"]["paint"]["palette-overrides"]["real"]["fill"].GetString()) == "#90D8D0",
+					"Unified LFPG preserves the three source grass colours");
 				for (const auto& feature : document["features"].GetArray())
-				{
-					const auto& properties = feature["properties"];
-					const std::string featureId = feature["id"].GetString();
-					eastLimit = eastLimit || featureId == "LFPG-3111b389fe7400785d03";
-					westLimit = westLimit || featureId == "LFPG-341594b8aadf72cf5869";
-					const auto& groups = properties["vsmr_group_ids"];
-					if (groups.Empty()) { ++ungroupedFeatures; continue; }
-					Expect(groups.Size() == 1U, "Each LFPG grouped feature belongs to one group");
-					const std::string groupId = groups[0].GetString();
-					if (groupId.rfind("lvp-", 0) == 0) { ++lvpCounts[groupId]; continue; }
-					Expect(properties.HasMember("geometry_role") &&
-						std::string(properties["geometry_role"].GetString()) == "directional_arrows",
-						"LFPG arrow groups do not hide unrelated airport geometry");
-					const auto& geometry = feature["geometry"];
-					const bool multiLine = std::string(geometry["type"].GetString()) == "MultiLineString";
-					Expect(multiLine, "LFPG arrows use the updated grouped MultiLineString geometry");
-					const int arrowCount = multiLine ? static_cast<int>(geometry["coordinates"].Size()) : 1;
-					for (const auto& group : groups.GetArray())
-					{
-						const std::string id = group.GetString();
-						Expect(id == "ground-layout-east" || id == "ground-layout-west", "LFPG arrow membership is valid");
-						if (id == "ground-layout-east") eastArrows += arrowCount;
-						if (id == "ground-layout-west") westArrows += arrowCount;
-					}
-				}
-				Expect(eastArrows == 89 && westArrows == 97 && ungroupedFeatures == 1470,
-					"LFPG preserves the original East/West arrow sets and ungrouped airport layout");
-				Expect(lvpCounts["lvp-critical-east"] == 10 && lvpCounts["lvp-critical-west"] == 10 &&
-					lvpCounts["lvp-loc-markers"] == 8 && lvpCounts["lvp-hp-cat1-cat3"] == 55,
-					"LFPG preserves all four supplied LVP geometry sets");
-				Expect(document["metadata"].HasMember("lvp_overlay") &&
-					document["metadata"]["lvp_overlay"]["version"].GetInt() == 5,
-					"LFPG retains the supplied LVP provenance and validation notes");
-				Expect(eastLimit && westLimit, "LFPG preserves both supplied East/West 60 m limit lines");
-				bool grassPaletteFound = false;
-				for (auto style = document["styles"].MemberBegin(); style != document["styles"].MemberEnd(); ++style)
-				{
-					const auto& paint = style->value["paint"];
-					if (paint.HasMember("text-halo-width"))
-						Expect(paint["text-halo-width"].GetDouble() == 1.0, "LFPG labels retain one-pixel halos");
-					if (std::string(style->name.GetString()).find("polygon.grassurface.") == 0)
-					{
-						grassPaletteFound = true;
-						const auto& overrides = paint["palette-overrides"];
-						Expect(std::string(overrides["light"]["fill"].GetString()) == "#00512F" &&
-							std::string(overrides["real"]["fill"].GetString()) == "#6A958B",
-							"LFPG uses pack Light and preserved GeoJSON Real grass colors");
-					}
-				}
-				Expect(grassPaletteFound, "LFPG includes sector-pack grass geometry");
+					Expect(document["styles"].HasMember(feature["properties"]["style_id"].GetString()),
+						"Every unified LFPG feature resolves its shared style");
 			}
 		}
 		Expect(!std::filesystem::exists(avisoRoot / "LFPG_Custom.geojson"),
