@@ -150,6 +150,7 @@
     <ClInclude Include="UpdaterUrlPolicyTests.hpp" />
     <ClInclude Include="..\src\aircraft\GroundState.hpp" />
     <ClInclude Include="..\src\aircraft\HoldingPoint.hpp" />
+    <ClInclude Include="..\src\aircraft\Released.hpp" />
     <ClInclude Include="..\src\insets\AvisoViewportCenter.hpp" />
     <ClInclude Include="..\src\datalink\PinedeProtocol.hpp" />
     <ClInclude Include="..\src\datalink\PdcFrequencyPolicy.hpp" />

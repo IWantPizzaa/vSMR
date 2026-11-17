@@ -4,6 +4,7 @@
 
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
+#include "aircraft/Released.hpp"
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "integrations/PluginBridgeClient.hpp"
@@ -36,7 +37,6 @@ void CSMRPlugin::OnFunctionCall(
 	RECT Area)
 {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFunctionCall");
-	(void)Pt;
 	if (Logger::is_verbose_mode())
 		Logger::info(std::string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
@@ -53,6 +53,7 @@ void CSMRPlugin::OnFunctionCall(
 		return;
 	}
 	if (HandleLanguageFunctionCall(FunctionId, sItemString, Area)) return;
+	if (HandleReleasedFunctionCall(FunctionId, Pt, Area)) return;
 	if (HandleHoldingPointFunctionCall(FunctionId, sItemString, Area))
 		return;
 	HandleDatalinkFunctionCall(FunctionId, sItemString, Area);
@@ -79,6 +80,7 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	StandPositionReports.erase(normalizedCallsign);
 	VsmrRdf::ForgetAircraft(normalizedCallsign.c_str());
 	VsmrHoldingPoint::ForgetPending(normalizedCallsign);
+	VsmrReleased::ForgetPending(normalizedCallsign);
 	VsmrPluginBridge::ForgetAircraft(normalizedCallsign);
 
 	ForgetDatalinkFlightPlan(normalizedCallsign);
@@ -124,6 +126,9 @@ void CSMRPlugin::OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan)
 		VsmrPluginBridge::ObserveAircraft(callsign != nullptr ? callsign : "");
 		const char* remarks = FlightPlan.GetFlightPlanData().GetRemarks();
 		(void)VsmrHoldingPoint::Resolve(
+			callsign != nullptr ? callsign : "",
+			remarks != nullptr ? remarks : "");
+		(void)VsmrReleased::Resolve(
 			callsign != nullptr ? callsign : "",
 			remarks != nullptr ? remarks : "");
 	}
