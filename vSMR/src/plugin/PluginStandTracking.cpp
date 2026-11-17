@@ -49,19 +49,6 @@ void CSMRPlugin::SetStandOptions(bool highlight, bool reset)
         if (radar != nullptr && !radar->IsShutdownRequested()) radar->RequestRefresh();
 }
 
-void CSMRPlugin::OnRadarTargetPositionUpdate(CRadarTarget target)
-{
-    // Counts fresh reports for stand detection only. Rendering always uses the
-    // untouched SDK position; no interpolation, extrapolation or repaint timer.
-    if (!ResetStatusAtStand || PluginShutdownRequested.load(std::memory_order_relaxed) || !target.IsValid()) return;
-    try
-    {
-        const auto callsign = VsmrPluginBridge::NormalizeCallsign(Text(target.GetCallsign()));
-        if (!callsign.empty()) StandPositionReports[callsign] = ++StandReportSerial;
-    }
-    catch (...) { Logger::info("Stand position report could not be recorded"); }
-}
-
 void CSMRPlugin::QueueStandCatalog(const std::string& airport, const std::string& dataPath)
 {
     const auto now = ::GetTickCount64();

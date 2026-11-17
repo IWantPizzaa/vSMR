@@ -994,6 +994,26 @@
     sampleVisiblePrimitives();
 
     document.querySelector('.rail-button[data-page="alerts"]')?.click();
+    const collisionAlertToggle = document.querySelector('[data-alert-type="SG COLLISION"]');
+    const offTrackAlertToggle = document.querySelector('[data-alert-type="OFF TRACK"]');
+    expect(Boolean(collisionAlertToggle && offTrackAlertToggle),
+      "Smart Ground collision and Off Track have independent switches in the existing Alerts settings");
+    if (collisionAlertToggle && offTrackAlertToggle) {
+      const initiallyCollisionEnabled = collisionAlertToggle.checked;
+      const initiallyOffTrackEnabled = offTrackAlertToggle.checked;
+      const activeInactiveAlerts = () => {
+        const snapshot = api.getState();
+        return snapshot.profiles.find(profile => profile.name === snapshot.activeProfile)?.rimcas?.inactive_alerts || [];
+      };
+      collisionAlertToggle.click();
+      await waitFor(() => activeInactiveAlerts().includes("SG COLLISION") === initiallyCollisionEnabled,
+        "Changing Smart Ground collision stages its own inactive-alert setting");
+      expect(document.querySelector('[data-alert-type="OFF TRACK"]')?.checked === initiallyOffTrackEnabled,
+        "Changing collision does not change the Off Track setting");
+      document.querySelector('[data-alert-type="SG COLLISION"]')?.click();
+      await waitFor(() => activeInactiveAlerts().includes("SG COLLISION") === !initiallyCollisionEnabled,
+        "Smart Ground collision setting can be restored independently");
+    }
     const alertRunwayRows = Array.from(document.querySelectorAll(
       "#alertRunwayTable [data-alert-runway-index]"));
     expect(alertRunwayRows.length > 0 && alertRunwayRows.every(row =>
