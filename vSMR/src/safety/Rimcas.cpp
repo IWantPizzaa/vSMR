@@ -449,8 +449,8 @@ void CRimcas::CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* i
 		groundspeed, !rwyOn.empty());
 	const bool departureAuthorized = groundStateCategory == GroundStateCategory::Depa;
 	const bool lineupAuthorized = groundStateCategory == GroundStateCategory::Lnup;
-	const bool taxiAuthorized = groundStateCategory == GroundStateCategory::Taxi || departureAuthorized || lineupAuthorized;
-	const bool pushAuthorized = groundStateCategory == GroundStateCategory::Push || groundStateCategory == GroundStateCategory::Taxi || lineupAuthorized;
+	const bool taxiAuthorized = groundStateCategory == GroundStateCategory::Cross || groundStateCategory == GroundStateCategory::Taxi || departureAuthorized || lineupAuthorized;
+	const bool pushAuthorized = groundStateCategory == GroundStateCategory::Cross || groundStateCategory == GroundStateCategory::Push || groundStateCategory == GroundStateCategory::Taxi || lineupAuthorized;
 	bool departureStationaryAlertGraceActive = false;
 	// Allowing time for the takeoff clearance readback before STAT RPA monitoring begins
 	if (departureAuthorized)
@@ -504,7 +504,7 @@ void CRimcas::CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* i
 
 	// RWY INCURSION
 	if (inactiveAlerts.find("RWY INC") == inactiveAlerts.end()) {
-		if (!departureAuthorized && !lineupAuthorized) {
+		if (!VsmrRimcasLogic::IsRunwayEntryAuthorized(groundStateCategory)) {
 			if (rwyOn != "") {
 				movementAlerts[Rt.callsign] = RWYINC;
 				return;

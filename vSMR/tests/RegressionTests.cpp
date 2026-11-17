@@ -350,6 +350,12 @@ namespace
 			!VsmrTargetRoleLogic::HasUnknownAirportGroundRole(true, true, true, false, false) &&
 			!VsmrTargetRoleLogic::HasUnknownAirportGroundRole(false, false, true, false, false),
 			"valid local flights, airborne traffic and uncorrelated targets retain their configured palettes");
+		Expect(classifyGroundStateWithSharedState("TAXI", 10, true, 11) == GroundStateCategory::Cross &&
+			classifyGroundStateWithSharedState("NSTS", 10, false, 11) == GroundStateCategory::Nsts,
+			"Cross is shared through TAXI plus reserved marker and revoked by a foreign status change");
+		Expect(VsmrRimcasLogic::IsRunwayEntryAuthorized(GroundStateCategory::Cross) &&
+			!VsmrRimcasLogic::IsRunwayEntryAuthorized(GroundStateCategory::Taxi),
+			"only an explicit crossing clearance suppresses runway incursion, ordinary taxi does not");
 		Expect(classifyGroundState("ST-UP", 0, false) == GroundStateCategory::Stup, "ground state startup alias");
 		Expect(classifyGroundState("P/B", 3, false) == GroundStateCategory::Push, "ground state push alias");
 		Expect(classifyGroundState("LINE UP", 0, true) == GroundStateCategory::Lnup, "ground state lineup alias");
