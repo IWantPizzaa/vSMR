@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-enum class GroundStateCategory { Unknown, Gate, Push, Stup, Taxi, Lnup, Nsts, Depa, Arr };
+enum class GroundStateCategory { Unknown, Gate, Push, Stup, Taxi, Lnup, Nsts, Depa, Arr, Cross };
 
 // ----- Ground states shared between clients -----
 // EuroScope synchronizes the controller assigned speed. When no real speed is
@@ -19,6 +19,7 @@ namespace VsmrGroundStateSync
 	inline constexpr int ReservedFirst = 10;
 	inline constexpr int ReservedLast = 19;
 	inline constexpr int LineupAssignedSpeed = 10;
+	inline constexpr int CrossingAssignedSpeed = 11;
 	// The EuroScope ground status vSMR writes together with each shared state.
 	// A controller who picks a different status from outside vSMR takes the
 	// aircraft off its shared state, so the two are always written as a pair.
@@ -42,6 +43,8 @@ namespace VsmrGroundStateSync
 		{
 		case LineupAssignedSpeed:
 			return GroundStateCategory::Lnup;
+		case CrossingAssignedSpeed:
+			return GroundStateCategory::Cross;
 		default:
 			return GroundStateCategory::Unknown;
 		}
@@ -54,6 +57,7 @@ namespace VsmrGroundStateSync
 		switch (assignedSpeed)
 		{
 		case LineupAssignedSpeed:
+		case CrossingAssignedSpeed:
 			return GroundStateCategory::Taxi;
 		default:
 			return GroundStateCategory::Unknown;
@@ -67,6 +71,8 @@ namespace VsmrGroundStateSync
 		{
 		case GroundStateCategory::Lnup:
 			return LineupAssignedSpeed;
+		case GroundStateCategory::Cross:
+			return CrossingAssignedSpeed;
 		default:
 			return 0;
 		}
@@ -105,6 +111,8 @@ inline static GroundStateCategory classifyGroundState(const std::string& rawStat
 			continue;
 		normalized.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
 	}
+
+	if (normalized == "CROSS" || normalized == "CROSSING") return GroundStateCategory::Cross;
 
 	if (normalized.find("NSTS") != std::string::npos)
 		return GroundStateCategory::Nsts;

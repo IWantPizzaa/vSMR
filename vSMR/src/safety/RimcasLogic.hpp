@@ -18,6 +18,11 @@ namespace VsmrRimcasLogic
 		}
 		return 92.5f;
 	}
+	constexpr bool IsRunwayEntryAuthorized(GroundStateCategory state) noexcept
+	{
+		return state == GroundStateCategory::Depa || state == GroundStateCategory::Lnup || state == GroundStateCategory::Cross;
+	}
+
 	struct RunwayMonitoring
 	{
 		bool arrivals = false;
@@ -60,9 +65,9 @@ namespace VsmrRimcasLogic
 			// The airborne tag threshold must not revoke a runway clearance while
 			// the aircraft is physically on the runway. An unchanged TAXI + lineup
 			// marker remains LNUP even after the aircraft accelerates past 50 kt.
-			if (onRunway && assignedSpeed == VsmrGroundStateSync::LineupAssignedSpeed &&
+			if (onRunway && (assignedSpeed == VsmrGroundStateSync::LineupAssignedSpeed || assignedSpeed == VsmrGroundStateSync::CrossingAssignedSpeed) &&
 				classifyGroundState(state, reportedGroundSpeed, onRunway) == GroundStateCategory::Taxi)
-				return GroundStateCategory::Lnup;
+				return VsmrGroundStateSync::CategoryForAssignedSpeed(assignedSpeed);
 			return classifyGroundStateWithSharedState(
 				state, reportedGroundSpeed, onRunway, assignedSpeed);
 		};

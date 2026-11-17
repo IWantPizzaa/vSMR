@@ -67,6 +67,8 @@ namespace
 				// A shared ground state wins over the EuroScope status here as well.
 				if (correlated) input.lineup = classifyGroundStateWithSharedState(
 					input.groundState.c_str(), input.groundSpeed, false, assigned.GetAssignedSpeed()) == GroundStateCategory::Lnup;
+				if (correlated) input.crossing = classifyGroundStateWithSharedState(
+					input.groundState.c_str(), input.groundSpeed, false, assigned.GetAssignedSpeed()) == GroundStateCategory::Cross;
 			}
 		}
 		const std::string holdingCallsign = !stableCallsign.empty() ? stableCallsign : (input.hasFlightPlan ? CopyTagText(fp.GetCallsign()) : "");
@@ -93,7 +95,7 @@ namespace
 		output["rule.wake"] = input.receivedFlightPlan &&
 			(input.wake == 'L' || input.wake == 'M' || input.wake == 'H' || input.wake == 'J')
 			? std::string(1, input.wake) : std::string();
-		output["rule.groundstatus"] = input.lineup ? "LNUP" : input.groundState;
+		output["rule.groundstatus"] = input.crossing ? "CROSS" : input.lineup ? "LNUP" : input.groundState;
 		output["rule.gs"] = input.hasRadarTarget ? std::to_string(input.groundSpeed) : std::string();
 		// Numeric flight levels are in hundreds of feet (FL100 -> 100).
 		output["rule.flightlevel"] = input.hasRadarTarget && !input.primary
