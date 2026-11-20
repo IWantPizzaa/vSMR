@@ -28,6 +28,7 @@
 #include "shared/logging/Logger.hpp"
 
 class VsmrPluginCommandHandler;
+struct ESB_Api_v1;
 
 using namespace EuroScopePlugIn;
 
@@ -162,7 +163,8 @@ private:
 	bool SharedRuntimeMenuPositionLoaded = false;
 	bool SharedRuntimeMenuPositionKnown = false;
 	POINT SharedRuntimeMenuPosition = {};
-	void SynchronizeProxyDatalink();
+	// Also publishes vsmr/dcl through bridgeApi, this tick's VsmrPluginBridge::BeginTick
+	void SynchronizeProxyDatalink(const ESB_Api_v1* bridgeApi);
 	void SynchronizeProxyRuntime();
 	std::map<std::string, std::string> ProxyRootRevisions;
 	std::map<std::string, std::string> ProxyFailedConfigRevisions;

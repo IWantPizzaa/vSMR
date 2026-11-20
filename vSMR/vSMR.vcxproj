@@ -212,6 +212,7 @@
     <ClCompile Include="src\integrations\PluginBridgeClient.cpp" />
     <ClCompile Include="src\integrations\PluginBridgeReads.cpp" />
     <ClCompile Include="src\integrations\RampAgentBridgeClient.cpp" />
+    <ClCompile Include="src\integrations\DatalinkBridgeProvider.cpp" />
     <ClCompile Include="src\integrations\VsidBridgeClient.cpp" />
     <ClCompile Include="src\insets\InsetWindow.cpp" />
     <ClCompile Include="src\insets\InsetWindow.Aviso.cpp" />
@@ -362,6 +363,8 @@
     <ClInclude Include="src\integrations\PluginBridgeClient.hpp" />
     <ClInclude Include="src\integrations\PluginBridgeReads.hpp" />
     <ClInclude Include="src\integrations\RampAgentBridgeClient.hpp" />
+    <ClInclude Include="src\integrations\DatalinkBridgeProvider.hpp" />
+    <ClInclude Include="src\integrations\DatalinkBridgeData.hpp" />
     <ClInclude Include="src\integrations\RampAgentBridgeData.hpp" />
     <ClInclude Include="src\integrations\VsidBridgeClient.hpp" />
     <ClInclude Include="src\integrations\VsidBridgeData.hpp" />
