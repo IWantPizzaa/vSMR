@@ -62,8 +62,9 @@ namespace VsmrPluginBridge
 	void ForgetAircraft(const std::string& callsign);
 	void ObserveAircraft(const std::string& callsign);
 
-	// vSMR only polls: it registers no provider and holds no subscription, so the
-	// bridge has nothing to release (A10, B2.10). This resets vSMR's own state.
+	// The readers only poll: they register no provider and hold no subscription, so the
+	// bridge has nothing to release (A10, B2.10). This resets their shared state; the
+	// vsmr provider (VsmrDatalinkBridge) unregisters in its own Shutdown, called first.
 	void Shutdown() noexcept;
 
 	// EuroScope log entries for one provider's state changes and for fields rejected
