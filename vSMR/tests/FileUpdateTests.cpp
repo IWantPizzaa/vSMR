@@ -153,10 +153,6 @@ std::vector<std::string> RunFileUpdateTests()
             check(!fu::IsManagedPath(path), std::string("rejects protected/unsafe path ") + path);
         check(fu::IsManagedPath("vSMR.dll") && fu::IsManagedPath("vSMR_Data/default.json") && fu::IsManagedPath("vSMR_Data/AVISO/LFLL.geojson"), "accepts managed assets");
         check(fu::IsManagedPath("vSMR_Data/AVISO/LFPO_Work.geojson"), "accepts bundled airport variants");
-        for (const char* name : { "lfpg.json", "lfpg_aircraft_restrictions.json", "lfpg_corridors.json", "lfpg_operations.json", "source_manifest.json" })
-            check(fu::IsManagedPath(std::string("vSMR_Data/SmartGround/") + name), "accepts bundled Smart Ground data");
-        for (const char* name : { "config.json", "custom.json", "../default.json", "lfpg.json.bak", "lfpg/lfpg.json" })
-            check(!fu::IsManagedPath(std::string("vSMR_Data/SmartGround/") + name), "rejects non-bundled Smart Ground paths");
         for (const char* path : { "vSMR_Data/AVISO/LFPO_.geojson", "vSMR_Data/AVISO/LFPO_../config.geojson",
             "vSMR_Data/AVISO/LFPO_Work.geojson.bak", "vSMR_Data/AVISO/LFPO_Work extra.geojson" })
             check(!fu::IsManagedPath(path), std::string("rejects unsafe airport variant ") + path);

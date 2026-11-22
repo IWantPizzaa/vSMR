@@ -24,7 +24,6 @@
 #include "safety/Rimcas.hpp"
 #include "radar/RadarGeometry.hpp"
 #include "scene/RadarScene.hpp"
-#include "smart_ground/SmartGroundEngine.hpp"
 #include "rendering/TagRenderer.hpp"
 #include "tags/CompiledTagDefinition.hpp"
 #include <memory>
@@ -91,7 +90,6 @@ public:
 		std::uint32_t windowSeconds = 60,
 		std::size_t maximumSeriesPoints = 240);
 	void ResetPerformanceDiagnostics();
-	void ResetSmartGroundInteraction();
 	void ResetZoomDiagnostics() noexcept { ZoomTimings.Reset(); }
 	void RecordZoomWheel(bool claimed, int delta, std::uint32_t messageAgeMs) noexcept
 	{
@@ -235,20 +233,6 @@ private:
 	std::map<std::string, int> TagLeaderLineLength;
 	std::set<std::string> DetailedTagCallsigns;
 	std::string TagBeingDragged;
-	std::string SmartGroundDragCallsign;
-	std::string SmartGroundDragAnchor;
-	std::string PendingSmartGroundAlertCallsign;
-	CPosition SmartGroundDragPosition;
-	POINT SmartGroundDragMousePoint{};
-	std::string SmartGroundDragTarget;
-	VsmrSmartGround::Snapshot SmartGroundDragPreview;
-	std::uint64_t SmartGroundDragPreviewRevision = 0;
-	bool SmartGroundDragPreviewComputed = false;
-	std::string SmartGroundDragPreviewError;
-	bool SmartGroundDragging = false;
-	int SmartGroundDragViewport = 0;
-	std::map<int, std::function<CPosition(POINT)>> SmartGroundUnproject;
-	std::map<int, CRect> SmartGroundViewAreas;
 	std::map<std::string, POINT> TagDragOffsetFromCenter;
 
 	std::unique_ptr<CVsmrControlCenterDialog> VsmrControlCenterDialog;
@@ -395,14 +379,6 @@ private:
 		const RefreshStageCallback& setRefreshStage);
 	void RenderClosedRunwayOverlays(
 		Gdiplus::Graphics& graphics, const RefreshStageCallback& setRefreshStage);
-	void RenderSmartGroundRoute(Gdiplus::Graphics& graphics, const VsmrScene::RadarScene* scene, const RECT& area);
-	void RenderSmartGroundRouteProjected(Gdiplus::Graphics& graphics, const VsmrScene::RadarScene* scene, const RECT& area, int viewportId,
-		const std::function<POINT(const CPosition&)>& project, const std::function<CPosition(POINT)>& unproject);
-	bool HandleSmartGroundMove(int objectType, const char* objectId, POINT point, RECT area, bool released);
-	bool HandleSmartGroundClick(int objectType, const char* objectId, POINT point, RECT area, int button);
-	bool HandleSmartGroundFunction(int functionId, const char* itemString);
-	void ClearSmartGroundDrag();
-	void UpdateSmartGroundDragPreview(const VsmrSmartGround::Snapshot& snapshot);
 	void RenderRefreshTargets(
 		Gdiplus::Graphics& graphics, CDC& dc, const RECT& radarArea,
 		const VsmrScene::RadarScene* frameScene, RefreshPerformance& performance,

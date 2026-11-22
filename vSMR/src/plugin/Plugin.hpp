@@ -1,7 +1,6 @@
 #pragma once
 #include "EuroScopePlugIn.h"
 #include "plugin/PluginMetadata.hpp"
-#include "plugin/SmartGroundListLogic.hpp"
 #include "insets/TimerCountdownState.hpp"
 #include "insets/ProxyTimerState.hpp"
 #include "aircraft/StandArrival.hpp"
@@ -182,10 +181,6 @@ private:
 		int functionId,
 		const char* itemString,
 		RECT area);
-	bool HandleSmartGroundRouteFunctionCall(int functionId, const char* itemString, RECT area);
-	void ForgetSmartGroundRouteMenus(const std::string& callsign);
-	VsmrSmartGroundList::Actions SmartGroundRouteActions;
-	std::mutex SmartGroundRouteActionsMutex;
 	void HandleDatalinkFunctionCall(
 		int functionId,
 		const char* itemString,

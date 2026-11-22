@@ -407,21 +407,4 @@
       <Filter>Resources</Filter>
     </ResourceCompile>
   </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="src\integrations\SmartGroundIntegration.cpp"><Filter>Source</Filter></ClCompile>
-    <ClCompile Include="src\smart_ground\SmartGroundData.cpp"><Filter>Source</Filter></ClCompile>
-    <ClCompile Include="src\smart_ground\SmartGroundRouting.cpp"><Filter>Source</Filter></ClCompile>
-    <ClCompile Include="src\smart_ground\SmartGroundTracking.cpp"><Filter>Source</Filter></ClCompile>
-    <ClCompile Include="src\smart_ground\SmartGroundCollision.cpp"><Filter>Source</Filter></ClCompile>
-    <ClCompile Include="src\smart_ground\SmartGroundEditing.cpp"><Filter>Source</Filter></ClCompile>
-    <ClCompile Include="src\plugin\PluginSmartGround.cpp"><Filter>Source</Filter></ClCompile>
-    <ClCompile Include="src\radar\RadarScreen.SmartGround.cpp"><Filter>Source</Filter></ClCompile>
-    <ClInclude Include="src\integrations\SmartGroundIntegration.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\plugin\SmartGroundListLogic.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\radar\SmartGroundOverlayLogic.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\smart_ground\SmartGroundEngine.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\smart_ground\SmartGroundActivation.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\smart_ground\SmartGroundInternal.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\smart_ground\TagAlerts.hpp"><Filter>Headers</Filter></ClInclude>
-  </ItemGroup>
 </Project>

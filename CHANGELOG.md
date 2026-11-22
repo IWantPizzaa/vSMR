@@ -2,8 +2,6 @@
 
 ## [Unreleased]
 
-- Merge Smart Ground routing, route editing and conflict/Off Track alerts into dev, disabled at startup and enabled only by `.smr SG` or `.smr smart ground`. Disabled Route list items show `No Data`; turning it off clears pending interactions and traffic state.
-
 - Add a CDM button below vSID/PDC in the Runtime Menu, with live airport Master ownership, pending acknowledgements, Master/Slave commands and access to the companion CDM build's draggable ATFCM and runway-capacity/BMI panels. Preserve legacy CDM aircraft timing and serialize commands with vSID.
 
 - Retrace LFPG's A380 display contours from the supplied AVISO photograph and check permanent restrictions against SIA GMC 07/08. Remove isolated photo fragments and the unsupported Z4/FN2 fills, preserve approved N/F axes and A3 continuity beneath labels, and share the corrected overlay across Real, Dark and Light.

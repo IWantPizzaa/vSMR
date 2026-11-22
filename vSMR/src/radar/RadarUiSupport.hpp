@@ -18,7 +18,6 @@ const int TAG_ITEM_RDF = 446;
 const int TAG_ITEM_LANGUAGE = 447;
 const int TAG_FUNC_LANGUAGE_EDIT = 556;
 const int TAG_FUNC_LANGUAGE_SELECT = 557;
-const int TAG_ITEM_ROUTE = 448;
 const int TAG_FUNC_DATALINK_MENU = 544;
 
 const int TAG_FUNC_DATALINK_CONFIRM = 545;
@@ -32,7 +31,6 @@ const int TAG_FUNC_HOLDING_POINT_SELECT = 552;
 const int TAG_FUNC_HOLDING_POINT_COMMIT = 553;
 const int TAG_FUNC_HOLDING_POINT_CLEAR = 554;
 const int TAG_FUNC_RDF_RESET = 555;
-const int TAG_FUNC_ROUTE_MENU = 558;
 
 namespace VsmrRadarUiSupport
 {

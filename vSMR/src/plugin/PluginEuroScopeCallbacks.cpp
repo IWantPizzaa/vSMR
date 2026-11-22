@@ -7,7 +7,6 @@
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "integrations/PluginBridgeClient.hpp"
-#include "integrations/SmartGroundIntegration.hpp"
 #include "plugin/PluginCommandHandler.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "radar/InsetHostPolicy.hpp"
@@ -17,27 +16,6 @@
 #include <atomic>
 #include <memory>
 #include <string>
-
-void CSMRPlugin::OnRadarTargetPositionUpdate(CRadarTarget target)
-{
-	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnRadarTargetPositionUpdate");
-	if (PluginShutdownRequested.load(std::memory_order_relaxed)) return;
-	// Gate-arrival detection remains independent of the optional Smart Ground
-	// observer. Both consume fresh SDK reports without moving displayed targets.
-	if (ResetStatusAtStand && target.IsValid())
-	{
-		try
-		{
-			const char* rawCallsign = target.GetCallsign();
-			const auto callsign = VsmrPluginBridge::NormalizeCallsign(rawCallsign ? rawCallsign : "");
-			if (!callsign.empty()) StandPositionReports[callsign] = ++StandReportSerial;
-		}
-		catch (...) { Logger::info("Stand position report could not be recorded"); }
-	}
-	if (!VsmrSmartGroundBridge::IsEnabled()) return;
-	VsmrSmartGroundBridge::Observe(target);
-	FlightDataRefreshPending.store(true, std::memory_order_release);
-}
 
 bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnCompileCommand");
@@ -77,8 +55,6 @@ void CSMRPlugin::OnFunctionCall(
 	if (HandleLanguageFunctionCall(FunctionId, sItemString, Area)) return;
 	if (HandleHoldingPointFunctionCall(FunctionId, sItemString, Area))
 		return;
-	if (HandleSmartGroundRouteFunctionCall(FunctionId, sItemString, Area))
-		return;
 	HandleDatalinkFunctionCall(FunctionId, sItemString, Area);
 }
 
@@ -104,8 +80,6 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	VsmrRdf::ForgetAircraft(normalizedCallsign.c_str());
 	VsmrHoldingPoint::ForgetPending(normalizedCallsign);
 	VsmrPluginBridge::ForgetAircraft(normalizedCallsign);
-	VsmrSmartGroundBridge::Forget(normalizedCallsign);
-	ForgetSmartGroundRouteMenus(normalizedCallsign);
 
 	ForgetDatalinkFlightPlan(normalizedCallsign);
 }
@@ -149,10 +123,9 @@ void CSMRPlugin::OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan)
 		const char* callsign = FlightPlan.GetCallsign();
 		VsmrPluginBridge::ObserveAircraft(callsign != nullptr ? callsign : "");
 		const char* remarks = FlightPlan.GetFlightPlanData().GetRemarks();
-        const auto holdingPoint = VsmrHoldingPoint::Resolve(
+		(void)VsmrHoldingPoint::Resolve(
 			callsign != nullptr ? callsign : "",
 			remarks != nullptr ? remarks : "");
-        VsmrSmartGroundBridge::UpdateHoldingPoint(callsign != nullptr ? callsign : "", holdingPoint);
 	}
 
 	// Flight-plan amendments are synchronized between controllers. Defer the

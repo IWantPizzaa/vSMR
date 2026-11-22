@@ -2,8 +2,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$RepositoryRoot = "",
-    [string]$BuildOutputDirectory = ""
+    [string]$RepositoryRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -59,11 +58,6 @@ if ($LASTEXITCODE -ne 0) {
     throw "The generated Control Center bundle is stale."
 }
 
-& node (Join-Path $PSScriptRoot "test-smart-ground-alert-settings.js")
-if ($LASTEXITCODE -ne 0) {
-    throw "Smart Ground alert settings regression tests failed."
-}
-
 $styleScript = Join-Path $RepositoryRoot "vSMR\tools\build_control_center_styles.ps1"
 & $styleScript -RepositoryRoot $RepositoryRoot -Check
 if ($LASTEXITCODE -ne 0) {
@@ -75,7 +69,7 @@ $styleOwnershipScript = Join-Path $PSScriptRoot "verify_control_center_style_own
 
 & (Join-Path $PSScriptRoot "verify_json_entry_points.ps1") -RepositoryRoot $RepositoryRoot
 & (Join-Path $PSScriptRoot "test_runtime_audio_resources.ps1") -RepositoryRoot $RepositoryRoot
-& (Join-Path $PSScriptRoot "test_distribution_assets.ps1") -RepositoryRoot $RepositoryRoot -BuildOutputDirectory $BuildOutputDirectory
+& (Join-Path $PSScriptRoot "test_distribution_assets.ps1") -RepositoryRoot $RepositoryRoot
 & (Join-Path $PSScriptRoot "test_file_naming.ps1") -RepositoryRoot $RepositoryRoot
 
 $nativeTests = Join-Path $RepositoryRoot "vSMR\tests\bin\Release\vSMR.Tests.exe"

@@ -1,11 +1,9 @@
 #requires -Version 5.1
 [CmdletBinding()]
-param([string]$RepositoryRoot = '', [string]$BuildOutputDirectory = '')
+param([string]$RepositoryRoot = '')
 $ErrorActionPreference = 'Stop'
 if (-not $RepositoryRoot) { $RepositoryRoot = Join-Path $PSScriptRoot '../..' }
 $RepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot)
-if (-not $BuildOutputDirectory) { $BuildOutputDirectory = Join-Path $RepositoryRoot 'Release' }
-$distributionData = Join-Path ([IO.Path]::GetFullPath($BuildOutputDirectory)) 'vSMR_Data'
 [xml]$mapping = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'vSMR/DistributionAssets.props') -Raw
 $sources = @{}
 $destinations = @{}
@@ -23,17 +21,17 @@ foreach ($entry in $mapping.SelectNodes("//*[local-name()='VsmrRenamedData']")) 
         throw "MSBuild source and feed mapping disagree for $source"
     }
     $sourcePath = Join-Path $RepositoryRoot ('vSMR/data/' + $source)
-    $installedPath = Join-Path $distributionData $installed
+    $installedPath = Join-Path $RepositoryRoot ('Release/vSMR_Data/' + $installed)
     if ((Get-FileHash -LiteralPath $sourcePath).Hash -ne (Get-FileHash -LiteralPath $installedPath).Hash) {
         throw "Installed alias differs from its source: $installed"
     }
-    if (Test-Path -LiteralPath (Join-Path $distributionData $source)) {
+    if (Test-Path -LiteralPath (Join-Path $RepositoryRoot ('Release/vSMR_Data/' + $source))) {
         throw "Source-only name leaked into the distribution: $source"
     }
 }
 if ($sources.Count -ne 5) { throw 'Expected five compatibility aliases.' }
 if ((Get-FileHash -LiteralPath (Join-Path $RepositoryRoot 'vSMR/data/profile_templates.json')).Hash -ne
-    (Get-FileHash -LiteralPath (Join-Path $distributionData 'vSMR_webUI/defaults/vSMR_Profiles.json')).Hash) {
+    (Get-FileHash -LiteralPath (Join-Path $RepositoryRoot 'Release/vSMR_Data/vSMR_webUI/defaults/vSMR_Profiles.json')).Hash) {
     throw 'The Control Center legacy defaults alias is stale.'
 }
 Write-Host 'Distribution assets verified: renamed sources retain byte-identical installed aliases.'

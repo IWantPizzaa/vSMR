@@ -2,8 +2,6 @@
 
 #include "scene/RadarScene.hpp"
 #include "scene/TargetRoleLogic.hpp"
-#include "integrations/SmartGroundIntegration.hpp"
-#include "aircraft/HoldingPoint.hpp"
 
 #include "radar/RadarScreen.hpp"
 #include "shared/TextUtils.hpp"
@@ -211,14 +209,6 @@ namespace
 		HashSceneValue(result, target.assignedSquawk);
 		HashSceneValue(result, target.reportedSquawk);
 		HashSceneValue(result, target.groundStateText);
-		HashSceneValue(result, target.departureRunway);
-		HashSceneValue(result, target.arrivalRunway);
-		HashSceneValue(result, target.holdingPoint);
-		HashSceneValue(result, target.smartGround.collision);
-		HashSceneValue(result, target.smartGround.offTrack);
-		HashSceneValue(result, target.smartGround.critical);
-		HashSceneValue(result, target.smartGround.conflictingCallsign);
-		HashSceneValue(result, target.smartGround.reason);
 		HashSceneValue(result, target.assignedSpeed);
 		HashSceneValue(result, target.hasFlightPlan);
 		HashSceneValue(result, target.correlated);
@@ -503,10 +493,6 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		if (callsign.empty())
 			continue;
 
-        // Loading vSMR during an existing replay must not require the next
-        // network callback. Keep the SDK report's age and seed it only once.
-        if (airportUpper == "LFPG") VsmrSmartGroundBridge::Observe(radarTarget, true);
-
 		Target target;
 		if (capturedTargetCount < scene->targets.size())
 		{
@@ -573,9 +559,6 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			target.flightPlanDataReceived = flightData.IsReceived();
 			target.origin = CopyText(flightData.GetOrigin());
 			target.destination = CopyText(flightData.GetDestination());
-			target.departureRunway = CopyText(flightData.GetDepartureRwy());
-			target.arrivalRunway = CopyText(flightData.GetArrivalRwy());
-			target.holdingPoint = VsmrHoldingPoint::Resolve(callsign, CopyText(flightData.GetRemarks()));
 			target.planType = CopyText(flightData.GetPlanType());
 			target.aircraftType = CopyText(flightData.GetAircraftFPType());
 			if (target.aircraftType.size() > 4)
@@ -769,7 +752,6 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		++capturedTargetCount;
 	}
 	scene->targets.resize(capturedTargetCount);
-	VsmrSmartGroundBridge::UpdateScene(*scene);
 	scene->stats.targetCaptureMilliseconds = std::chrono::duration<double, std::milli>(
 		Clock::now() - targetCaptureStart).count();
 
@@ -1237,11 +1219,6 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			&target.assignedSquawk,
 			&target.reportedSquawk,
 			&target.groundStateText,
-			&target.departureRunway,
-			&target.arrivalRunway,
-			&target.holdingPoint,
-			&target.smartGround.conflictingCallsign,
-			&target.smartGround.reason,
 			&target.towerModeGroundStateText,
 			&target.style.assetKey,
 			&target.tag.definitionType,
