@@ -324,5 +324,4 @@ AVISO group folders: in Control Center > Groups, set the optional Folder field o
 
 Language: add the `language` token in a tag definition or the vSMR `Language` item/function to a EuroScope list. Both use `/FR` and `/EN` in flight-plan remarks; click to change or clear the marker without altering other remarks.
 
-Smart Ground is disabled at startup. Toggle it for the current runtime session with `.smr SG` or `.smr smart ground`; both accept `on`, `off` and `status`. Disabled Route list items show `No Data`. See [Smart Ground](docs/Smart-Ground.md) for routing, editing and alerts.
 Released: add the `released` token in a tag definition or the vSMR `Released` item with its `Toggle released` function to a EuroScope list. REL is green when the flight is released to ground and red otherwise; click to toggle. The flag is a `VSMRREL/HHMM` token (UTC release time) in the flight-plan remarks, shared with other controllers and DMAN. Releasing a flight with no ASRT also makes it ready through CDM (the RDY toggle); un-releasing leaves the ASRT as it is. The token is removed once the aircraft is airborne.

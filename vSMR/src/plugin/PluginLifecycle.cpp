@@ -12,7 +12,6 @@
 #include "integrations/CdmBridgeClient.hpp"
 #include "integrations/DmanBridgeClient.hpp"
 #include "integrations/PluginBridgeClient.hpp"
-#include "integrations/SmartGroundIntegration.hpp"
 #include "integrations/RampAgentBridgeClient.hpp"
 #include "integrations/VsidBridgeClient.hpp"
 #include "radar/RadarScreen.Registry.hpp"
@@ -114,8 +113,6 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 	RegisterTagItemFunction("Toggle released", TAG_FUNC_RELEASED_TOGGLE);
 	RegisterTagItemType("RDF", TAG_ITEM_RDF);
 	RegisterTagItemFunction("RDF reset", TAG_FUNC_RDF_RESET);
-	RegisterTagItemType("Route", TAG_ITEM_ROUTE);
-	RegisterTagItemFunction("Route", TAG_FUNC_ROUTE_MENU);
 
 	LoadDatalinkSettings();
 
@@ -140,7 +137,6 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 		}
 	}
 	Logger::DLL_PATH = DllPath;
-	VsmrSmartGroundBridge::Initialize();
 	{
 		const std::filesystem::path installRoot = std::filesystem::u8path(DllPath);
 		std::filesystem::path catalogPath = installRoot / "vSMR_Data" / "airports_hp.json";
@@ -187,7 +183,6 @@ CSMRPlugin::~CSMRPlugin()
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
 	VsmrPluginRuntimeAudio::Stop();
 	VsmrGroundState::ForgetAllAircraft();
-	VsmrSmartGroundBridge::Shutdown();
 	VsmrCdm::Shutdown();
 	VsmrRampAgent::Shutdown();
 	VsmrDman::Shutdown();

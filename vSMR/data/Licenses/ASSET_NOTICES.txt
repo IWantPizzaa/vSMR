@@ -1,9 +1,5 @@
 Bundled asset notices
 
-Smart Ground LFPG taxi network and operational catalogues (SmartGround/*.json)
-OpenStreetMap contributors and the sources identified in Licenses/SmartGround.txt.
-Per-source provenance and SHA-256 hashes: SmartGround/source_manifest.json.
-
 Aircraft silhouettes (aircraft_icons/*.png)
 Source identified by the maintainer: VATSIM Radar contributors.
 https://github.com/VATSIM-Radar/vatsim-radar/tree/next/app/assets/icons/aircraft

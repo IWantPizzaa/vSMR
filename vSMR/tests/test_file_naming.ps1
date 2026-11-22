@@ -7,9 +7,6 @@ $files = @(& git -C $RepositoryRoot ls-files --cached --others --exclude-standar
 if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate project files.' }
 $checked = 0
 foreach ($file in $files) {
-    # The independent Node/Python prototype retains its own package and source
-    # evidence naming contracts; this guard governs the native distribution.
-    if ($file -match '^smart-ground/') { continue }
     # Third-party files/notices and identifier-based map/icon names are contracts.
     if ($file -match '^(lib/|vSMR/data/Licenses/|vSMR/data/AVISO/|vSMR/data/aircraft_icons/)' -or
         $file -notmatch '\.(cpp|hpp|cs|rc|ps1|py|js|css|cur|json|wav|patch)$') { continue }

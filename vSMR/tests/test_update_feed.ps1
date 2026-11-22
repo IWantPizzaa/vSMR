@@ -140,14 +140,6 @@ try {
         $reused.version -ne $compiledRuntimeVersion) {
         throw 'The compatible previous loader was not staged with the new runtime.'
     }
-    foreach ($name in @('lfpg.json', 'lfpg_aircraft_restrictions.json', 'lfpg_corridors.json', 'lfpg_operations.json', 'source_manifest.json')) {
-        $relative = 'vSMR_Data/SmartGround/' + $name
-        if (-not $reused.files.PSObject.Properties[$relative] -or
-            (Get-FileHash -LiteralPath (Join-Path $reuseStage ('payload/' + $relative))).Hash -ne
-            (Get-FileHash -LiteralPath (Join-Path $RepositoryRoot ('vSMR/data/SmartGround/' + $name))).Hash) {
-            throw "Smart Ground data missing or changed in the update payload: $name"
-        }
-    }
     Write-Fixture 'previous-feed/stable/version.json' (([ordered]@{
         schema = 1; version = '2.0.5'; minimum_loader_version = '1.3.0'; runtime_abi = 1
         files = [ordered]@{ 'vSMR.dll' = [ordered]@{ sha256 = ('0' * 64); size = $previousEntry.size } }

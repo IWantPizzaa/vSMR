@@ -1,9 +1,0 @@
-node_modules/
-dist/
-test-results/
-/tmp/
-*.log
-!public/
-!public/**
-__pycache__/
-*.pyc

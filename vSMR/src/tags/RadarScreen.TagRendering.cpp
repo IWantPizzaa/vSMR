@@ -2,9 +2,6 @@
 #include "platform/windows/ResourceIds.h"
 #include "radar/RadarScreen.hpp"
 #include "rendering/TagRenderer.hpp"
-#include "smart_ground/TagAlerts.hpp"
-#include "integrations/SmartGroundIntegration.hpp"
-#include "radar/SmartGroundOverlayLogic.hpp"
 
 #include <algorithm>
 
@@ -116,7 +113,6 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 	const VsmrScene::RadarScene* scene = GetCurrentRadarScene();
 	if (scene == nullptr)
 		return;
-	const auto inactiveAlerts = CurrentConfig->getInactiveAlert();
 
 	for (const VsmrScene::Target& sceneTarget : scene->targets)
 	{
@@ -156,31 +152,20 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 		const bool isDeparture = sceneTarget.role == VsmrScene::TargetRole::Departure;
 		const CRimcas::RimcasAlerts movementAlert =
 			static_cast<CRimcas::RimcasAlerts>(sceneTarget.rimcas.movementAlert);
-		const std::string movementAlertText = isDeparture
+		const std::string alertText = isDeparture
 			? ResolveMovementAlertText(movementAlert)
 			: std::string();
 		const CRimcas::RimcasAlertSeverity severity =
 			static_cast<CRimcas::RimcasAlertSeverity>(sceneTarget.rimcas.severity);
-		const bool smartGroundEnabled = VsmrSmartGroundBridge::IsEnabled();
-		const auto smartGroundAlerts = VsmrSmartGround::ResolveTagAlerts(
-			{ sceneTarget.smartGround.collision, sceneTarget.smartGround.offTrack,
-				sceneTarget.smartGround.critical, sceneTarget.smartGround.conflictingCallsign,
-				sceneTarget.smartGround.reason }, inactiveAlerts, smartGroundEnabled);
-		const std::string alertText = VsmrSmartGround::AppendTagAlertText(movementAlertText, smartGroundAlerts);
-		const bool offTrackVisible = smartGroundEnabled && sceneTarget.smartGround.offTrack &&
-			inactiveAlerts.count(VsmrSmartGround::OffTrackAlertSetting) == 0;
-        const bool onlyOffTrack = offTrackVisible && alertText == "OFF TRACK";
-		const bool warningBand = smartGroundAlerts.warning ||
-			(!movementAlertText.empty() && severity == CRimcas::RimcasAlertSeverity::WARNING);
 		VsmrTagRendering::TopBand alertBand;
 		if (!alertText.empty())
 		{
 			alertBand.text = alertText;
-			alertBand.action = offTrackVisible ? VsmrSmartGroundOverlay::OffTrackAlertObjectType : TAG_CITEM_NO;
-			alertBand.background = warningBand
+			alertBand.action = TAG_CITEM_NO;
+			alertBand.background = severity == CRimcas::RimcasAlertSeverity::WARNING
 				? warningBackground
 				: cautionBackground;
-			alertBand.textColor = warningBand
+			alertBand.textColor = severity == CRimcas::RimcasAlertSeverity::WARNING
 				? warningText
 				: cautionText;
 		}
@@ -194,8 +179,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 		options.extendScratchpadHit = true;
 		options.scratchpadAction = TAG_CITEM_SCRATCHPAD;
 		options.topBand = !alertText.empty() ? &alertBand : nullptr;
-        options.topBandHitMode = onlyOffTrack ? VsmrTagRendering::TopBandHitMode::FullBand
-            : VsmrTagRendering::TopBandHitMode::TextOnly;
+		options.topBandHitMode = VsmrTagRendering::TopBandHitMode::TextOnly;
 		VsmrTagRendering::Layout layout;
 		const bool detailed = VsmrTagRendering::SelectHoveredLayout(
 			fonts, sceneTarget.tag, options, mouseLocation, hoverAllowed, dragged,
@@ -216,24 +200,9 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 		tagAreas[callsign] = painted.bounds;
 		tagCollisionAreas[callsign] =
 			VsmrTagRendering::CalculateBounds(fonts, normalLayout, collisionOptions);
-		std::string bottomLine = sceneTarget.bottomLine;
-		if (!smartGroundAlerts.tooltip.empty())
-		{
-			if (!bottomLine.empty()) bottomLine += "\n";
-			bottomLine += smartGroundAlerts.tooltip;
-		}
-		AddScreenObject(DRAWING_TAG, callsign.c_str(), painted.bounds, true, bottomLine.c_str());
+		const char* bottomLine = sceneTarget.bottomLine.c_str();
+		AddScreenObject(DRAWING_TAG, callsign.c_str(), painted.bounds, true, bottomLine);
 		for (const VsmrTagRendering::HitRegion& hit : painted.hitRegions)
-		{
-			CRect hitArea = hit.area;
-            if (hit.action == VsmrSmartGroundOverlay::OffTrackAlertObjectType && !onlyOffTrack)
-			{
-				// OFF TRACK is the final label. Leave any preceding RIMCAS or
-				// collision label with its existing behaviour and priority.
-				const int width = fonts.Measure("OFF TRACK").Width;
-				hitArea.left = (std::max)(hitArea.left, hitArea.right - width);
-			}
-			AddScreenObject(hit.action, callsign.c_str(), hitArea, true, bottomLine.c_str());
-		}
+			AddScreenObject(hit.action, callsign.c_str(), hit.area, true, bottomLine);
 	}
 }

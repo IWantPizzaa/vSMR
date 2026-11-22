@@ -51,15 +51,6 @@
 #include "TagColorRuleTests.hpp"
 #include "StandArrivalTests.hpp"
 #include "PinedeProtocolTests.hpp"
-#include "SmartGroundAlertTests.hpp"
-#include "SmartGroundOverlayTests.hpp"
-#include "SmartGroundReplayTests.hpp"
-#include "SmartGroundOriginTests.hpp"
-#include "SmartGroundOfflineReplayTests.hpp"
-#include "SmartGroundTests.hpp"
-#include "SmartGroundRouteEditTests.hpp"
-#include "SmartGroundListTests.hpp"
-#include "SmartGroundPreviewTests.hpp"
 #include "UpdaterUrlPolicyTests.hpp"
 #include "updater/GroundLayoutAviso.hpp"
 #include "tags/TagDefinitionUtils.hpp"
@@ -2252,9 +2243,7 @@ void TestProxyProcesses(const std::filesystem::path& repositoryRoot)
 
 int wmain(int argc, wchar_t** argv)
 {
-    if (argc == 3 && std::wstring(argv[1]) == L"--smart-ground-offline-replay") return RunSmartGroundOfflineReplayTests(argv[2]);
 	if (argc == 4 && std::wstring(argv[1]) == L"--proxy-test") return RunProxyChild(argv[2], argv[3]);
-	if (argc == 3 && std::wstring(argv[1]) == L"--smart-ground-replays") return RunSmartGroundReplayTests(argv[2]);
 	if (argc == 3 && std::wstring(argv[1]) == L"--ground-layout-live-test")
 	{
 		std::wstring message;
@@ -2318,20 +2307,6 @@ int wmain(int argc, wchar_t** argv)
 		Expect(false, failure);
 	for (const std::string& failure : RunStandArrivalTests())
 		Expect(false, failure);
-	for (const std::string& failure : RunSmartGroundAlertTests(repositoryRoot))
-		Expect(false, failure);
-	for (const std::string& failure : RunSmartGroundOverlayTests())
-		Expect(false, failure);
-	for (const std::string& failure : RunSmartGroundTests(repositoryRoot))
-		Expect(false, failure);
-    for (const std::string& failure : RunSmartGroundRouteEditTests(repositoryRoot))
-        Expect(false, failure);
-    for (const std::string& failure : RunSmartGroundListTests())
-        Expect(false, failure);
-    for (const std::string& failure : RunSmartGroundPreviewTests(repositoryRoot))
-        Expect(false, failure);
-    for (const std::string& failure : RunSmartGroundOriginTests(repositoryRoot))
-        Expect(false, failure);
 	for (const std::string& failure : RunUpdaterUrlPolicyTests())
 		Expect(false, failure);
 	for (const auto& failure : RunAuditRegressionTests())

@@ -3,12 +3,9 @@
 #include "plugin/PluginCommandHandler.hpp"
 
 #include "plugin/Plugin.hpp"
-#include "plugin/Plugin.RuntimeState.hpp"
 #include "radar/RadarScreen.hpp"
 #include "rdf/RdfOverlay.hpp"
 #include "shared/TextUtils.hpp"
-#include "integrations/SmartGroundIntegration.hpp"
-#include "smart_ground/SmartGroundActivation.hpp"
 
 #include <string>
 
@@ -24,39 +21,6 @@ bool VsmrPluginCommandHandler::Handle(
 	{
 		return prefix != nullptr && commandLower.rfind(prefix, 0) == 0;
 	};
-
-	const auto smartGroundCommand = VsmrSmartGround::ParseActivationCommand(commandLower);
-	if (smartGroundCommand != VsmrSmartGround::ActivationCommand::Unrecognized)
-	{
-		const bool wasEnabled = VsmrSmartGroundBridge::IsEnabled();
-		bool enabled = wasEnabled;
-		switch (smartGroundCommand)
-		{
-		case VsmrSmartGround::ActivationCommand::Toggle: enabled = !wasEnabled; break;
-		case VsmrSmartGround::ActivationCommand::Enable: enabled = true; break;
-		case VsmrSmartGround::ActivationCommand::Disable: enabled = false; break;
-		default: break;
-		}
-		if (enabled != wasEnabled)
-		{
-			VsmrSmartGroundBridge::SetEnabled(enabled);
-			{
-				std::lock_guard<std::mutex> guard(plugin.SmartGroundRouteActionsMutex);
-				plugin.SmartGroundRouteActions.Clear();
-			}
-			FlightDataRefreshPending.store(true, std::memory_order_release);
-			for (CSMRRadar* radar : radarScreens)
-				if (radar != nullptr && !radar->IsShutdownRequested())
-				{
-					radar->ResetSmartGroundInteraction();
-					radar->RequestRefresh();
-				}
-		}
-		plugin.DisplayUserMessage("vSMR", "Smart Ground",
-			enabled ? "Smart Ground enabled for this session." : "Smart Ground disabled. Route items show No Data.",
-			true, true, false, true, false);
-		return true;
-	}
 
 	if (commandLower == ".smr diagnostics" || commandLower == ".smr diag")
 	{

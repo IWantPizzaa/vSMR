@@ -6,7 +6,6 @@
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
 #include "aircraft/Language.hpp"
-#include "integrations/SmartGroundIntegration.hpp"
 #include "aircraft/Released.hpp"
 #include "integrations/CdmBridgeClient.hpp"
 #include "radar/RadarScreen.Registry.hpp"
@@ -249,8 +248,7 @@ bool CSMRPlugin::HandleHoldingPointFunctionCall(
 				true, true, false, false, false);
 			return false;
 		}
-        VsmrHoldingPoint::RememberPending(callsign, holdingPoint);
-        VsmrSmartGroundBridge::UpdateHoldingPoint(callsign, holdingPoint);
+		VsmrHoldingPoint::RememberPending(callsign, holdingPoint);
 
 		for (CSMRRadar* radar : RadarScreensOpened)
 		{
