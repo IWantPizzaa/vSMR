@@ -233,6 +233,13 @@ std::vector<std::string> RunAvisoOverridesTests(const std::filesystem::path& rep
     expect(VsmrAvisoOverrides::Apply(ungrouped, &removedGroup, error) &&
         ungrouped["vsmr_groups"].Empty(),
         "Removing a group still works after its feature membership is cleared");
+    Document staleFolder, folderSource;
+    VsmrJson::ParseDocument(staleFolder, R"({"patch":{"groups":{"base-terrain":{"folder":"","name":"base-terrain"}}}})");
+    folderSource.CopyFrom(grouped, folderSource.GetAllocator());
+    expect(VsmrAvisoOverrides::Apply(folderSource, &staleFolder, error) &&
+        std::string(folderSource["vsmr_groups"][0]["folder"].GetString()) == "Base map" &&
+        std::string(folderSource["vsmr_groups"][0]["name"].GetString()) == "Terrain",
+        "Stale local group snapshots cannot move bundled base groups to the root");
 
     const auto testRoot = std::filesystem::temp_directory_path() /
         ("vsmr-aviso-overrides-" + std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount64()));

@@ -224,6 +224,20 @@ namespace VsmrAvisoOverrides
         Document keyed;
         if (!Normalize(source, keyed, error)) return false;
         if (patch != nullptr) VsmrLayeredConfig::Merge(keyed, *patch, keyed.GetAllocator());
+        // Legacy local snapshots stored empty folders and raw IDs for bundled
+        // base groups. Keep the current map's presentation for those groups.
+        if (const Value* bundledGroups = Member(source, "vsmr_groups"); bundledGroups != nullptr && bundledGroups->IsArray())
+            for (const auto& bundled : bundledGroups->GetArray())
+            {
+                const Value* folder = Member(bundled, "folder");
+                if (folder == nullptr || !folder->IsString() || std::string(folder->GetString()) != "Base map") continue;
+                const std::string id = Identity(bundled, false);
+                Value* groups = &keyed["groups"];
+                if (id.empty() || !groups->HasMember(id.c_str()) || !(*groups)[id.c_str()].IsObject()) continue;
+                Value& merged = (*groups)[id.c_str()];
+                Put(merged, "folder", *folder, keyed.GetAllocator());
+                if (const Value* name = Member(bundled, "name")) Put(merged, "name", *name, keyed.GetAllocator());
+            }
         if (removed != nullptr)
         {
             for (auto it = removed->MemberBegin(); it != removed->MemberEnd(); ++it)
