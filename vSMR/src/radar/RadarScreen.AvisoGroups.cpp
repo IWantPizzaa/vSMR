@@ -17,6 +17,11 @@ using VsmrAvisoFeatureMetadata::TryReadGroupIds;
 
 namespace
 {
+	bool IsAircraftRestrictionProfile(const std::string& id)
+	{
+		return id == "wb-a380" || id == "wb-b748" || id == "wb-b744";
+	}
+
 	std::string CanonicalAvisoPalette(std::string palette)
 	{
 		std::transform(
@@ -386,18 +391,25 @@ bool CSMRRadar::SetAvisoGroupVisibility(const std::string& rawGroupId, bool visi
 			[&](const AvisoGroup& group) { return group.id == groupId; });
 		if (found == AvisoRuntimeGroups.end())
 			return false;
-		if (found->visible == visible)
-			return true;
-
+		changed = found->visible != visible;
 		found->visible = visible;
 		RunwayVisibilityByAirport[getActiveAirport()].visibility[groupId] = visible;
+		if (visible && IsAircraftRestrictionProfile(groupId))
+			for (AvisoGroup& group : AvisoRuntimeGroups)
+				if (group.id != groupId && IsAircraftRestrictionProfile(group.id) && group.visible)
+				{
+					group.visible = false;
+					RunwayVisibilityByAirport[getActiveAirport()].visibility[group.id] = false;
+					changed = true;
+				}
+		if (!changed)
+			return true;
 		auto visibility = std::make_shared<std::unordered_map<std::string, bool>>();
 		visibility->reserve(AvisoRuntimeGroups.size());
 		for (const AvisoGroup& group : AvisoRuntimeGroups)
 			(*visibility)[group.id] = group.visible;
 		AvisoGroupVisibilitySnapshot = visibility;
 		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
-		changed = true;
 	}
 
 	if (changed)
@@ -423,6 +435,13 @@ bool CSMRRadar::ToggleAvisoGroupVisibility(const std::string& rawGroupId, bool* 
 		found->visible = !found->visible;
 		RunwayVisibilityByAirport[getActiveAirport()].visibility[groupId] = found->visible;
 		nextVisibility = found->visible;
+		if (nextVisibility && IsAircraftRestrictionProfile(groupId))
+			for (AvisoGroup& group : AvisoRuntimeGroups)
+				if (group.id != groupId && IsAircraftRestrictionProfile(group.id) && group.visible)
+				{
+					group.visible = false;
+					RunwayVisibilityByAirport[getActiveAirport()].visibility[group.id] = false;
+				}
 		auto visibility = std::make_shared<std::unordered_map<std::string, bool>>();
 		visibility->reserve(AvisoRuntimeGroups.size());
 		for (const AvisoGroup& group : AvisoRuntimeGroups)
