@@ -76,7 +76,7 @@ export function readAircraftField(
 /** Validate bounded JSON before any assignment reaches the graph or the UI. */
 export function validateEnvelope(input: unknown): BridgeImportEnvelope {
   if (!isRecord(input) || input.format !== 'smart-ground.bridge.v1') {
-    throw new Error('Format attendu : smart-ground.bridge.v1. Consulter docs/INTEGRATION.md.');
+    throw new Error('Format attendu : smart-ground.bridge.v1.');
   }
   if (input.airport !== 'LFPG') throw new Error('Ce simulateur accepte uniquement les instantanés LFPG.');
   if (typeof input.simulated !== 'boolean') throw new Error('Le champ simulated doit être explicite.');

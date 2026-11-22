@@ -10,9 +10,7 @@ export interface AircraftGeometry {
   boxes: readonly FootprintBox[]; radiusMetres: number; warnings: string[];
 }
 
-/** Reviewed primary planning pages already stored in data-sources/aircraft-profiles.
- * A388 ACP p29; B744 Boeing RevF p31; B748 Boeing RevE p15; A320 EASA.A.064 p37.
- * These are overall lengths/maximum fuselage widths, not detailed 3D surfaces. */
+/** Overall lengths and maximum fuselage widths used by the envelope model. */
 const PRIMARY = Object.freeze({
   A320: { length: 37.57, body: 3.95 },
   A388: { length: 72.73, body: 7.14 },
