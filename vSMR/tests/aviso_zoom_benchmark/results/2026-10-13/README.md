@@ -18,8 +18,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File vSMR/tests/aviso_zoom_benchm
 powershell -NoProfile -ExecutionPolicy Bypass -File vSMR/tests/aviso_zoom_benchmark/run_zoom_benchmark.ps1 -Frames 16 -Quick -SkipBuild -Software
 ```
 
-See the [harness method](../../README.md) and
-[implementation notes](../../../../../docs/AVISO-Zoom.md). The before path is
+See the [harness method](../../README.md). The before path is
 the unchanged `a76b379` FPS-Killer raster renderer with its original overscan,
 rounded viewport preview mapping and bitmap presenter. The after path uses the
 production native viewport controller and analytic glyph renderer, including

@@ -15,6 +15,7 @@
 #include <fstream>
 #include <mutex>
 #include <set>
+#include <vector>
 
 namespace VsmrAvisoOverrides
 {
@@ -235,6 +236,29 @@ namespace VsmrAvisoOverrides
                     error = "Invalid AVISO removal path.";
                     return false;
                 }
+				// An older override may mark a newly bundled group as removed
+				// while its features still refer to it. Keep the definition (and
+				// its folder) so the runtime does not recreate an unnamed root row.
+				if (path.rfind("/groups/", 0) == 0 && path.find('/', 8) == std::string::npos &&
+					pointer.Get(keyed) != nullptr)
+				{
+					const std::string groupId = path.substr(8);
+					const Value* features = Member(keyed, "features");
+					bool referenced = false;
+					if (features != nullptr && features->IsObject())
+						for (auto feature = features->MemberBegin(); feature != features->MemberEnd(); ++feature)
+						{
+							const Value* properties = Member(feature->value, "properties");
+							std::vector<std::string> groups;
+							if (properties != nullptr && VsmrAvisoFeatureMetadata::TryReadGroupIds(properties, groups) &&
+								std::find(groups.begin(), groups.end(), groupId) != groups.end())
+							{
+								referenced = true;
+								break;
+							}
+						}
+					if (referenced) continue;
+				}
                 pointer.Erase(keyed);
             }
         }

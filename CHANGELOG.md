@@ -2,11 +2,13 @@
 
 ## [Unreleased]
 
+- Restore 48 LFPG holding-point labels from the earlier airport layout, including W2-W5 and T9, with a dedicated visible group.
+- Keep a group definition and its folder when an older AVISO override removes the group while geometry still belongs to it.
 - Add a Released flag shared through the flight-plan remarks as `VSMRREL/HHMM` (UTC release time), with a `released` tag token, a vSMR `Released` list item and a `Toggle released` function. REL is green when released and red otherwise. Releasing a flight without an ASRT first makes it ready through CDM, as the RDY cell does; un-releasing never touches the ASRT. The token is removed once the aircraft is airborne. RDY and the ASRT are unchanged.
 
 - Add a CDM button below vSID/PDC in the Runtime Menu, with live airport Master ownership, pending acknowledgements, Master/Slave commands and access to the companion CDM build's draggable ATFCM and runway-capacity/BMI panels. Preserve legacy CDM aircraft timing and serialize commands with vSID.
 
-- Retrace LFPG's A380 display contours from the supplied AVISO photograph and check permanent restrictions against SIA GMC 07/08. Remove isolated photo fragments and the unsupported Z4/FN2 fills, preserve approved N/F axes and A3 continuity beneath labels, and share the corrected overlay across Real, Dark and Light.
+- Refine LFPG's A380 display contours, remove isolated fragments and the unsupported Z4/FN2 fills, preserve approved N/F axes and A3 continuity beneath labels, and share the corrected overlay across Real, Dark and Light.
 
 - Add optional per-airport AVISO group folders. Set Folder in the Groups editor to collect groups under a hover submenu, with independent visibility and submenu pagination.
 - Add a clickable language token and Language list item backed by the same flight-plan remarks, with /FR, /EN and Clear choices (#45).
