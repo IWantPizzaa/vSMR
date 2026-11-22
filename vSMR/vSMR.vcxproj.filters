@@ -93,6 +93,7 @@
     <ClCompile Include="src\integrations\PluginBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\integrations\PluginBridgeReads.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\integrations\RampAgentBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\integrations\DatalinkBridgeProvider.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\integrations\VsidBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.Aviso.cpp"><Filter>Source</Filter></ClCompile>
@@ -213,6 +214,8 @@
     <ClInclude Include="src\integrations\PluginBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\PluginBridgeReads.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\RampAgentBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\DatalinkBridgeProvider.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\DatalinkBridgeData.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\RampAgentBridgeData.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\VsidBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\VsidBridgeData.hpp"><Filter>Headers</Filter></ClInclude>

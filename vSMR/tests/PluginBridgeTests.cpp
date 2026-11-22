@@ -1,5 +1,6 @@
 #include "PluginBridgeTests.hpp"
 
+#include "integrations/DatalinkBridgeData.hpp"
 #include "integrations/PluginBridgeReads.hpp"
 #include "integrations/RampAgentBridgeData.hpp"
 
@@ -355,6 +356,18 @@ namespace
 			failures);
 	}
 
+	void TestDatalinkStateCode(std::vector<std::string>& failures)
+	{
+		using namespace VsmrDatalinkBridge;
+		Check(StateCode(0U) == '\0', "vsmr/dcl is unset without PDC state", failures);
+		Check(StateCode(FlagDemanding) == 'R', "vsmr/dcl shows a waiting request", failures);
+		Check(StateCode(FlagDemanding | FlagStandby) == 'S', "vsmr/dcl shows a request on standby", failures);
+		Check(StateCode(FlagDemanding | FlagMessage) == 'R', "a waiting request outranks a pilot message", failures);
+		Check(StateCode(FlagMessage | FlagSent) == 'T', "a pilot message outranks a sent clearance", failures);
+		Check(StateCode(FlagWilco | FlagSent) == 'W', "vsmr/dcl tells WILCO from a sent clearance", failures);
+		Check(StateCode(FlagSent) == 'C', "vsmr/dcl shows a sent clearance", failures);
+	}
+
 	void TestRampAgentData(std::vector<std::string>& failures)
 	{
 		using VsmrRampAgent::NormalizeText;
@@ -408,6 +421,7 @@ std::vector<std::string> RunPluginBridgeTests()
 	TestProviderBinding(api, failures);
 	TestReads(api, failures);
 	TestRampAgentData(failures);
+	TestDatalinkStateCode(failures);
 	RunPluginBridgePollingTests(failures);
 	RunCommandLineWindowTests(failures);
 	Fake = FakeBridgeState{};

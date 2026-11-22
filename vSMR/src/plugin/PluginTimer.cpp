@@ -295,7 +295,7 @@ void CSMRPlugin::OnTimerImpl(int Counter)
 		}
 	}
 	RunDatalinkTimerCycle();
-	SynchronizeProxyDatalink();
+	SynchronizeProxyDatalink(bridgeTick.api);
 
 	// ----- Updating runtime insets -----
 	const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
