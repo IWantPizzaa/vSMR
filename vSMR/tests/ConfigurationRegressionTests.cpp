@@ -524,9 +524,28 @@ namespace
 						"LFBO Real gate colours follow the supplied reference legend");
 				}
 			}
+			if (airport == "LFMN")
+			{
+				Expect(model.FeatureCount() == 803U, "LFMN retains its layout and adds 11 aircraft restriction traces");
+				unsigned a380 = 0, b748 = 0, b744 = 0;
+				for (const auto& feature : document["features"].GetArray())
+					for (const auto& group : feature["properties"]["vsmr_group_ids"].GetArray())
+					{
+					const std::string id = group.GetString();
+						if (id == "wb-a380") ++a380;
+						else if (id == "wb-b748") ++b748;
+						else if (id == "wb-b744") ++b744;
+						if (id == "wb-a380" || id == "wb-b748" || id == "wb-b744")
+							Expect(std::string(feature["geometry"]["type"].GetString()) == "LineString" ||
+								std::string(feature["geometry"]["type"].GetString()) == "MultiLineString",
+								"LFMN aircraft restrictions use line traces");
+					}
+				Expect(a380 == 3U && b748 == 5U && b744 == 3U,
+					"LFMN includes each supplied aircraft restriction profile");
+			}
 			if (airport == "LFPG")
 			{
-				Expect(model.FeatureCount() == 3278U, "LFPG keeps 34 A380 restriction surfaces and 48 restored holding-point labels");
+				Expect(model.FeatureCount() == 3248U, "LFPG replaces only aircraft restriction geometry and keeps 48 restored holding-point labels");
 				Expect(document["metadata"]["color_palettes"].Size() == 3U, "Unified LFPG exposes Dark, Light and Real palettes");
 				unsigned originalCount = 0, realCount = 0, sharedCount = 0, restoredLabels = 0;
 				for (const auto& feature : document["features"].GetArray())
@@ -538,7 +557,7 @@ namespace
 					for (const auto& group : feature["properties"]["vsmr_group_ids"].GetArray())
 						if (std::string(group.GetString()) == "labels-holding-points") ++restoredLabels;
 				}
-				Expect(originalCount == 1505U && realCount == 1557U && sharedCount == 216U && restoredLabels == 48U,
+				Expect(originalCount == 1505U && realCount == 1557U && sharedCount == 186U && restoredLabels == 48U,
 					"Dark/Light and Real retain their geometry and share all restored holding-point labels");
 				unsigned a380Count = 0, b748Count = 0, b744Count = 0;
 				for (const auto& feature : document["features"].GetArray())
@@ -549,8 +568,17 @@ namespace
 						else if (id == "wb-b748") ++b748Count;
 						else if (id == "wb-b744") ++b744Count;
 					}
-				Expect(a380Count == 34U && b748Count == 37U && b744Count == 18U,
-					"LFPG aircraft restriction contours remain complete and separate");
+				Expect(a380Count == 20U && b748Count == 21U && b744Count == 18U,
+					"LFPG aircraft restriction traces remain complete and separate");
+				for (const auto& feature : document["features"].GetArray())
+				{
+					bool restriction = false;
+					for (const auto& group : feature["properties"]["vsmr_group_ids"].GetArray())
+						restriction = restriction || std::string(group.GetString()).rfind("wb-", 0) == 0;
+					if (restriction)
+						Expect(std::string(feature["geometry"]["type"].GetString()) == "MultiLineString",
+							"LFPG restriction geometry uses the supplied line traces without obsolete fills");
+				}
 				for (const auto& group : document["vsmr_groups"].GetArray())
 				{
 					const std::string id = group["id"].GetString();
@@ -567,45 +595,6 @@ namespace
 						found = true;
 				Expect(found, std::string("LFPG keeps holding-point text ") + label);
 				}
-				const auto insidePolygon = [](const rapidjson::Value& rings, double longitude, double latitude)
-				{
-					bool inside = false;
-					for (const auto& ring : rings.GetArray())
-						for (rapidjson::SizeType i = 0, j = ring.Size() - 1; i < ring.Size(); j = i++)
-						{
-							const double ax = ring[i][0].GetDouble(), ay = ring[i][1].GetDouble();
-							const double bx = ring[j][0].GetDouble(), by = ring[j][1].GetDouble();
-							if ((ay > latitude) != (by > latitude) &&
-								longitude < (bx - ax) * (latitude - ay) / (by - ay) + ax) inside = !inside;
-						}
-					return inside;
-				};
-				const auto a380RestrictedAt = [&](double longitude, double latitude)
-				{
-					for (const auto& feature : document["features"].GetArray())
-					{
-						bool restricted = false;
-						for (const auto& entry : feature["properties"]["vsmr_group_ids"].GetArray())
-							restricted = restricted || std::string(entry.GetString()) == "wb-a380";
-						if (!restricted) continue;
-						const auto& geometry = feature["geometry"];
-						const auto& coordinates = geometry["coordinates"];
-						if (std::string(geometry["type"].GetString()) == "Polygon")
-						{
-							if (insidePolygon(coordinates, longitude, latitude)) return true;
-						}
-						else for (const auto& polygon : coordinates.GetArray())
-							if (insidePolygon(polygon, longitude, latitude)) return true;
-					}
-					return false;
-				};
-				Expect(a380RestrictedAt(2.550980000, 49.024503063), "A380 restriction covers the prohibited Z5 corridor");
-				Expect(a380RestrictedAt(2.543629689, 49.013969378), "A3 remains prohibited beneath the photograph's opaque labels");
-				Expect(a380RestrictedAt(2.533436667, 48.994139009), "A380-only C/U restriction remains visible");
-				Expect(!a380RestrictedAt(2.537455272, 49.023689028), "Approved Z4 is not prohibited by an older photograph");
-				Expect(!a380RestrictedAt(2.552884313, 49.006929024), "FN2 does not acquire a blanket A380 prohibition from the adjacent E wedge");
-				Expect(!a380RestrictedAt(2.553070000, 49.004260360) &&
-					!a380RestrictedAt(2.554653333, 49.004260360), "Approved N and F axes remain clear of adjacent A380 fills");
 				Expect(std::string(document["metadata"]["geometry_mode"].GetString()) == "palette_specific",
 					"Loading and normalizing the editor preserves explicit geometry variants");
 				bool east = false, west = false, gates = false;

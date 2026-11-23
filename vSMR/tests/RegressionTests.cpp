@@ -844,7 +844,7 @@ namespace
 		std::map<std::string, std::string> tokens;
 		VsmrCdm::AddTagTokens(tokens, &data);
 		Expect(
-			tokens["ready_startup"] == "RDY" &&
+			tokens["ready_startup"] == "RLD" &&
 			tokens["tobt"] == "0705" &&
 			tokens["tsat"] == "0710" &&
 			tokens["ttot"] == "0720" &&
@@ -857,7 +857,7 @@ namespace
 			"selected CDM bridge fields use concise public tag tokens");
 		VsmrCdm::AddTagTokens(tokens, nullptr);
 		Expect(
-			tokens["ready_startup"] == "RDY" &&
+			tokens["ready_startup"] == "RLD" &&
 			tokens["tobt"].empty() &&
 			tokens.find("cdm_deice") == tokens.end(),
 			"missing CDM bridge data keeps the red Ready Start-up indicator visible");

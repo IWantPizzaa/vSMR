@@ -857,7 +857,7 @@ VsmrTags::TokenValues CSMRRadar::BuildTagDefinitionPreviewMap(const std::string&
 	previewMap["vsid_sid"] = "LAM1X";
 	previewMap["vsid_rwy"] = "26R";
 	previewMap["vsid_cfl"] = "A50";
-	previewMap["ready_startup"] = "RDY";
+	previewMap["ready_startup"] = "RLD";
 	previewMap["origin"] = "LFPG";
 	previewMap["dest"] = "EGKK";
 	previewMap["groundstatus"] = "TAXI";

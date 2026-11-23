@@ -113,7 +113,7 @@ namespace VsmrCdm
 	{
 		const AircraftData empty;
 		const AircraftData& value = data != nullptr ? *data : empty;
-		tokens["ready_startup"] = "RDY";
+		tokens["ready_startup"] = "RLD";
 		tokens["tobt"] = FormatTimeToken(value.tobt);
 		tokens["tsat"] = FormatTimeToken(value.tsat);
 		tokens["ttot"] = FormatTimeToken(value.ttot);
