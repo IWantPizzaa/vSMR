@@ -1191,12 +1191,21 @@ std::string CSMRRadar::setActiveAirport(
 
 	VsmrRadar::RememberAirport(RecentAirports, ActiveAirport);
 	VsmrRadar::RememberAirport(RecentAirports, airport);
-	const std::string previousDefaultPalette = GetGlobalAvisoPalette().first;
 	ActiveAirport = airport;
 	const std::string airportDefaultPalette = GetGlobalAvisoPalette().first;
-	if (!airportDefaultPalette.empty() && AvisoPreferredColorPalette == previousDefaultPalette)
-		SetAvisoColorPalette(airportDefaultPalette, false);
-	EnsureAvisoColorPaletteAvailable(switchInsetContext);
+	const auto remembered = AvisoPaletteByAirport.find(airport);
+	const std::string airportKey = "AvisoColorPalette." + airport;
+	const char* savedAirportPalette = remembered == AvisoPaletteByAirport.end()
+		? GetDataFromAsr(airportKey.c_str()) : nullptr;
+	const std::string selectedPalette = VsmrAvisoPalettePreference::ForAirport(
+		remembered != AvisoPaletteByAirport.end() ? remembered->second : "",
+		savedAirportPalette, airportDefaultPalette);
+	if (!SetAvisoColorPalette(selectedPalette, false))
+		SetAvisoColorPalette(airportDefaultPalette.empty() ? "light" : airportDefaultPalette, false);
+	EnsureAvisoColorPaletteAvailable(false);
+	if (switchInsetContext)
+		SaveDataToAsr("AvisoColorPalette", "Active airport AVISO color palette",
+			AvisoPreferredColorPalette.c_str());
 	MarkPerformanceRefreshReason(
 		VsmrPerformance::FrameRefreshReason::AirportUpdate);
 	PublishCrashRadarState("main");
@@ -1306,12 +1315,25 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	const auto globalPalette = GetGlobalAvisoPalette();
 	// The airport palette is an initial default. An ASR selection is the
 	// controller's choice and must survive later default-generation changes.
+	const std::string paletteKey = "AvisoColorPalette." + getActiveAirport();
+	const char* airportValue = GetDataFromAsr(paletteKey.c_str());
+	const std::string savedAirportPalette = airportValue != nullptr ? airportValue : "";
+	const char* legacyValue = GetDataFromAsr("AvisoColorPalette");
+	const std::string legacyPalette = legacyValue != nullptr ? legacyValue : "";
 	const std::string initialPalette = VsmrAvisoPalettePreference::InitialPalette(
-		GetDataFromAsr("AvisoColorPalette"), globalPalette.first);
+		!savedAirportPalette.empty() ? savedAirportPalette.c_str() : legacyPalette.c_str(), globalPalette.first);
 	if (!SetAvisoColorPalette(initialPalette, false))
 		if (!SetAvisoColorPalette(globalPalette.first, false))
 			SetAvisoColorPalette("light", false);
 	EnsureAvisoColorPaletteAvailable(false);
+	if (!savedAirportPalette.empty())
+		AvisoPaletteByAirport[getActiveAirport()] = AvisoPreferredColorPalette;
+	else if (!legacyPalette.empty())
+	{
+		AvisoPaletteByAirport[getActiveAirport()] = AvisoPreferredColorPalette;
+		SaveDataToAsr(paletteKey.c_str(), "AVISO color palette selected for this airport",
+			AvisoPreferredColorPalette.c_str());
+	}
 
 	UiUseDayColorTheme = false;
 	if ((p_value = GetDataFromAsr("UiColorTheme")) != NULL)

@@ -290,6 +290,7 @@ private:
 	bool UiUseDayColorTheme = false;
 	std::string AvisoColorPalette = "light";
 	std::string AvisoPreferredColorPalette = "light";
+	std::map<std::string, std::string> AvisoPaletteByAirport;
 	COLORREF AvisoDarkBackgroundColor = RGB(67, 74, 79);
 	COLORREF AvisoLightBackgroundColor = RGB(67, 74, 79);
 	COLORREF AvisoRealBackgroundColor = RGB(67, 74, 79);

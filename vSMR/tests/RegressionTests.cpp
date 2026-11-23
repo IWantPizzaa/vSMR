@@ -95,6 +95,10 @@ namespace
 		Expect(VsmrAvisoPalettePreference::InitialPalette(nullptr, "real") == "real" &&
 			VsmrAvisoPalettePreference::InitialPalette("", "light") == "light",
 			"new AVISO views use the configured airport palette");
+		Expect(VsmrAvisoPalettePreference::ForAirport("real", nullptr, "light") == "real" &&
+			VsmrAvisoPalettePreference::ForAirport("", "real", "light") == "real" &&
+			VsmrAvisoPalettePreference::ForAirport("", nullptr, "light") == "light",
+			"returning to an airport restores its own palette before using its default");
 		Expect(VsmrRuntimeMenuInput::IsRepeatedWindowOpen(1200, 1000, 500) &&
 			!VsmrRuntimeMenuInput::IsRepeatedWindowOpen(1600, 1000, 500) &&
 			!VsmrRuntimeMenuInput::IsRepeatedWindowOpen(1200, 0, 500),

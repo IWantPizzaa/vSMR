@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Remember each airport's AVISO palette in the ASR when switching ICAOs from the Runtime Menu, so returning to LFPG restores its selected Real view.
 - Keep LFPG and LFMN aircraft restrictions hidden until a controller selects one; move LFPG's single and dual centrelines into Base map and remove the retired critical-area overlays.
 - Preserve manually shown or hidden AVISO groups when the Control Center saves other changes, including on airports without runway visibility rules. Keep groups from other palettes in the editor snapshot and let an explicit Reload restore the saved choices.
 - Replace LFPG A380/B747 restriction fills with the supplied line traces, and add the corresponding restriction traces to LFMN while preserving each airport's other AVISO objects.

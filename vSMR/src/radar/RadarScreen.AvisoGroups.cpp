@@ -338,6 +338,14 @@ bool CSMRRadar::SetAvisoColorPalette(const std::string& rawPalette, bool persist
 
 	if (persistToAsr)
 	{
+		const std::string airport = getActiveAirport();
+		if (!airport.empty())
+		{
+			AvisoPaletteByAirport[airport] = AvisoPreferredColorPalette;
+			SaveDataToAsr(("AvisoColorPalette." + airport).c_str(),
+				"AVISO color palette selected for this airport",
+				AvisoPreferredColorPalette.c_str());
+		}
 		SaveDataToAsr("AvisoAppearanceGeneration", "Applied global AVISO appearance", GetGlobalAvisoPalette().second.c_str());
 		SaveDataToAsr(
 			"AvisoColorPalette",

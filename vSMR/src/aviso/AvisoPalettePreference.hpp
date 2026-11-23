@@ -10,4 +10,10 @@ namespace VsmrAvisoPalettePreference
 			return savedPalette;
 		return airportDefault.empty() ? "light" : airportDefault;
 	}
+
+	inline std::string ForAirport(const std::string& sessionChoice,
+		const char* savedAirportPalette, const std::string& airportDefault)
+	{
+		return !sessionChoice.empty() ? sessionChoice : InitialPalette(savedAirportPalette, airportDefault);
+	}
 }
