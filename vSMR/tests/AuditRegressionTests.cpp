@@ -146,6 +146,7 @@ void TestTagDataFormatting(std::vector<std::string>& failures)
 	tagInput.altitudeDelta = 50; tagInput.clearance = tagInput.lineup = true;
 	VsmrTags::FormatTagData(tagInput, formatted);
 	check(formatted.at("language") == "/FR", "tag language uses the shared remarks parser used by the list item");
+	check(formatted.at("released") == "REL", "REL stays visible on a correlated flight whether released or not");
 	check(formatted.at("callsign") == "[AFR123/r]" && formatted.at("actype") == "A320" && formatted.at("sctype") == "A1000",
 		"callsign ownership, communication and squawk-error formatting survive extraction");
 	check(formatted.at("seprwy") == "09L" && formatted.at("srvrwy") == "25" && formatted.at("sate") == "B12",
@@ -159,8 +160,8 @@ void TestTagDataFormatting(std::vector<std::string>& failures)
 		"uncorrelated primary targets use the Pro-mode fallback");
 	tagInput.primary = false;
 	VsmrTags::FormatTagData(tagInput, formatted);
-	check(formatted.at("callsign") == "2000" && formatted.at("clearance").empty(),
-		"an uncorrelated secondary target uses its squawk and loses the clearance indicator");
+	check(formatted.at("callsign") == "2000" && formatted.at("clearance").empty() && formatted.at("released").empty(),
+		"an uncorrelated secondary target uses its squawk and loses the clearance and released indicators");
 
 }
 
@@ -340,6 +341,15 @@ std::vector<std::string> RunAuditRegressionTests()
 	target.tag.tokens["language"] = "";
 	VsmrTags::UpdateTagVariant(languageDefinition, target, false, languageTag);
 	check(languageTag.lines[0].elements[0].text == "LANG", "clearing language restores its clickable placeholder");
+	rapidjson::Document releasedLabels;
+	VsmrJson::ParseDocument(releasedLabels, R"json({"departure":{"definition":[["released"]]}})json");
+	VsmrTags::DefinitionCache releasedDefinitions;
+	target.tag.tokens["released"] = "REL";
+	const auto releasedTag = VsmrTags::BuildTagVariant(
+		releasedDefinitions.Get(releasedLabels, "departure", "default", false), target, false);
+	check(releasedTag.lines.size() == 1 && releasedTag.lines[0].elements.size() == 1 &&
+		releasedTag.lines[0].elements[0].text == "REL" && releasedTag.lines[0].elements[0].action == TAG_CITEM_RELEASED,
+		"the released token renders REL as a clickable toggle");
 	target.tag.tokens["uk_stand"] = "";
 	if (normal.lines.size() == 1 && normal.lines[0].elements.size() == 5)
 	{

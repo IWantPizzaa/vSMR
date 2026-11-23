@@ -24,6 +24,7 @@
 // what PINEDE last said, rebuilt on every poll, plus the immediate effect of
 // this station's own actions until the next poll confirms them.
 
+
 struct AcarsMessage
 {
 	std::string from;

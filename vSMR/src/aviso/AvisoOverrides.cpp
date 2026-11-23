@@ -15,6 +15,7 @@
 #include <fstream>
 #include <mutex>
 #include <set>
+#include <vector>
 
 namespace VsmrAvisoOverrides
 {
@@ -223,6 +224,20 @@ namespace VsmrAvisoOverrides
         Document keyed;
         if (!Normalize(source, keyed, error)) return false;
         if (patch != nullptr) VsmrLayeredConfig::Merge(keyed, *patch, keyed.GetAllocator());
+        // Legacy local snapshots stored empty folders and raw IDs for bundled
+        // base groups. Keep the current map's presentation for those groups.
+        if (const Value* bundledGroups = Member(source, "vsmr_groups"); bundledGroups != nullptr && bundledGroups->IsArray())
+            for (const auto& bundled : bundledGroups->GetArray())
+            {
+                const Value* folder = Member(bundled, "folder");
+                if (folder == nullptr || !folder->IsString() || std::string(folder->GetString()) != "Base map") continue;
+                const std::string id = Identity(bundled, false);
+                Value* groups = &keyed["groups"];
+                if (id.empty() || !groups->HasMember(id.c_str()) || !(*groups)[id.c_str()].IsObject()) continue;
+                Value& merged = (*groups)[id.c_str()];
+                Put(merged, "folder", *folder, keyed.GetAllocator());
+                if (const Value* name = Member(bundled, "name")) Put(merged, "name", *name, keyed.GetAllocator());
+            }
         if (removed != nullptr)
         {
             for (auto it = removed->MemberBegin(); it != removed->MemberEnd(); ++it)
@@ -235,6 +250,29 @@ namespace VsmrAvisoOverrides
                     error = "Invalid AVISO removal path.";
                     return false;
                 }
+				// An older override may mark a newly bundled group as removed
+				// while its features still refer to it. Keep the definition (and
+				// its folder) so the runtime does not recreate an unnamed root row.
+				if (path.rfind("/groups/", 0) == 0 && path.find('/', 8) == std::string::npos &&
+					pointer.Get(keyed) != nullptr)
+				{
+					const std::string groupId = path.substr(8);
+					const Value* features = Member(keyed, "features");
+					bool referenced = false;
+					if (features != nullptr && features->IsObject())
+						for (auto feature = features->MemberBegin(); feature != features->MemberEnd(); ++feature)
+						{
+							const Value* properties = Member(feature->value, "properties");
+							std::vector<std::string> groups;
+							if (properties != nullptr && VsmrAvisoFeatureMetadata::TryReadGroupIds(properties, groups) &&
+								std::find(groups.begin(), groups.end(), groupId) != groups.end())
+							{
+								referenced = true;
+								break;
+							}
+						}
+					if (referenced) continue;
+				}
                 pointer.Erase(keyed);
             }
         }

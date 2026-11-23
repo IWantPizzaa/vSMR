@@ -1050,6 +1050,14 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 						? VsmrScene::Color{ 255, 0, 181, 27 }
 						: VsmrScene::Color{ 255, 255, 0, 0 };
 				}
+				else if (token == "released")
+				{
+					// Released follows the shared VSMRREL/ remarks token with the RDY colours.
+					const auto released = target.tag.tokens.find("rule.released");
+					element.effectiveColor = released != target.tag.tokens.end() && released->second == "true"
+						? VsmrScene::Color{ 255, 0, 181, 27 }
+						: VsmrScene::Color{ 255, 255, 0, 0 };
+				}
 				else if (!palette.textRuleApplied && target.hasCdmData && (token == "tobt" || token == "tsat"))
 				{
 					int red = 255;

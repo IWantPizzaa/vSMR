@@ -220,6 +220,27 @@ std::vector<std::string> RunAvisoOverridesTests(const std::filesystem::path& rep
     expect(!VsmrAvisoOverrides::Apply(original, &invalidRemoval, error) && original == defaults,
         "AVISO invalid removal leaves live document untouched");
 
+    Document grouped, removedGroup;
+    VsmrJson::ParseDocument(grouped, R"({"type":"FeatureCollection","features":[{"type":"Feature","id":"f","properties":{"vsmr_group_ids":["base-terrain"]},"geometry":{"type":"Point","coordinates":[1,2]}}],"vsmr_groups":[{"id":"base-terrain","name":"Terrain","folder":"Base map"}]})");
+    VsmrJson::ParseDocument(removedGroup, R"({"removed":{"/groups/base-terrain":true}})");
+    Document ungrouped;
+    ungrouped.CopyFrom(grouped, ungrouped.GetAllocator());
+    ungrouped["features"][0]["properties"]["vsmr_group_ids"].SetArray();
+    expect(VsmrAvisoOverrides::Apply(grouped, &removedGroup, error) &&
+        grouped["vsmr_groups"].Size() == 1U &&
+        std::string(grouped["vsmr_groups"][0]["folder"].GetString()) == "Base map",
+        "An old group removal cannot discard a folder still used by geometry");
+    expect(VsmrAvisoOverrides::Apply(ungrouped, &removedGroup, error) &&
+        ungrouped["vsmr_groups"].Empty(),
+        "Removing a group still works after its feature membership is cleared");
+    Document staleFolder, folderSource;
+    VsmrJson::ParseDocument(staleFolder, R"({"patch":{"groups":{"base-terrain":{"folder":"","name":"base-terrain"}}}})");
+    folderSource.CopyFrom(grouped, folderSource.GetAllocator());
+    expect(VsmrAvisoOverrides::Apply(folderSource, &staleFolder, error) &&
+        std::string(folderSource["vsmr_groups"][0]["folder"].GetString()) == "Base map" &&
+        std::string(folderSource["vsmr_groups"][0]["name"].GetString()) == "Terrain",
+        "Stale local group snapshots cannot move bundled base groups to the root");
+
     const auto testRoot = std::filesystem::temp_directory_path() /
         ("vsmr-aviso-overrides-" + std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount64()));
     try

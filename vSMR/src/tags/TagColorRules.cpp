@@ -763,7 +763,7 @@ namespace VsmrTagColorRules
 		{
 			if (InNames(field, { "flight.sid", "flight.deprwy", "flight.arvrwy", "flight.scratchpad",
 				"flight.holdingpoint", "flight.origin", "flight.destination", "flight.actype", "flight.wake",
-				"flight.groundstatus", "flight.callsign", "flight.gs", "flight.flightlevel", "flight.clearance",
+				"flight.groundstatus", "flight.callsign", "flight.gs", "flight.flightlevel", "flight.clearance", "flight.released",
 				"vsid.sid", "vsid.rwy", "vsid.cfl", "cdm.deice", "cdm.tobt_set_by", "cdm.flow_restriction",
 				"cdm.ecfmp_restriction", "cdm.manual_ctot" })) return true;
 			if (field.substr(0, 4) != "cdm.") return false;
@@ -781,7 +781,7 @@ namespace VsmrTagColorRules
 
 		bool IsRuleEffectField(std::string_view field)
 		{
-			return InNames(field, { "event_booking", "ready_startup", "groundstatus", "holdingpoint",
+			return InNames(field, { "event_booking", "ready_startup", "released", "groundstatus", "holdingpoint",
 				"flightlevel", "scratchpad", "clearance", "callsign", "systemid", "tendency", "uk_stand",
 				"vsid_cfl", "vsid_rwy", "vsid_sid", "sqerror", "actype", "arvrwy", "deprwy", "origin",
 				"remark", "sctype", "seprwy", "srvrwy", "aobt", "aort", "asat", "asid", "asrt", "atot",

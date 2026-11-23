@@ -362,7 +362,8 @@ namespace
 			if (!loaded) continue;
 			Expect(model.FeatureCount() > 0, "AVISO has features: " + airport);
 			const auto& document = model.GetDocument();
-			if (!document.HasMember("metadata") || !document["metadata"].HasMember("geometry_source")) continue;
+			if (!document.HasMember("metadata") ||
+				(airport != "LFPG" && !document["metadata"].HasMember("geometry_source"))) continue;
 			const auto& metadata = document["metadata"];
 			const bool hasReal = airport == "LFPG" || airport == "LFPO" || airport == "LFPO_Work" || airport == "LFML" || airport == "LFMN" || airport == "LFBO" || airport == "LFLL" || airport == "LFSB";
 			const auto& palettes = metadata["color_palettes"];
@@ -525,15 +526,47 @@ namespace
 			}
 			if (airport == "LFPG")
 			{
-				Expect(model.FeatureCount() == 3227U, "LFPG retains both geometry variants without obsolete A380 display fragments");
+				Expect(model.FeatureCount() == 3278U, "LFPG keeps 34 A380 restriction surfaces and 48 restored holding-point labels");
 				Expect(document["metadata"]["color_palettes"].Size() == 3U, "Unified LFPG exposes Dark, Light and Real palettes");
-				unsigned originalCount = 0, realCount = 0;
+				unsigned originalCount = 0, realCount = 0, sharedCount = 0, restoredLabels = 0;
 				for (const auto& feature : document["features"].GetArray())
 				{
 					const auto& variantPalettes = feature["properties"]["geometry_palettes"];
-					if (variantPalettes.Size() == 2U) ++originalCount; else ++realCount;
+					if (variantPalettes.Size() == 2U) ++originalCount;
+					else if (variantPalettes.Size() == 1U) ++realCount;
+					else ++sharedCount;
+					for (const auto& group : feature["properties"]["vsmr_group_ids"].GetArray())
+						if (std::string(group.GetString()) == "labels-holding-points") ++restoredLabels;
 				}
-				Expect(originalCount == 1505U && realCount == 1722U, "Dark/Light and Real retain their independent feature sets");
+				Expect(originalCount == 1505U && realCount == 1557U && sharedCount == 216U && restoredLabels == 48U,
+					"Dark/Light and Real retain their geometry and share all restored holding-point labels");
+				unsigned a380Count = 0, b748Count = 0, b744Count = 0;
+				for (const auto& feature : document["features"].GetArray())
+					for (const auto& group : feature["properties"]["vsmr_group_ids"].GetArray())
+					{
+						const std::string id = group.GetString();
+						if (id == "wb-a380") ++a380Count;
+						else if (id == "wb-b748") ++b748Count;
+						else if (id == "wb-b744") ++b744Count;
+					}
+				Expect(a380Count == 34U && b748Count == 37U && b744Count == 18U,
+					"LFPG aircraft restriction contours remain complete and separate");
+				for (const auto& group : document["vsmr_groups"].GetArray())
+				{
+					const std::string id = group["id"].GetString();
+					if (id == "wb-a380" || id == "wb-b748" || id == "wb-b744")
+						Expect(group["visible"].GetBool() == (id == "wb-a380"),
+							"Only the A380 restriction profile is active by default");
+				}
+				for (const char* label : { "W2", "W3", "W4", "W5", "T9", "T10" })
+				{
+				bool found = false;
+				for (const auto& feature : document["features"].GetArray())
+					if (feature["properties"].HasMember("text-field") &&
+						std::string(feature["properties"]["text-field"].GetString()) == label)
+						found = true;
+				Expect(found, std::string("LFPG keeps holding-point text ") + label);
+				}
 				const auto insidePolygon = [](const rapidjson::Value& rings, double longitude, double latitude)
 				{
 					bool inside = false;

@@ -5,11 +5,13 @@
 
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
+#include "aircraft/Released.hpp"
 #include "bootstrap/RuntimeContext.hpp"
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "integrations/CdmBridgeClient.hpp"
 #include "integrations/DmanBridgeClient.hpp"
+#include "integrations/DatalinkBridgeProvider.hpp"
 #include "integrations/PluginBridgeClient.hpp"
 #include "integrations/RampAgentBridgeClient.hpp"
 #include "integrations/VsidBridgeClient.hpp"
@@ -86,10 +88,12 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 	FlightDataRefreshPending.store(false, std::memory_order_relaxed);
 	AirportRunwayRefreshPending.store(false, std::memory_order_relaxed);
 	VsmrHoldingPoint::ClearPending();
+	VsmrReleased::ClearPending();
 	VsmrCdm::Shutdown();
 	VsmrRampAgent::Shutdown();
 	VsmrDman::Shutdown();
 	VsmrVsid::Shutdown();
+	VsmrDatalinkBridge::Shutdown();
 	VsmrPluginBridge::Shutdown();
 	NetworkCancellationRequested.store(false, std::memory_order_relaxed);
 	ResetDatalinkRuntime();
@@ -107,6 +111,8 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 	RegisterTagItemFunction("Holding Point", TAG_FUNC_HOLDING_POINT_EDIT);
 	RegisterTagItemType("Language", TAG_ITEM_LANGUAGE);
 	RegisterTagItemFunction("Language", TAG_FUNC_LANGUAGE_EDIT);
+	RegisterTagItemType("Released", TAG_ITEM_RELEASED);
+	RegisterTagItemFunction("Toggle released", TAG_FUNC_RELEASED_TOGGLE);
 	RegisterTagItemType("RDF", TAG_ITEM_RDF);
 	RegisterTagItemFunction("RDF reset", TAG_FUNC_RDF_RESET);
 
@@ -183,6 +189,7 @@ CSMRPlugin::~CSMRPlugin()
 	VsmrRampAgent::Shutdown();
 	VsmrDman::Shutdown();
 	VsmrVsid::Shutdown();
+	VsmrDatalinkBridge::Shutdown();
 	VsmrPluginBridge::Shutdown();
 	VsmrRdf::Stop();
 	PrepareDatalinkRuntimeForExit();
@@ -210,6 +217,7 @@ bool VsmrShutdownPlugin()
 	VsmrRampAgent::Shutdown();
 	VsmrDman::Shutdown();
 	VsmrVsid::Shutdown();
+	VsmrDatalinkBridge::Shutdown();
 	VsmrPluginBridge::Shutdown();
 	CSMRPlugin::PrepareDatalinkRuntimeForExit();
 	VsmrRdf::Stop();

@@ -346,6 +346,14 @@
     if (!group) return;
 	const rollback = captureRuntimeCommandRollback();
     group.visible = group.visible === false;
+    if (group.visible && ["wb-a380", "wb-b748", "wb-b744"].includes(group.id)) {
+      for (const other of avisoGroups()) {
+        if (other.id !== group.id && ["wb-a380", "wb-b748", "wb-b744"].includes(other.id)) {
+          other.visible = false;
+          if (drafts.avisoGroup?.id === other.id) drafts.avisoGroup.data.visible = false;
+        }
+      }
+    }
     if (drafts.avisoGroup?.id === group.id) drafts.avisoGroup.data.visible = group.visible;
     markDirty(`Group ${group.visible ? "shown" : "hidden"}`, ["aviso"]);
 	postRuntimeCommand(
