@@ -75,6 +75,7 @@ bool VsmrControlCenterBridgeImpl::Dispatch(
 		if (Callbacks.cancelPendingResources)
 			Callbacks.cancelPendingResources();
 		const bool configReloaded = Owner->ReloadConfig();
+		Owner->ClearAvisoGroupVisibilityChoices();
 		const bool avisoReloaded = Owner->ForceReloadAvisoGeoJson();
 		if (!configReloaded || !avisoReloaded)
 		{

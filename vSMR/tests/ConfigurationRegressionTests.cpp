@@ -542,10 +542,12 @@ namespace
 					}
 				Expect(a380 == 3U && b748 == 5U && b744 == 3U,
 					"LFMN includes each supplied aircraft restriction profile");
+				for (const auto& group : document["vsmr_groups"].GetArray())
+					Expect(!group["visible"].GetBool(), "LFMN aircraft restrictions start hidden");
 			}
 			if (airport == "LFPG")
 			{
-				Expect(model.FeatureCount() == 3248U, "LFPG replaces only aircraft restriction geometry and keeps 48 restored holding-point labels");
+				Expect(model.FeatureCount() == 3204U, "LFPG removes critical-area overlays and keeps 48 restored holding-point labels");
 				Expect(document["metadata"]["color_palettes"].Size() == 3U, "Unified LFPG exposes Dark, Light and Real palettes");
 				unsigned originalCount = 0, realCount = 0, sharedCount = 0, restoredLabels = 0;
 				for (const auto& feature : document["features"].GetArray())
@@ -557,7 +559,7 @@ namespace
 					for (const auto& group : feature["properties"]["vsmr_group_ids"].GetArray())
 						if (std::string(group.GetString()) == "labels-holding-points") ++restoredLabels;
 				}
-				Expect(originalCount == 1505U && realCount == 1557U && sharedCount == 186U && restoredLabels == 48U,
+				Expect(originalCount == 1485U && realCount == 1533U && sharedCount == 186U && restoredLabels == 48U,
 					"Dark/Light and Real retain their geometry and share all restored holding-point labels");
 				unsigned a380Count = 0, b748Count = 0, b744Count = 0;
 				for (const auto& feature : document["features"].GetArray())
@@ -583,8 +585,13 @@ namespace
 				{
 					const std::string id = group["id"].GetString();
 					if (id == "wb-a380" || id == "wb-b748" || id == "wb-b744")
-						Expect(group["visible"].GetBool() == (id == "wb-a380"),
-							"Only the A380 restriction profile is active by default");
+						Expect(!group["visible"].GetBool(),
+							"LFPG aircraft restrictions start hidden");
+					if (id == "simple-axis" || id == "double-axis")
+						Expect(std::string(group["folder"].GetString()) == "Base map",
+							"LFPG centreline groups belong to Base map");
+					Expect(id != "lvp-critical-east" && id != "lvp-critical-west",
+						"LFPG retired critical-area groups are absent");
 				}
 				for (const char* label : { "W2", "W3", "W4", "W5", "T9", "T10" })
 				{
@@ -732,15 +739,15 @@ namespace
 	{
 		rapidjson::Document remote, bundled;
 		remote.Parse(R"({"features":[{"id":"upstream","properties":{"name":"New AIRAC geometry"}}],"styles":{},"vsmr_groups":[]})");
-		bundled.Parse(R"({"vsmr_groups":[{"id":"lvp-critical-east"},{"id":"lvp-critical-west"},{"id":"lvp-loc-markers"},{"id":"lvp-hp-cat1-cat3"}],"styles":{"lvp":{"paint":{"stroke":"#ff0000"}}},"features":[{"id":"upstream","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-critical-east"]},"geometry":{"type":"Point","coordinates":[1,2]}},{"id":"west","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-critical-west"]},"geometry":{"type":"Point","coordinates":[2,3]}},{"id":"loc","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-loc-markers"]},"geometry":{"type":"Point","coordinates":[3,4]}},{"id":"hp","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-hp-cat1-cat3"]},"geometry":{"type":"Point","coordinates":[4,5]}}]})");
+		bundled.Parse(R"({"vsmr_groups":[{"id":"lvp-loc-markers"},{"id":"lvp-hp-cat1-cat3"}],"styles":{"lvp":{"paint":{"stroke":"#ff0000"}}},"features":[{"id":"upstream","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-loc-markers"]},"geometry":{"type":"Point","coordinates":[1,2]}},{"id":"hp","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-hp-cat1-cat3"]},"geometry":{"type":"Point","coordinates":[4,5]}}]})");
 		std::string error;
 		Expect(VsmrAvisoBundledGroups::MergeLfpgLvp(remote, bundled, error) &&
-			remote["features"].Size() == 4U && remote["vsmr_groups"].Size() == 4U &&
+			remote["features"].Size() == 2U && remote["vsmr_groups"].Size() == 2U &&
 			remote["styles"].MemberCount() == 1U &&
 			std::string(remote["features"][0]["properties"]["name"].GetString()) == "New AIRAC geometry",
 			"bundled LVP geometry supplements the current AIRAC without replacing matching upstream IDs");
 		Expect(VsmrAvisoBundledGroups::MergeLfpgLvp(remote, bundled, error) &&
-			remote["features"].Size() == 4U && remote["vsmr_groups"].Size() == 4U,
+			remote["features"].Size() == 2U && remote["vsmr_groups"].Size() == 2U,
 			"loading LFPG LVP overlay repeatedly does not duplicate its features or groups");
 	}
 

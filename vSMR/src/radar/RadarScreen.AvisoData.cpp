@@ -1270,9 +1270,9 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		}
 	}
 
-	// Keep manual choices for automatically managed groups across same-map
-	// reloads and airport switches. Changed runway/rule inputs still take
-	// precedence; another airport must not erase this airport's manual choices.
+	// Keep all manual group choices across same-map reloads and airport
+	// switches. Changed runway/rule inputs still take precedence for the
+	// automatically managed groups.
 	VsmrAviso::RestoreRunwayVisibilityChoices(parsedGroups, RunwayVisibilityByAirport[getActiveAirport()]);
 	// Apply live runway rules before publishing the first render snapshot.
 	ApplyRunwayGroupVisibility(parsedGroups);

@@ -543,7 +543,7 @@ bool VsmrControlCenterBridgeImpl::HandleAvisoGroups(
 	}
 
 	std::unordered_map<std::string, bool> existingVisibility;
-	for (const CSMRRadar::AvisoGroup& existing : Owner->GetAvisoGroups())
+	for (const CSMRRadar::AvisoGroup& existing : Owner->GetAvisoGroups(true))
 		existingVisibility[existing.id] = existing.visible;
 
 	std::vector<CSMRRadar::AvisoGroup> groups;

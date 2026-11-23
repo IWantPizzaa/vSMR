@@ -528,7 +528,7 @@ void VsmrControlCenterBridgeImpl::SendAvisoState(const std::string& requestId)
 				validationError);
 		}
 	}
-	const std::vector<CSMRRadar::AvisoGroup> runtimeGroups = Owner->GetAvisoGroups();
+	const std::vector<CSMRRadar::AvisoGroup> runtimeGroups = Owner->GetAvisoGroups(true);
 	if (!runtimeGroups.empty())
 	{
 		const rapidjson::Value* persistedGroups =

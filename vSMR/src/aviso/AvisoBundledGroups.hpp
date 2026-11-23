@@ -13,8 +13,8 @@ namespace VsmrAvisoBundledGroups
 		std::string& error)
 	{
 		error.clear();
-		constexpr std::array<const char*, 4> groupIds{
-			"lvp-critical-east", "lvp-critical-west", "lvp-loc-markers", "lvp-hp-cat1-cat3"
+		constexpr std::array<const char*, 2> groupIds{
+			"lvp-loc-markers", "lvp-hp-cat1-cat3"
 		};
 		if (!source.IsObject() || !bundled.IsObject() ||
 			!source.HasMember("features") || !source["features"].IsArray() ||

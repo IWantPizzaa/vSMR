@@ -241,6 +241,14 @@ std::vector<std::string> RunAvisoOverridesTests(const std::filesystem::path& rep
         std::string(folderSource["vsmr_groups"][0]["name"].GetString()) == "Terrain",
         "Stale local group snapshots cannot move bundled base groups to the root");
 
+    Document retiredSource, retiredPatch;
+    VsmrJson::ParseDocument(retiredSource, R"({"type":"FeatureCollection","metadata":{"airport":"LFPG"},"vsmr_groups":[{"id":"simple-axis","folder":"Base map"}],"features":[{"type":"Feature","id":"axis","properties":{"vsmr_group_ids":["simple-axis"]},"geometry":{"type":"Point","coordinates":[1,2]}}]})");
+    VsmrJson::ParseDocument(retiredPatch, R"({"patch":{"groups":{"simple-axis":{"folder":""},"lvp-critical-east":{"id":"lvp-critical-east","name":"Critical areas east"}},"features":{"critical":{"type":"Feature","id":"critical","properties":{"vsmr_group_ids":["lvp-critical-east"]},"geometry":{"type":"Point","coordinates":[2,3]}}}}})");
+    expect(VsmrAvisoOverrides::Apply(retiredSource, &retiredPatch, error) &&
+        retiredSource["vsmr_groups"].Size() == 1U && retiredSource["features"].Size() == 1U &&
+        std::string(retiredSource["vsmr_groups"][0]["folder"].GetString()) == "Base map",
+        "Old LFPG patches cannot restore retired critical areas or move axes out of Base map");
+
     const auto testRoot = std::filesystem::temp_directory_path() /
         ("vsmr-aviso-overrides-" + std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount64()));
     try

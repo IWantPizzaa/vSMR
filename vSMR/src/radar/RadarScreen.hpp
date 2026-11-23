@@ -590,7 +590,8 @@ public:
 		const std::string& path,
 		bool retainPreviousOnFailure = true);
 	bool ForceReloadAvisoGeoJson();
-	std::vector<AvisoGroup> GetAvisoGroups() const;
+	std::vector<AvisoGroup> GetAvisoGroups(bool includeOtherPalettes = false) const;
+	void ClearAvisoGroupVisibilityChoices();
 	std::shared_ptr<const std::unordered_map<std::string, bool>> GetAvisoGroupVisibilitySnapshot(
 		unsigned long long* outGeneration = nullptr) const;
 	bool GetAvisoRenderSnapshots(
@@ -604,7 +605,8 @@ public:
 		std::string* outError = nullptr);
 	bool SetAvisoGroupVisibility(const std::string& groupId, bool visible);
 	bool ToggleAvisoGroupVisibility(const std::string& groupId, bool* outVisible = nullptr);
-	bool SetAvisoGroupVisibilities(const std::vector<std::pair<std::string, bool>>& visibility);
+	bool SetAvisoGroupVisibilities(const std::vector<std::pair<std::string, bool>>& visibility,
+		bool rememberManualChoices = true);
 	bool UpdateAvisoGroups(const std::vector<AvisoGroup>& groups);
 	std::string GetAvisoColorPalette() const;
 	std::string GetSelectedArrivalStandKey();

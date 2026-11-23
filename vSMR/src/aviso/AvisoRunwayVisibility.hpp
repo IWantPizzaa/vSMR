@@ -176,6 +176,7 @@ namespace VsmrAviso
 	{
 		std::map<std::string, std::string> inputs;
 		std::map<std::string, bool> visibility;
+		std::map<std::string, bool> manualVisibility;
 	};
 
 	template<typename Groups>
@@ -183,6 +184,12 @@ namespace VsmrAviso
 	{
 		for (auto& group : groups)
 		{
+			const auto manual = memory.manualVisibility.find(group.id);
+			if (manual != memory.manualVisibility.end())
+			{
+				group.visible = manual->second;
+				continue;
+			}
 			const auto choice = memory.visibility.find(group.id);
 			if (memory.inputs.count(group.id) && choice != memory.visibility.end()) group.visible = choice->second;
 		}
@@ -232,6 +239,7 @@ namespace VsmrAviso
 				const auto signature = RunwayVisibilityInputs(rule, activity);
 				const auto previous = memory->inputs.find(group.id);
 				apply = previous == memory->inputs.end() || previous->second != signature;
+				if (apply) memory->manualVisibility.erase(group.id);
 				nextInputs.emplace(group.id, signature);
 			}
 			const bool automatic = RunwayRuleMatches(rule, activity) ? rule.matched : rule.unmatched;

@@ -1786,6 +1786,17 @@ void TestRunwayVisibilityRules(const std::filesystem::path& repositoryRoot)
 	RestoreRunwayVisibilityChoices(reloadedGroups, memory);
 	Expect(reloadedGroups[0].visible && !reloadedGroups[1].visible,
 		"Reloaded map groups restore remembered manual choices rather than their file defaults");
+	RunwayVisibilityMemory ordinaryGroupMemory;
+	ordinaryGroupMemory.manualVisibility["custom"] = false;
+	auto ordinaryReload = groups;
+	RestoreRunwayVisibilityChoices(ordinaryReload, ordinaryGroupMemory);
+	Expect(!ordinaryReload[2].visible,
+		"Control Center reload restores a manually hidden group without a runway rule");
+	ApplyRunwayVisibilityRules(nullptr, activity, ordinaryReload, error, nullptr, &ordinaryGroupMemory);
+	ordinaryReload[2].visible = true;
+	RestoreRunwayVisibilityChoices(ordinaryReload, ordinaryGroupMemory);
+	Expect(!ordinaryReload[2].visible,
+		"Airports without runway rules keep ordinary manual group choices across reloads");
 	std::map<std::string, RunwayVisibilityMemory> airportMemories;
 	airportMemories["LFPG"] = memory;
 	ApplyRunwayVisibilityRules(nullptr, activity, reloadedGroups, error, nullptr, &airportMemories["LFBO"]);

@@ -238,6 +238,33 @@ namespace VsmrAvisoOverrides
                 Put(merged, "folder", *folder, keyed.GetAllocator());
                 if (const Value* name = Member(bundled, "name")) Put(merged, "name", *name, keyed.GetAllocator());
             }
+        // LFPG no longer bundles the old critical-area overlay. Older user
+        // patches can still contain its definitions and geometry; do not let
+        // those patches recreate the retired groups after a map update.
+        const Value* metadata = Member(source, "metadata");
+        const Value* airport = metadata != nullptr ? Member(*metadata, "airport") : nullptr;
+        if (airport != nullptr && airport->IsString() && Upper(airport->GetString()) == "LFPG")
+        {
+            const Value* bundledGroups = Member(source, "vsmr_groups");
+            for (const char* retiredId : { "lvp-critical-east", "lvp-critical-west" })
+            {
+                bool bundled = false;
+                if (bundledGroups != nullptr && bundledGroups->IsArray())
+                    for (const auto& group : bundledGroups->GetArray())
+                        bundled = bundled || Identity(group, false) == retiredId;
+                if (bundled) continue;
+                keyed["groups"].RemoveMember(retiredId);
+                for (auto it = keyed["features"].MemberBegin(); it != keyed["features"].MemberEnd();)
+                {
+                    const Value* properties = Member(it->value, "properties");
+                    std::vector<std::string> ids;
+                    if (properties != nullptr && VsmrAvisoFeatureMetadata::TryReadGroupIds(properties, ids) &&
+                        std::find(ids.begin(), ids.end(), retiredId) != ids.end())
+                        it = keyed["features"].EraseMember(it);
+                    else ++it;
+                }
+            }
+        }
         if (removed != nullptr)
         {
             for (auto it = removed->MemberBegin(); it != removed->MemberEnd(); ++it)

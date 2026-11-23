@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Keep LFPG and LFMN aircraft restrictions hidden until a controller selects one; move LFPG's single and dual centrelines into Base map and remove the retired critical-area overlays.
+- Preserve manually shown or hidden AVISO groups when the Control Center saves other changes, including on airports without runway visibility rules. Keep groups from other palettes in the editor snapshot and let an explicit Reload restore the saved choices.
 - Replace LFPG A380/B747 restriction fills with the supplied line traces, and add the corresponding restriction traces to LFMN while preserving each airport's other AVISO objects.
 - Display `RLD` for the `ready_startup` tag item; keep the existing CDM toggle integration.
 - Restore 48 LFPG holding-point labels from the earlier airport layout, including W2-W5 and T9, with a dedicated visible group.
@@ -29,7 +31,7 @@
 - The runtime menu's PDC section shows the station callsign instead of an editable login, and asks for a PINEDE key instead of a Hoppie code. The saved Hoppie login and code are erased from the EuroScope settings on first start. Errors from PINEDE (key refused, request taken by another controller, server unreachable) appear in the PDC message window.
 - Save a valid PDC login when leaving its Runtime Menu field, without requiring Enter.
 - Show the bundled LFPG LVP styles and groups in the Control Center when using the automatic AIRAC map.
-- Add LFPG's four LVP geometry groups from the supplied local AVISO and retain them when the automatic France-Ground-Layouts AIRAC map is loaded.
+- Add LFPG LOC markers and CAT I / CAT III holding-point geometry from the supplied local AVISO, and retain them when the automatic France-Ground-Layouts AIRAC map is loaded.
 - Prevent queued PDC login and poll requests from reaching Hoppie after disconnect, so they cannot prolong the server's callsign lock.
 - Trigger AVISO inset snapping from the inset frame borders, so the grab position in its title bar no longer affects the snap target.
 - Animate inset edge snap previews and dismiss the snap target when an inset is held against the same edge for 750 ms.
