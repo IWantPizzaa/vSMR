@@ -759,9 +759,7 @@ bool CSMRRadar::MergeAutomaticLfpgLvp(const std::string& path, const std::string
 	if (manualSource || source != path || !IsAutomaticGroundLayoutLfpg(path, DataPath))
 		return true;
 	const auto bundled = BundledLfpgForOverlay(fs::u8path(DataPath) / "AVISO" / "LFPG.geojson", error);
-	return bundled &&
-		VsmrAvisoBundledGroups::MergeLfpgLvp(document, *bundled, error) &&
-		VsmrAvisoBundledGroups::MergeLfpgRestrictedArea(document, *bundled, error);
+	return bundled && VsmrAvisoBundledGroups::MergeLfpgLvp(document, *bundled, error);
 }
 
 bool CSMRRadar::EnsureAvisoGeoJsonLoaded(

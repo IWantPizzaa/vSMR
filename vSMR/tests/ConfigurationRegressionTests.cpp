@@ -547,7 +547,7 @@ namespace
 			}
 			if (airport == "LFPG")
 			{
-				Expect(model.FeatureCount() == 3204U, "LFPG removes critical-area overlays and keeps 48 restored holding-point labels");
+				Expect(model.FeatureCount() == 3241U, "LFPG restores line-only critical areas and keeps 48 holding-point labels");
 				Expect(document["metadata"]["color_palettes"].Size() == 3U, "Unified LFPG exposes Dark, Light and Real palettes");
 				unsigned originalCount = 0, realCount = 0, sharedCount = 0, restoredLabels = 0;
 				for (const auto& feature : document["features"].GetArray())
@@ -559,7 +559,7 @@ namespace
 					for (const auto& group : feature["properties"]["vsmr_group_ids"].GetArray())
 						if (std::string(group.GetString()) == "labels-holding-points") ++restoredLabels;
 				}
-				Expect(originalCount == 1485U && realCount == 1533U && sharedCount == 186U && restoredLabels == 48U,
+				Expect(originalCount == 1505U && realCount == 1550U && sharedCount == 186U && restoredLabels == 48U,
 					"Dark/Light and Real retain their geometry and share all restored holding-point labels");
 				unsigned a380Count = 0, b748Count = 0, b744Count = 0;
 				for (const auto& feature : document["features"].GetArray())
@@ -581,18 +581,26 @@ namespace
 						Expect(std::string(feature["geometry"]["type"].GetString()) == "MultiLineString",
 							"LFPG restriction geometry uses the supplied line traces without obsolete fills");
 				}
+				unsigned criticalGroups = 0;
 				for (const auto& group : document["vsmr_groups"].GetArray())
 				{
 					const std::string id = group["id"].GetString();
+					if (id == "lvp-critical-east" || id == "lvp-critical-west") ++criticalGroups;
 					if (id == "wb-a380" || id == "wb-b748" || id == "wb-b744")
 						Expect(!group["visible"].GetBool(),
 							"LFPG aircraft restrictions start hidden");
 					if (id == "simple-axis" || id == "double-axis")
 						Expect(std::string(group["folder"].GetString()) == "Base map",
 							"LFPG centreline groups belong to Base map");
-					Expect(id != "lvp-critical-east" && id != "lvp-critical-west",
-						"LFPG retired critical-area groups are absent");
+					Expect(id != "restricted-area", "LFPG has no separate Restricted Area toggle");
 				}
+				Expect(criticalGroups == 2U, "LFPG has both critical-area groups");
+				for (const auto& feature : document["features"].GetArray())
+					for (const auto& group : feature["properties"]["vsmr_group_ids"].GetArray())
+						if (std::string(group.GetString()) == "lvp-critical-east" ||
+							std::string(group.GetString()) == "lvp-critical-west")
+							Expect(std::string(feature["properties"]["object_type"].GetString()) == "Line",
+								"LFPG critical areas contain no text labels");
 				for (const char* label : { "W2", "W3", "W4", "W5", "T9", "T10" })
 				{
 				bool found = false;
@@ -739,28 +747,16 @@ namespace
 	{
 		rapidjson::Document remote, bundled;
 		remote.Parse(R"({"features":[{"id":"upstream","properties":{"name":"New AIRAC geometry"}}],"styles":{},"vsmr_groups":[]})");
-		bundled.Parse(R"({"vsmr_groups":[{"id":"lvp-loc-markers"},{"id":"lvp-hp-cat1-cat3"}],"styles":{"lvp":{"paint":{"stroke":"#ff0000"}}},"features":[{"id":"upstream","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-loc-markers"]},"geometry":{"type":"Point","coordinates":[1,2]}},{"id":"hp","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-hp-cat1-cat3"]},"geometry":{"type":"Point","coordinates":[4,5]}}]})");
+		bundled.Parse(R"({"vsmr_groups":[{"id":"lvp-loc-markers"},{"id":"lvp-hp-cat1-cat3"},{"id":"lvp-critical-east"},{"id":"lvp-critical-west"}],"styles":{"lvp":{"paint":{"stroke":"#ff0000"}}},"features":[{"id":"upstream","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-loc-markers"]},"geometry":{"type":"Point","coordinates":[1,2]}},{"id":"hp","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-hp-cat1-cat3"]},"geometry":{"type":"Point","coordinates":[4,5]}},{"id":"critical-east","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-critical-east"]},"geometry":{"type":"LineString","coordinates":[[1,2],[2,3]]}},{"id":"critical-west","properties":{"style_id":"lvp","vsmr_group_ids":["lvp-critical-west"]},"geometry":{"type":"LineString","coordinates":[[4,5],[5,6]]}}]})");
 		std::string error;
 		Expect(VsmrAvisoBundledGroups::MergeLfpgLvp(remote, bundled, error) &&
-			remote["features"].Size() == 2U && remote["vsmr_groups"].Size() == 2U &&
+			remote["features"].Size() == 4U && remote["vsmr_groups"].Size() == 4U &&
 			remote["styles"].MemberCount() == 1U &&
 			std::string(remote["features"][0]["properties"]["name"].GetString()) == "New AIRAC geometry",
 			"bundled LVP geometry supplements the current AIRAC without replacing matching upstream IDs");
 		Expect(VsmrAvisoBundledGroups::MergeLfpgLvp(remote, bundled, error) &&
-			remote["features"].Size() == 2U && remote["vsmr_groups"].Size() == 2U,
+			remote["features"].Size() == 4U && remote["vsmr_groups"].Size() == 4U,
 			"loading LFPG LVP overlay repeatedly does not duplicate its features or groups");
-
-		rapidjson::Document restrictedRemote, restrictedBundled;
-		restrictedRemote.Parse(R"({"features":[{"id":"restriction","properties":{"style_id":"closure","vsmr_group_ids":[]}}],"styles":{"closure":{}},"vsmr_groups":[]})");
-		restrictedBundled.Parse(R"({"vsmr_groups":[{"id":"restricted-area","name":"Restricted Area","visible":false}],"styles":{"closure":{},"real-closure":{}},"features":[{"id":"restriction","properties":{"style_id":"closure","vsmr_group_ids":["restricted-area"],"geometry_palettes":["dark","light"]}},{"id":"real-restriction","properties":{"style_id":"real-closure","vsmr_group_ids":["restricted-area"],"geometry_palettes":["real"]}}]})");
-		Expect(VsmrAvisoBundledGroups::MergeLfpgRestrictedArea(restrictedRemote, restrictedBundled, error) &&
-			restrictedRemote["features"].Size() == 2U &&
-			restrictedRemote["vsmr_groups"].Size() == 1U &&
-			restrictedRemote["features"][0]["properties"]["vsmr_group_ids"].Size() == 1U &&
-			restrictedRemote["features"][0]["properties"]["geometry_palettes"].Size() == 2U &&
-			VsmrAvisoBundledGroups::MergeLfpgRestrictedArea(restrictedRemote, restrictedBundled, error) &&
-			restrictedRemote["features"].Size() == 2U,
-			"LFPG restricted areas remain grouped on the automatic AIRAC map without duplicate geometry");
 	}
 
 	void TestUnicodeResourcePaths(const std::filesystem::path& repositoryRoot)
