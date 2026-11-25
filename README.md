@@ -267,7 +267,7 @@ After building the native test executable, run the regression suite independentl
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tests\run_tests.ps1
 ```
 
-Release-input checks enforce matching 2.0.7 versions, the reviewed hashes of all 161 AVISO files (including the separate LFPO_Work variant), and an update policy that never deletes a bundled airport. LFPG contains 1,470 ungrouped features, including the two 60 m limit lines, plus six grouped features carrying 89 East arrows and 97 West arrows, independently controlled through the **East Arrows** and **West Arrows** groups. The hash manifest records these committed geometries.
+Release-input checks enforce matching 2.0.7 versions, the reviewed hashes of all 161 AVISO files (including the separate LFPO_Work variant), and an update policy that never deletes a bundled airport. The hash manifest records the committed geometries, including LFPG's Real palette and its independently controlled groups.
 
 Publishable artifacts require a clean source commit and passing release checks. Signing is optional; configuring a signing certificate/pin or `-RequireSignature` enforces signed binaries and the matching detached update signature. The packager, binary product versions, and AppVeyor settings target 2.0.7; loader version remains 1.3.0 and runtime ABI remains 1. Local validation packages are not distributable releases. Publication of the GitHub release and update feed remains an explicit maintainer action.
 

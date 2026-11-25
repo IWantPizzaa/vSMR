@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.0.7] - 2026-11-25
+
 - Straighten LFPG Real critical-area dashed outlines and the yellow ILS box at runway 08L against the runway axis, keeping their existing position and hatching.
 - Restore LFPG Critical areas East and West as linework without their text labels. Keep the red operational restriction surfaces visible by default without a separate Restricted Area toggle.
 - Keep the displayed AVISO palette when switching airports in the Runtime Menu, including selections inherited from older ASRs, and resolve it after the airport's AVISO source has loaded.
