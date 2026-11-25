@@ -595,6 +595,43 @@ namespace
 					Expect(id != "restricted-area", "LFPG has no separate Restricted Area toggle");
 				}
 				Expect(criticalGroups == 2U, "LFPG has both critical-area groups");
+				// The Real 08L critical-area contours must follow the runway axis.
+				const double referenceLon = 2.552743889;
+				const double referenceLat = 48.995685833;
+				const double lonScale = 111320.0 * std::cos(referenceLat * 3.141592653589793 / 180.0);
+				const double latScale = 111320.0;
+				const double dx = (2.602010833 - referenceLon) * lonScale;
+				const double dy = (48.998318889 - referenceLat) * latScale;
+				const double axisLength = std::hypot(dx, dy);
+				auto lateral = [&](const rapidjson::Value& point) {
+					const double x = (point[0].GetDouble() - referenceLon) * lonScale;
+					const double y = (point[1].GetDouble() - referenceLat) * latScale;
+					return (-x * dy + y * dx) / axisLength;
+				};
+				for (const auto& feature : document["features"].GetArray())
+				{
+					const std::string id = feature["id"].GetString();
+					const bool red = id == "real-LFPG-AVISO-V11-CRIT-W-26R-S";
+					const bool white = id == "real-LFPG-AVISO-V11-CRIT-W-26R-GHK";
+					const bool yellow = id == "real-LFPG-AVISO-V11-CRIT-W-26R-ILS-BORDER";
+					if (!red && !white && !yellow) continue;
+					const auto& segments = feature["geometry"]["coordinates"];
+					const auto& top = segments[0];
+					const double reference = lateral(top[0]);
+					if (yellow)
+						Expect(std::abs(lateral(top[1]) - reference) < 0.05 &&
+							std::abs(lateral(top[2]) - lateral(top[3])) < 0.05,
+							"Real 08L yellow critical-area border is runway-aligned");
+					else
+					{
+						const unsigned topSegmentCount = red ? 9U : 6U;
+						bool straight = true;
+						for (unsigned index = 0; index < topSegmentCount; ++index)
+							for (const auto& point : segments[index].GetArray())
+								straight = straight && std::abs(lateral(point) - reference) < 0.05;
+						Expect(straight, "Real 08L dashed critical-area edge is runway-aligned");
+					}
+				}
 				for (const auto& feature : document["features"].GetArray())
 					for (const auto& group : feature["properties"]["vsmr_group_ids"].GetArray())
 						if (std::string(group.GetString()) == "lvp-critical-east" ||
