@@ -749,6 +749,18 @@ namespace
 		Expect(VsmrAvisoBundledGroups::MergeLfpgLvp(remote, bundled, error) &&
 			remote["features"].Size() == 2U && remote["vsmr_groups"].Size() == 2U,
 			"loading LFPG LVP overlay repeatedly does not duplicate its features or groups");
+
+		rapidjson::Document restrictedRemote, restrictedBundled;
+		restrictedRemote.Parse(R"({"features":[{"id":"restriction","properties":{"style_id":"closure","vsmr_group_ids":[]}}],"styles":{"closure":{}},"vsmr_groups":[]})");
+		restrictedBundled.Parse(R"({"vsmr_groups":[{"id":"restricted-area","name":"Restricted Area","visible":false}],"styles":{"closure":{},"real-closure":{}},"features":[{"id":"restriction","properties":{"style_id":"closure","vsmr_group_ids":["restricted-area"],"geometry_palettes":["dark","light"]}},{"id":"real-restriction","properties":{"style_id":"real-closure","vsmr_group_ids":["restricted-area"],"geometry_palettes":["real"]}}]})");
+		Expect(VsmrAvisoBundledGroups::MergeLfpgRestrictedArea(restrictedRemote, restrictedBundled, error) &&
+			restrictedRemote["features"].Size() == 2U &&
+			restrictedRemote["vsmr_groups"].Size() == 1U &&
+			restrictedRemote["features"][0]["properties"]["vsmr_group_ids"].Size() == 1U &&
+			restrictedRemote["features"][0]["properties"]["geometry_palettes"].Size() == 2U &&
+			VsmrAvisoBundledGroups::MergeLfpgRestrictedArea(restrictedRemote, restrictedBundled, error) &&
+			restrictedRemote["features"].Size() == 2U,
+			"LFPG restricted areas remain grouped on the automatic AIRAC map without duplicate geometry");
 	}
 
 	void TestUnicodeResourcePaths(const std::filesystem::path& repositoryRoot)

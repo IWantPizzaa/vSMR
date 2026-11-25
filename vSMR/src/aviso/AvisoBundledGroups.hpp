@@ -2,6 +2,7 @@
 
 #include "rapidjson/document.h"
 #include <array>
+#include <map>
 #include <set>
 #include <string>
 
@@ -134,6 +135,103 @@ namespace VsmrAvisoBundledGroups
 			{
 				rapidjson::Value copy(bundled["metadata"]["lvp_overlay"], allocator);
 				source["metadata"].AddMember("lvp_overlay", copy, allocator);
+			}
+		}
+		return true;
+	}
+
+	inline bool MergeLfpgRestrictedArea(
+		rapidjson::Document& source,
+		const rapidjson::Value& bundled,
+		std::string& error)
+	{
+		constexpr const char* groupId = "restricted-area";
+		if (!source.IsObject() || !bundled.IsObject() ||
+			!source.HasMember("features") || !source["features"].IsArray() ||
+			!source.HasMember("styles") || !source["styles"].IsObject() ||
+			!source.HasMember("vsmr_groups") || !source["vsmr_groups"].IsArray() ||
+			!bundled.HasMember("features") || !bundled["features"].IsArray() ||
+			!bundled.HasMember("styles") || !bundled["styles"].IsObject() ||
+			!bundled.HasMember("vsmr_groups") || !bundled["vsmr_groups"].IsArray())
+		{
+			error = "Invalid LFPG restricted-area geometry.";
+			return false;
+		}
+
+		auto& allocator = source.GetAllocator();
+		bool hasGroup = false;
+		for (const auto& group : source["vsmr_groups"].GetArray())
+			hasGroup = hasGroup || (group.IsObject() && group.HasMember("id") &&
+				group["id"].IsString() && std::string(group["id"].GetString()) == groupId);
+		if (!hasGroup)
+		{
+			bool found = false;
+			for (const auto& group : bundled["vsmr_groups"].GetArray())
+				if (group.IsObject() && group.HasMember("id") && group["id"].IsString() &&
+					std::string(group["id"].GetString()) == groupId)
+				{
+					rapidjson::Value copy(group, allocator);
+					source["vsmr_groups"].PushBack(copy, allocator);
+					found = true;
+					break;
+				}
+			if (!found) { error = "Bundled LFPG restricted-area group is missing."; return false; }
+		}
+
+		std::map<std::string, rapidjson::SizeType> existing;
+		for (rapidjson::SizeType index = 0; index < source["features"].Size(); ++index)
+		{
+			const auto& feature = source["features"][index];
+			if (feature.IsObject() && feature.HasMember("id") && feature["id"].IsString())
+				existing.emplace(feature["id"].GetString(), index);
+		}
+		for (const auto& feature : bundled["features"].GetArray())
+		{
+			if (!feature.IsObject() || !feature.HasMember("id") || !feature["id"].IsString() ||
+				!feature.HasMember("properties") || !feature["properties"].IsObject()) continue;
+			const auto& properties = feature["properties"];
+			if (!properties.HasMember("vsmr_group_ids") || !properties["vsmr_group_ids"].IsArray()) continue;
+			bool restricted = false;
+			for (const auto& id : properties["vsmr_group_ids"].GetArray())
+				restricted = restricted || (id.IsString() && std::string(id.GetString()) == groupId);
+			if (!restricted || !properties.HasMember("style_id") || !properties["style_id"].IsString()) continue;
+			const char* styleId = properties["style_id"].GetString();
+			if (!bundled["styles"].HasMember(styleId))
+			{ error = "Bundled LFPG restricted-area style is missing."; return false; }
+			if (!source["styles"].HasMember(styleId))
+			{
+				rapidjson::Value key(styleId, allocator);
+				rapidjson::Value copy(bundled["styles"][styleId], allocator);
+				source["styles"].AddMember(key, copy, allocator);
+			}
+
+			const auto match = existing.find(feature["id"].GetString());
+			if (match == existing.end())
+			{
+				existing.emplace(feature["id"].GetString(), source["features"].Size());
+				rapidjson::Value copy(feature, allocator);
+				source["features"].PushBack(copy, allocator);
+				continue;
+			}
+			auto& current = source["features"][match->second]["properties"];
+			if (!current.IsObject() || !current.HasMember("style_id") ||
+				!current["style_id"].IsString() ||
+				std::string(current["style_id"].GetString()) != styleId) continue;
+			if (!current.HasMember("vsmr_group_ids"))
+				current.AddMember("vsmr_group_ids", rapidjson::Value(rapidjson::kArrayType), allocator);
+			if (!current["vsmr_group_ids"].IsArray()) continue;
+			bool assigned = false;
+			for (const auto& id : current["vsmr_group_ids"].GetArray())
+				assigned = assigned || (id.IsString() && std::string(id.GetString()) == groupId);
+			if (!assigned)
+			{
+				rapidjson::Value id(groupId, allocator);
+				current["vsmr_group_ids"].PushBack(id, allocator);
+			}
+			if (!current.HasMember("geometry_palettes") && properties.HasMember("geometry_palettes"))
+			{
+				rapidjson::Value palettes(properties["geometry_palettes"], allocator);
+				current.AddMember("geometry_palettes", palettes, allocator);
 			}
 		}
 		return true;

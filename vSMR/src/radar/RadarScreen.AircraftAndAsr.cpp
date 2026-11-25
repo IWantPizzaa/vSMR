@@ -1176,6 +1176,11 @@ std::string CSMRRadar::setActiveAirport(
 		SaveDataToAsr("AirportSelected", "Airport explicitly selected in vSMR", "1");
 	if (_stricmp(ActiveAirport.c_str(), airport.c_str()) == 0)
 		return ActiveAirport;
+	// Remember what is actually selected before the generic ASR palette key is
+	// updated for the next airport. An airport can start in Real from a legacy
+	// ASR or another radar screen without having a scoped ASR key yet.
+	if (!ActiveAirport.empty())
+		AvisoPaletteByAirport[ActiveAirport] = AvisoPreferredColorPalette;
 
 	if (switchInsetContext && !ActiveAirport.empty())
 	{
@@ -1224,6 +1229,10 @@ std::string CSMRRadar::setActiveAirport(
 		ResetAvisoPresetStateForActiveAirport(false);
 		if (!LoadInsetStateFromAsrForAirport(ActiveAirport, false))
 			ApplyDefaultAvisoPresetIfConfigured();
+		// The airport-specific AVISO file is restored by LoadInsetStateFromAsr.
+		// Resolve the remembered palette against that source, not the previous
+		// airport's source or an interim bundled fallback.
+		EnsureAvisoColorPaletteAvailable(false);
 		if (KeepAvisoWindowPlacement)
 		{
 			const auto aviso = appWindows.find(APPWINDOW_AVISO - APPWINDOW_BASE);
@@ -1326,11 +1335,9 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 		if (!SetAvisoColorPalette(globalPalette.first, false))
 			SetAvisoColorPalette("light", false);
 	EnsureAvisoColorPaletteAvailable(false);
-	if (!savedAirportPalette.empty())
-		AvisoPaletteByAirport[getActiveAirport()] = AvisoPreferredColorPalette;
-	else if (!legacyPalette.empty())
+	AvisoPaletteByAirport[getActiveAirport()] = AvisoPreferredColorPalette;
+	if (savedAirportPalette.empty() && !legacyPalette.empty())
 	{
-		AvisoPaletteByAirport[getActiveAirport()] = AvisoPreferredColorPalette;
 		SaveDataToAsr(paletteKey.c_str(), "AVISO color palette selected for this airport",
 			AvisoPreferredColorPalette.c_str());
 	}
@@ -1349,6 +1356,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	ResetAvisoPresetStateForActiveAirport(false);
 	if (!LoadInsetStateFromAsrForAirport(getActiveAirport(), true))
 		ApplyDefaultAvisoPresetIfConfigured();
+	EnsureAvisoColorPaletteAvailable(false);
 	InitialAvisoPlacementShared = false;
 	if (KeepAvisoWindowPlacement)
 	{
